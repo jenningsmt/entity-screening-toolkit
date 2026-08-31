@@ -1,0 +1,16 @@
+# Core data engineering
+duckdb
+pandas
+pyarrow
+
+# Entity resolution / matching
+rapidfuzz
+
+# UI
+streamlit
+
+# HTTP / API access (NSF, OpenAlex, EDSM-style APIs)
+requests
+
+# Testing
+pytest
