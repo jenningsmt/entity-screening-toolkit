@@ -8,8 +8,10 @@ alongside the file itself. If ownership analysis (Epic C) has been run, a third
 `GleifSnapshotManifest` lands at `data/processed/runs/<run_id>/ownership/manifest.json`.
 If bibliometric enrichment (Epic E) has been run, a fourth
 `BibliometricSnapshotManifest` lands at
-`data/processed/runs/<run_id>/bibliometric/manifest.json`.
-**These are four different manifests answering four different questions**, and the
+`data/processed/runs/<run_id>/bibliometric/manifest.json`. If topic-similarity
+ranking (the deferred VSS layer) has been run, a fifth `TopicSimilarityManifest`
+lands at `data/processed/runs/<run_id>/topic_similarity/manifest.json`.
+**These are five different manifests answering five different questions**, and the
 distinction matters (see "Manifests, not one" below): none of these files — not
 this document — are a substitute for shipping the actual manifest(s) alongside any
 published result.
@@ -48,6 +50,11 @@ and can be re-run later against a newer GLEIF download. So:
   enrichment queried OpenAlex, not *which* file — there is no "which" here the way
   GLEIF has a specific CSV. Same "current state," overwritten-on-re-run semantics as
   `GleifSnapshotManifest`.
+- **`TopicSimilarityManifest`** applies the same reproducibility discipline to a
+  new kind of external dependency: an embedding model. It records the exact
+  HuggingFace model revision used (not just the model name — a bare name without a
+  pinned revision is exactly the place this project's own reproducibility
+  discipline could quietly slip), alongside both reference-corpus files' provenance.
 
 ## What `RunManifest` records
 
@@ -91,6 +98,16 @@ and can be re-run later against a newer GLEIF download. So:
 | `resolved_author_count` | Total `ResolvedAuthor` rows persisted (every tied candidate counts separately — see the ResolvedAuthor known limitation below). |
 | `openalex_api_base_url` | The OpenAlex API endpoint queried. |
 
+## What `TopicSimilarityManifest` records
+
+| Field | Meaning |
+|---|---|
+| `run_id` | Which run this topic-similarity ranking was computed for. |
+| `computed_at` | UTC timestamp of the ranking call. |
+| `embedding_model` / `embedding_model_revision` | The exact HuggingFace model and pinned revision used — see `entity_screening/bibliometric/embeddings.py`. |
+| `dod_corpus_file` / `cet_corpus_file` | The exact bundled reference-corpus file paths used — see `docs/data_sources.md` for their real-document provenance. |
+| `flags_count` | Total `TopicSimilarityFlag` rows persisted (a single paper can independently earn a primary-tier flag, a secondary-tier flag, both, or neither — see the corpus-independence note below). |
+
 ## Known limitations (V1 through V3)
 
 - **Entity resolution is intra-source only.** `pipeline.py:resolve_entities_from_nsf`
@@ -110,14 +127,48 @@ and can be re-run later against a newer GLEIF download. So:
   characters** (e.g. a university's English name vs. an unrelated commonly-used
   short name in another language). That class of match is out of reach for string
   similarity alone and is a documented, not silently ignored, gap.
-- **This build covers all of V1, V2, and V3**: NSF Award Search, OpenSanctions,
-  DoD's Section 1260H list, GLEIF ownership/foreign-control flagging (Epic C), the
-  Section 117 foreign-funding disclosure cross-check, and the OpenAlex bibliometric
-  co-authorship/affiliation layer (Epic E) with the Seven Sons universities covered
-  via OpenSanctions (no dedicated list — see `docs/data_sources.md`). Epic J
-  (LLM-grounded explanations) and DuckDB VSS semantic-abstract matching remain
-  deliberately deferred, V3-adjacent follow-ups (`docs/requirements.md` Section 9a)
-  and are not reflected in any run's results.
+- **This build covers all of V1, V2, and V3, plus the deferred VSS topic-similarity
+  layer**: NSF Award Search, OpenSanctions, DoD's Section 1260H list, GLEIF
+  ownership/foreign-control flagging (Epic C), the Section 117 foreign-funding
+  disclosure cross-check, the OpenAlex bibliometric co-authorship/affiliation layer
+  (Epic E) with the Seven Sons universities covered via OpenSanctions (no dedicated
+  list — see `docs/data_sources.md`), and semantic ranking of PIs' real papers
+  against real DoD/CET critical-technology reference corpora. Epic J (LLM-grounded
+  explanations) remains a deliberately deferred, V3-adjacent follow-up
+  (`docs/requirements.md` Section 9a) and is not reflected in any run's results.
+- **Topic-similarity flags are advisory only and never appear in an export file.**
+  `TopicSimilarityFlag` carries no `MatchStatus`, is never read by
+  `scoring/score.py`, and — unlike screening hits and ownership flags — is not
+  currently written into `output/export.py`'s CSV/Excel rows at all; it's visible
+  only via the API's `/runs/{run_id}/topic-similarity` response and the Streamlit
+  UI's own dedicated section. A published export's absence of a topic-similarity
+  column does not mean none were found for that run — check
+  `data/processed/runs/<run_id>/topic_similarity/manifest.json` separately.
+- **The relative-ranking margin (`DEFAULT_MARGIN = 0.10`) is explicitly
+  provisional**, calibrated from a real but small validation sample (2 true
+  positives, 2 true negatives) while designing this feature — real, unrelated
+  papers scored a false-positive-looking 0.59 raw cosine similarity against an
+  unrelated DoD category, which is why the shipped design uses a margin (the gap
+  between a paper's best and second-best match within one corpus) rather than an
+  absolute cutoff; true positives led by ~0.11–0.13, the one real false positive
+  found led by only ~0.045. A real end-to-end run against 58 actual papers from a
+  real PI (Andrew Felton, Montana State University) correctly produced zero flags,
+  with directly spot-checked real margins (0.008–0.047) staying well below the
+  threshold — a genuine, verified null result, not an untested default. A larger
+  real calibration pass is still needed before trusting this margin further.
+- **The two reference corpora are ranked independently, never pooled** — DoD's 6
+  full-sentence Critical Technology Area descriptions and the CET list's 18
+  concatenated-fragment categories sit at different points in an
+  embedding-similarity distribution for reasons unrelated to actual topical
+  relevance, so a single paper can independently earn a primary-tier flag, a
+  secondary-tier flag, both, or neither.
+- **The DoD Critical Technology Areas corpus could not be verified directly against
+  its own primary source.** `cto.mil` is unreachable from the environment this
+  project was built in (the same DNS-blocking pattern already hit with
+  `api.research.gov`); the bundled descriptions are cross-verified across multiple
+  independent defense-trade sources instead. Re-verify the live `cto.mil/cta/`
+  page's exact wording before treating `dod_critical_technology_areas.json` as
+  authoritative for anything beyond this portfolio project.
 - **A PI can genuinely resolve to more than one OpenAlex author identity, and this
   project does not force a single pick when that happens.** Real data confirmed this
   is not a rare edge case: a real NSF PI's name, even narrowed server-side to
@@ -204,3 +255,9 @@ and can be re-run later against a newer GLEIF download. So:
    continuously-updated API), so exact reproduction means re-running
    `--enrich-bibliometric` and accepting that OpenAlex's own underlying data may
    have changed since `queried_at`, not that a fixed input is being re-supplied.
+8. If citing topic-similarity flags (not part of the CSV/Excel export — see the
+   known-limitations note above; fetch them via
+   `GET`-equivalent `POST /runs/{run_id}/topic-similarity` or the UI instead), locate
+   `data/processed/runs/<run_id>/topic_similarity/manifest.json` for the exact
+   embedding model revision and reference-corpus file paths used, then re-run
+   `--enrich-topic-similarity` with `requirements-vss.txt` installed.
