@@ -22,6 +22,7 @@ that's worth its own note in the file or a follow-up plan, not a silent rewrite.
 | 2026-08-31 | [V1 — minimum viable screening loop](2026-08-31-v1-minimum-viable-screening-loop.md) | Built |
 | 2026-08-31 | [FastAPI layer under Streamlit](2026-08-31-fastapi-layer-under-streamlit.md) | Built |
 | 2026-09-01 | [Section 117 foreign gift & contract disclosure cross-check](2026-09-01-section-117-foreign-gift-disclosure-cross-check.md) | Built |
+| 2026-09-01 | [V3 — OpenAlex bibliometric affiliation layer](2026-09-01-v3-openalex-bibliometric-affiliation-layer.md) | Built |
 
 **Known gap in this log:** the V2/Epic C plan (GLEIF ownership graph + foreign-control
 flagging, built in commit `3c07677`) was approved via plan mode but never copied here —
