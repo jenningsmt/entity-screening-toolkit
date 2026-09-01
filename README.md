@@ -24,6 +24,7 @@ Built the same way as this author's other independent projects ([ed-sector-surve
 - [`docs/architecture.md`](docs/architecture.md) — pipeline-stage breakdown and module map.
 - [`docs/methodology.md`](docs/methodology.md) — how to read a run's manifest, and this version's known limitations.
 - [`docs/data_sources.md`](docs/data_sources.md) — per-source license and attribution terms.
+- [`docs/plans/`](docs/plans/) — the design/implementation plans reviewed and approved before each major piece was built, kept as a historical record.
 
 ## Quickstart
 
