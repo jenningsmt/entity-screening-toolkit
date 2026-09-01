@@ -19,6 +19,7 @@ openpyxl
 fastapi
 uvicorn[standard]
 
-# Testing (httpx required by FastAPI's TestClient)
+# Testing (httpx2 required by starlette.testclient as of starlette 1.6 —
+# plain httpx is deprecated there and triggers a warning on every test run)
 pytest
-httpx
+httpx2
