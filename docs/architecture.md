@@ -4,7 +4,25 @@ This describes the code as built for V1 (see `docs/requirements.md` Section 12 f
 phased roadmap). `ownership/` and `bibliometric/` are empty package stubs reserved for
 V2/V3 and are not part of this pipeline yet.
 
-## Pipeline stages
+## Two ways in: the CLI and the API
+
+Both `entity_screening/cli.py` and `entity_screening/api/main.py` are thin callers of
+the same orchestration module, `entity_screening/pipeline.py` — per
+`docs/requirements.md` Section 9a, Streamlit is a REST client of the API, not a direct
+importer of the pipeline, while the CLI still calls `pipeline.py` in-process and does
+not depend on the API server being up:
+
+```
+  cli.py "run"  ──┐
+                  ├──▶ pipeline.py ──▶ ingestion/ → resolution/ → screening/ → scoring/
+  api/main.py  ───┘         │
+     ▲                      ▼
+     │              common/storage.py (DuckDB) + common/manifest.py (JSON manifests)
+     │
+  app.py (Streamlit) ── HTTP (requests) ──▶ api/main.py
+```
+
+## Pipeline stages (inside `pipeline.py`)
 
 ```
                  ┌──────────────┐
@@ -16,7 +34,7 @@ OpenSanctions   ─▶│ opensanctions.py │  malformed records to ingestion_e
                         ▼
                  ┌──────────────┐
                  │ resolution/  │  groups NSF records into ResolvedEntity by
-                 │ normalize.py │  normalized awardee name (cli.py:
+                 │ normalize.py │  normalized awardee name (pipeline.py:
                  │ (used here)  │  resolve_entities_from_nsf)
                  └──────┬───────┘
                         │ ResolvedEntity
@@ -37,31 +55,43 @@ OpenSanctions   ─▶│ opensanctions.py │  malformed records to ingestion_e
                         ▼
                  ┌──────────────┐
                  │ output/      │  CSV/Excel export, one row per entity, with
-                 │ export.py    │  evidence trail and run_id back-reference
+                 │ export.py    │  evidence trail, run_id, and export_id
                  └──────────────┘
-
-  common/manifest.py ties every stage together: one RunManifest per invocation
-  records exact dataset snapshots, rubric, thresholds, and ingestion error
-  counts to data/processed/runs/<run_id>/manifest.json.
-
-  common/storage.py persists raw records, resolved entities, screening hits,
-  and scored entities into data/processed/entity_screening.duckdb (DuckDB,
-  not SQLite — see docs/requirements.md Section 7) for ad-hoc querying
-  alongside the CSV/Excel export.
 ```
+
+`pipeline.py` exposes three entry points, each with a specific reproducibility
+contract (see `docs/methodology.md` for the full rationale):
+
+- **`run_screening(...)`** — ingest → resolve → screen → score → persist. The one and
+  only writer of the `scored_entities` DuckDB table (the run's canonical baseline
+  score). Writes one `RunManifest`.
+- **`rescore_run(run_id, rubric, ...)`** — pure read-compute-return: recomputes scores
+  for an already-persisted run under a different rubric, with **zero database
+  writes**. This is what backs the Streamlit rubric sliders — dragging one must never
+  grow the database.
+- **`export_scored_entities(...)`** — writes a CSV or Excel file plus its own
+  immutable `ExportManifest`, unconditionally, on every call. A downloaded file's
+  score values are always traceable to the rubric that actually produced them, which
+  is not necessarily the rubric recorded in the source run's `RunManifest`.
+
+`common/storage.py` persists raw records, resolved entities, screening hits, and
+scored entities into a DuckDB file (DuckDB, not SQLite — see
+`docs/requirements.md` Section 7) for ad-hoc querying alongside the file exports.
 
 ## Module map
 
 | Package | Responsibility |
 |---|---|
-| `entity_screening/common/` | Canonical schema (`schema.py`), DuckDB storage (`storage.py`), run manifest / reproducibility (`manifest.py`) |
+| `entity_screening/common/` | Canonical schema (`schema.py`), DuckDB storage (`storage.py`), run/export manifests — reproducibility (`manifest.py`) |
 | `entity_screening/ingestion/` | Per-source ingesters (`nsf.py`, `opensanctions.py`) implementing the `BaseIngester` streaming contract (`base.py`) |
 | `entity_screening/resolution/` | Name normalization (`normalize.py`) and fuzzy scoring (`matcher.py`) |
 | `entity_screening/screening/` | Entity-of-concern list registry (`lists.py`) and the screening pass (`screen.py`) |
 | `entity_screening/scoring/` | User-editable rubric (`rubric.py`) and score decomposition (`score.py`) |
 | `entity_screening/output/` | CSV/Excel export (`export.py`) |
-| `entity_screening/cli.py` | Wires the stages together: `run` (full pipeline) and `validate` (structural sanity checks) |
-| `app.py` | Streamlit review UI: scored/filterable table, rubric sliders, evidence-trail inspector |
+| `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `export_scored_entities` — called by both the CLI and the API |
+| `entity_screening/cli.py` | `run` (full pipeline, calls `pipeline.py` in-process) and `validate` (structural sanity checks) |
+| `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (routes) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) |
+| `app.py` | Streamlit review UI: thin HTTP client of the API — scored/filterable table, rubric sliders, evidence-trail inspector, export buttons |
 
 ## Why no "confirmed" status is possible
 
@@ -74,6 +104,8 @@ requirement.
 
 ## Running it
 
+**CLI (batch, no server required):**
+
 ```
 pip install -r requirements.txt
 python -m entity_screening.cli validate
@@ -81,9 +113,16 @@ python -m entity_screening.cli run \
     --nsf-file tests/fixtures/sample_nsf_awards.json \
     --opensanctions-file tests/fixtures/sample_opensanctions_targets.csv \
     --excel
-streamlit run app.py
 ```
 
-`--nsf-file` accepts a local, pre-downloaded NSF Award Search JSON response (the
-"size-capped demo dataset" pattern from Section 9); omit it and pass
-`--nsf-date-start`/`--nsf-date-end` to pull live from the NSF API instead.
+**API + Streamlit UI (two processes):**
+
+```
+uvicorn entity_screening.api.main:app --reload
+streamlit run app.py   # in a second terminal
+```
+
+`--nsf-file` (CLI) / the "NSF awards JSON file" field (UI) accepts a local,
+pre-downloaded NSF Award Search JSON response (the "size-capped demo dataset"
+pattern from Section 9); omit it and pass `--nsf-date-start`/`--nsf-date-end`
+(CLI only, for now) to pull live from the NSF API instead.

@@ -1,28 +1,61 @@
 # Methodology (Epic G)
 
-Every pipeline run (`python -m entity_screening.cli run`) writes a companion
-`manifest.json` alongside its CSV/Excel export, at
-`data/processed/runs/<run_id>/manifest.json`. That file — not this document — is the
-authoritative, per-run record of exactly what produced a given result. This document
-explains what's in it and how to read it; it is a template to accompany any published
-results, not a substitute for shipping the actual manifest alongside them.
+Every pipeline run (`python -m entity_screening.cli run`, or `POST /runs` via the API)
+writes a `RunManifest` to `data/processed/runs/<run_id>/manifest.json`. Every export —
+CSV or Excel, from the CLI or the API's `/export.csv`/`/export.xlsx` — writes its own
+`ExportManifest` to `data/processed/runs/<run_id>/exports/<export_id>/manifest.json`,
+alongside the file itself. **These are two different manifests answering two different
+questions**, and the distinction matters (see "Two manifests, not one" below): neither
+file — not this document — is a substitute for shipping the actual manifest(s)
+alongside any published result.
 
-## What the manifest records
+## Two manifests, not one
+
+`docs/requirements.md` Section 9a's FastAPI layer lets a run be re-scored under a
+different rubric via `GET /runs/{id}/scores` without re-running ingestion or
+screening — that's what makes the Streamlit rubric sliders re-score instantly. That
+also means a run's *original* rubric and the rubric that produced any *particular*
+exported file's score values can legitimately differ. So:
+
+- **`RunManifest`** describes ingestion/screening provenance: which dataset snapshots
+  were used, the screening confidence threshold, and the rubric active when the run
+  was first created. Treat that last field as a historical fact about the run's
+  creation, never as a live claim about what any specific export's scores were
+  computed under.
+- **`ExportManifest`** describes exactly what produced one specific file's score
+  values: the rubric and thresholds active at the moment that file was written. Every
+  row in the file carries the resulting `export_id`, so the file is self-describing
+  even separated from its manifest. If you're citing a CSV's numbers, cite the
+  `ExportManifest` next to it, not the parent run's `RunManifest`.
+
+## What `RunManifest` records
 
 | Field | Meaning |
 |---|---|
-| `run_id` | Unique identifier for this run; every exported CSV/Excel row is stamped with it. |
+| `run_id` | Unique identifier for this run; every row exported under it carries this as `run_id`. |
 | `started_at` / `finished_at` | UTC timestamps bounding the run. |
 | `git_commit` | The exact commit of this codebase the run executed against, if run from a git checkout. |
 | `dataset_snapshots` | Per source: `source_dataset`, `retrieved_at`, `location` (file path or API endpoint), and `record_count` — the exact data snapshot used. |
-| `rubric` | The full `ScoringRubric` weights active for this run (Epic F — user-editable, so this is what makes a given score reproducible). |
-| `match_thresholds` | The screening confidence threshold applied. |
+| `rubric` | The `ScoringRubric` weights active when the run was created — historical, see above. |
+| `match_thresholds` | The screening confidence threshold applied during screening (this one doesn't drift — screening, unlike scoring, isn't redone on rescore). |
 | `ingestion_error_counts` | How many records were rejected as malformed during ingestion (see `ingestion_errors.jsonl` in the same run directory for the specific records and reasons). |
+
+## What `ExportManifest` records
+
+| Field | Meaning |
+|---|---|
+| `export_id` | Unique identifier for this specific export; every row in the file carries this as `export_id`. |
+| `source_run_id` | Which run's persisted entities/hits this export was scored from. |
+| `exported_at` | UTC timestamp of the export. |
+| `rubric` | The exact `ScoringRubric` weights that produced this file's score values — may differ from `source_run_id`'s `RunManifest.rubric`. |
+| `match_thresholds` | Copied from the source run at export time, for convenience. |
+| `format` | `"csv"` or `"xlsx"`. |
 
 ## Known limitations (V1)
 
-- **Entity resolution is intra-source only.** `resolve_entities_from_nsf` groups NSF
-  award records into entities by exact match on a normalized awardee name; it does
+- **Entity resolution is intra-source only.** `pipeline.py:resolve_entities_from_nsf`
+  groups NSF award records into entities by exact match on a normalized awardee name;
+  it does
   not yet attempt cross-source resolution beyond the screening step itself. A real
   alias that doesn't survive suffix-stripping/transliteration/acronym-expansion
   won't be grouped (see Epic B's normalization rules in `resolution/normalize.py`).
@@ -44,9 +77,15 @@ results, not a substitute for shipping the actual manifest alongside them.
 
 ## Reproducing a published result
 
-1. Locate the run's `manifest.json` and `ingestion_errors.jsonl`.
-2. Re-fetch the exact dataset snapshot(s) named in `dataset_snapshots` (same file, or
-   the same API date range) — snapshots are not re-downloaded automatically.
-3. Check out the `git_commit` recorded in the manifest.
-4. Re-run with the same `rubric` and `match_thresholds` values, either via
-   `--rubric-file` (a JSON file matching the `rubric` block) and `--threshold`.
+1. Locate the exported file's own `ExportManifest`
+   (`data/processed/runs/<run_id>/exports/<export_id>/manifest.json`) — this, not the
+   run's `RunManifest`, has the rubric that actually produced the numbers in the file.
+2. From the `ExportManifest`'s `source_run_id`, locate the run's `RunManifest` and
+   `ingestion_errors.jsonl` for dataset/screening provenance.
+3. Re-fetch the exact dataset snapshot(s) named in `RunManifest.dataset_snapshots`
+   (same file, or the same API date range) — snapshots are not re-downloaded
+   automatically.
+4. Check out the `git_commit` recorded in the `RunManifest`.
+5. Re-run ingestion/screening with the same `match_thresholds`
+   (`RunManifest.match_thresholds`, via `--threshold`), then re-score with the
+   `ExportManifest`'s `rubric` (via `--rubric-file`, a JSON file matching that block).
