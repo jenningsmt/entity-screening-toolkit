@@ -12,5 +12,8 @@ streamlit
 # HTTP / API access (NSF, OpenAlex, EDSM-style APIs)
 requests
 
+# Excel export (Epic G)
+openpyxl
+
 # Testing
 pytest

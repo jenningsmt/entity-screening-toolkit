@@ -1,0 +1,4 @@
+id,schema,name,aliases
+os-001,Company,ZTE Corporation,Zhongxing Telecommunication Equipment Corporation;ZTE Corp
+os-002,Company,Acme Testing Materials,
+os-003,Company,,Missing Name Entity
