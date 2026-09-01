@@ -98,6 +98,31 @@ class ForeignControlFlag:
 
 
 @dataclass(frozen=True)
+class ResolvedAuthor:
+    """A resolved entity's PI, disambiguated to an OpenAlex author identity (Epic E).
+
+    Genuinely new, not representable as ScreeningHit: this is an identity-resolution
+    result (which real-world person is this?), not a concern-list match — same
+    reasoning as OwnershipMatch (GLEIF's name-to-LEI resolution) above. Real OpenAlex
+    data shows a PI name can genuinely tie between multiple distinct author records
+    even after filtering to a specific institution (see
+    docs/plans/2026-09-01-v3-openalex-bibliometric-affiliation-layer.md's Finding 3),
+    so `disambiguate_pi_to_openalex_author` returns one ResolvedAuthor per surviving
+    candidate, not a single forced pick -- `evidence` carries the full tie context
+    (other tied candidate IDs, shared ORCIDs) so a genuine ambiguity is visible, not
+    hidden."""
+
+    entity_id: str
+    pi_name: str
+    openalex_author_id: str
+    display_name: str
+    confidence: float
+    match_basis: str
+    evidence: dict[str, Any]
+    status: MatchStatus = MatchStatus.CANDIDATE_MATCH
+
+
+@dataclass(frozen=True)
 class ScoreBreakdown:
     """A total score decomposed into its contributing factors — never an opaque
     single number without a breakdown available."""

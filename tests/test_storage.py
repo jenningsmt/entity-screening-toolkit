@@ -50,7 +50,7 @@ def test_insert_and_read_round_trips(tmp_path):
         source_record_id="1",
         fields={"awardeeName": "Acme Corp"},
     )
-    storage.insert_source_records(conn, "raw_nsf_awards", [record])
+    storage.insert_source_records(conn, "raw_nsf_awards", [record], run_id="run-1")
 
     entity = ResolvedEntity(
         entity_id="e1", canonical_name="Acme Corp", entity_type="organization", source_records=()
@@ -117,6 +117,25 @@ def test_load_resolved_entities_and_screening_hits_round_trip(tmp_path):
     assert loaded_hits[0].confidence == 0.95
     assert loaded_hits[0].status is MatchStatus.CANDIDATE_MATCH
     assert loaded_hits[0].evidence["matched_entry_fields"]["name"] == "Acme"
+
+
+def test_load_raw_record_fields_scoped_to_run_id(tmp_path):
+    conn = storage.connect(tmp_path / "test.duckdb")
+    record = SourceRecord(
+        source_dataset="nsf_award_search",
+        retrieval_date=datetime.date(2026, 8, 31),
+        source_record_id="1",
+        fields={"awardeeName": "Acme Corp", "piFirstName": "Jane"},
+    )
+    storage.insert_source_records(conn, "raw_nsf_awards", [record], run_id="run-1")
+
+    run_1_fields = storage.load_raw_record_fields(conn, "raw_nsf_awards", "run-1")
+    run_2_fields = storage.load_raw_record_fields(conn, "raw_nsf_awards", "run-2")
+    conn.close()
+
+    assert len(run_1_fields) == 1
+    assert run_1_fields[0]["piFirstName"] == "Jane"
+    assert run_2_fields == []
 
 
 def test_load_resolved_entities_scoped_to_run_id(tmp_path):

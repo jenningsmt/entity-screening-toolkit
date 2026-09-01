@@ -229,3 +229,62 @@ class GleifSnapshotManifest:
     def load(cls, path: Path | str) -> "GleifSnapshotManifest":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls(**data)
+
+
+@dataclass
+class BibliometricSnapshotManifest:
+    """Describes exactly when a run's bibliometric enrichment queried OpenAlex.
+
+    Same durability rationale as GleifSnapshotManifest, generalized to a source with
+    no file path at all: OpenAlex is a live, continuously-updated API, not a
+    downloaded snapshot file, so there's nothing to name the way
+    `gleif_lei_file`/`gleif_relationships_file` name a specific download. This
+    manifest's job is provenance of *when* a run was enriched against that
+    continuously-moving source -- the same "durable record in the run's own
+    directory, immune to a later run's enrichment call" principle as GLEIF's, applied
+    to a source that drifts by re-querying rather than by a new file replacing an old
+    one. Re-running `enrich_bibliometric` for the same `run_id` overwrites this file --
+    a "current state" record, like GleifSnapshotManifest, not a versioned history.
+    """
+
+    run_id: str
+    queried_at: str
+    pi_count: int
+    resolved_author_count: int
+    openalex_api_base_url: str
+
+    @classmethod
+    def create(
+        cls,
+        run_id: str,
+        pi_count: int,
+        resolved_author_count: int,
+        openalex_api_base_url: str,
+    ) -> "BibliometricSnapshotManifest":
+        return cls(
+            run_id=run_id,
+            queried_at=datetime.now(timezone.utc).isoformat(),
+            pi_count=pi_count,
+            resolved_author_count=resolved_author_count,
+            openalex_api_base_url=openalex_api_base_url,
+        )
+
+    def bibliometric_dir(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        path = Path(base) / self.run_id / "bibliometric"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def write(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        out_path = self.bibliometric_dir(base) / "manifest.json"
+        out_path.write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
+        return out_path
+
+    @classmethod
+    def load(cls, path: Path | str) -> "BibliometricSnapshotManifest":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(**data)
