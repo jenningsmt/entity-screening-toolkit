@@ -22,7 +22,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from entity_screening.common import storage
-from entity_screening.common.manifest import DatasetSnapshot, ExportManifest, RunManifest
+from entity_screening.common.manifest import DEFAULT_RUNS_DIR, DatasetSnapshot, ExportManifest, RunManifest
 from entity_screening.common.schema import ResolvedEntity, ScoredEntity, ScreeningHit, SourceRecord
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.nsf import NSFAwardIngester
@@ -74,16 +74,22 @@ def run_screening(
     rubric: ScoringRubric,
     threshold: float,
     db_path: Path | str = storage.DEFAULT_DB_PATH,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
 ) -> tuple[RunManifest, list[ScoredEntity]]:
     """Ingest -> resolve -> screen -> score -> persist.
 
     Returns both the manifest and the in-memory scored entities (rather than
     forcing a caller to immediately call `rescore_run` just to get back data
     already computed here) — callers that want to export call
-    `export_scored_entities` with this return value directly.
+    `export_scored_entities` with this return value directly. `runs_dir`
+    exists (mirroring `db_path`) so callers — tests and the API layer alike —
+    can redirect manifest/export output away from the real
+    data/processed/runs/ without patching a module-level constant, which
+    wouldn't work anyway since RunManifest's default argument is bound at
+    import time, not looked up per call.
     """
     manifest = RunManifest.start()
-    run_dir = manifest.run_dir()
+    run_dir = manifest.run_dir(runs_dir)
     error_log = IngestionErrorLog(run_dir / "ingestion_errors.jsonl")
 
     nsf_ingester = NSFAwardIngester(
@@ -149,7 +155,7 @@ def run_screening(
         conn.close()
 
     manifest.finish()
-    manifest.write()
+    manifest.write(runs_dir)
     return manifest, scored_entities
 
 
@@ -195,6 +201,7 @@ def export_scored_entities(
     rubric: ScoringRubric,
     match_thresholds: dict,
     fmt: str,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
 ) -> tuple[Path, ExportManifest]:
     """Writes a CSV or Excel export plus its own immutable ExportManifest,
     colocated in the same directory — called identically by the CLI's
@@ -207,12 +214,12 @@ def export_scored_entities(
         match_thresholds=match_thresholds,
         fmt=fmt,
     )
-    export_dir = export_manifest.export_dir()
+    export_dir = export_manifest.export_dir(runs_dir)
     if fmt == "xlsx":
         out_path = export_dir / "candidate_matches.xlsx"
         export_excel(scored_entities, out_path, export_manifest.export_id)
     else:
         out_path = export_dir / "candidate_matches.csv"
         export_csv(scored_entities, out_path, export_manifest.export_id)
-    export_manifest.write()
+    export_manifest.write(runs_dir)
     return out_path, export_manifest
