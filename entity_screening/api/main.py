@@ -22,16 +22,22 @@ from fastapi.responses import FileResponse
 
 from entity_screening import pipeline
 from entity_screening.api.dto import (
+    OwnershipEnrichmentRequest,
+    OwnershipEnrichmentSummary,
+    ParentChainOut,
     RunManifestOut,
     RunRequest,
     RunSummary,
     ScoredEntityOut,
+    gleif_snapshot_manifest_to_dto,
+    parent_chain_to_dto,
     run_manifest_to_dto,
     scored_entity_to_dto,
 )
 from entity_screening.common import storage
 from entity_screening.common import manifest as manifest_module
 from entity_screening.common.manifest import RunManifest
+from entity_screening.ownership.graph import parent_chain
 from entity_screening.scoring.rubric import STOCK_RUBRIC, rubric_from_dict, rubric_to_dict
 
 app = FastAPI(title="Entity Screening Toolkit API")
@@ -63,6 +69,7 @@ def rubric_overrides(
     screening_hit_weight: float | None = None,
     screening_hit_confidence_multiplier: float | None = None,
     multiple_list_hit_bonus: float | None = None,
+    foreign_control_weight: float | None = None,
 ) -> dict[str, float]:
     """Shared query-param -> rubric-override dict, used by every endpoint that
     lets a caller re-score under a modified rubric (scores/export routes)."""
@@ -70,6 +77,7 @@ def rubric_overrides(
         "screening_hit_weight": screening_hit_weight,
         "screening_hit_confidence_multiplier": screening_hit_confidence_multiplier,
         "multiple_list_hit_bonus": multiple_list_hit_bonus,
+        "foreign_control_weight": foreign_control_weight,
     }
     return {k: v for k, v in candidates.items() if v is not None}
 
@@ -171,3 +179,54 @@ def export_xlsx_route(
     run_id: str, overrides: dict[str, float] = Depends(rubric_overrides)
 ) -> FileResponse:
     return _export(run_id, "xlsx", overrides)
+
+
+@app.post("/runs/{run_id}/ownership", response_model=OwnershipEnrichmentSummary)
+def enrich_ownership_route(
+    run_id: str, request: OwnershipEnrichmentRequest
+) -> OwnershipEnrichmentSummary:
+    """Resolves this run's entities against GLEIF and computes foreign-control
+    flags (Epic C) — a separate call from POST /runs, matching
+    pipeline.enrich_ownership's own separation from run_screening. Does not
+    touch scored_entities; call GET /runs/{run_id}/scores afterward (or the
+    export routes) to see the flags reflected in scores."""
+    _load_manifest(run_id)  # 404s cleanly on an unknown run_id
+    gleif_manifest, flags = pipeline.enrich_ownership(
+        run_id,
+        request.gleif_lei_file,
+        request.gleif_relationships_file,
+        threshold=request.threshold,
+        max_depth=request.max_depth,
+        db_path=_db_path(),
+        runs_dir=_runs_dir(),
+    )
+    return OwnershipEnrichmentSummary(
+        flags_count=len(flags),
+        gleif_snapshot=gleif_snapshot_manifest_to_dto(gleif_manifest),
+    )
+
+
+@app.get("/runs/{run_id}/ownership/{entity_id}", response_model=ParentChainOut)
+def get_ownership_chain(
+    run_id: str,
+    entity_id: str,
+    direction: str = "up",
+    depth: int = 10,
+) -> ParentChainOut:
+    """Epic C's "traversal depth and direction... both queryable" criterion,
+    as an actual ad-hoc endpoint — not just the precomputed foreign-control
+    flag. Requires POST /runs/{run_id}/ownership to have already resolved
+    this entity to an LEI (whether or not it produced a flag)."""
+    _load_manifest(run_id)
+    conn = storage.connect(_db_path())
+    try:
+        match = storage.load_lei_match(conn, run_id, entity_id)
+        if match is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No GLEIF LEI match on record for entity_id={entity_id} in run {run_id}",
+            )
+        result = parent_chain(conn, match.lei, direction=direction, max_depth=depth)
+    finally:
+        conn.close()
+    return parent_chain_to_dto(result)

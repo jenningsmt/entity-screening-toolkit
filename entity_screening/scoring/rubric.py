@@ -16,6 +16,7 @@ class ScoringRubric:
     screening_hit_weight: float = 50.0
     screening_hit_confidence_multiplier: float = 1.0
     multiple_list_hit_bonus: float = 20.0
+    foreign_control_weight: float = 30.0
 
 
 STOCK_RUBRIC = ScoringRubric()

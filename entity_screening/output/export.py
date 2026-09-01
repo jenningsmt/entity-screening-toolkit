@@ -17,6 +17,7 @@ FIELDNAMES = (
     "total_score",
     "score_factors",
     "screening_hits",
+    "ownership_flags",
 )
 
 
@@ -31,15 +32,33 @@ def _serialize_row(scored: ScoredEntity, export_id: str) -> dict:
         }
         for hit in scored.screening_hits
     ]
+    ownership_flags = [
+        {
+            "entity_lei": flag.entity_lei,
+            "entity_jurisdiction": flag.entity_jurisdiction,
+            "ultimate_parent_lei": flag.ultimate_parent_lei,
+            "ultimate_parent_name": flag.ultimate_parent_name,
+            "ultimate_parent_jurisdiction": flag.ultimate_parent_jurisdiction,
+            "match_confidence": flag.match_confidence,
+            "evidence": flag.evidence,
+            "status": flag.status.value,
+        }
+        for flag in scored.ownership_flags
+    ]
+    # A foreign-control flag is a genuine candidate finding even with no
+    # screening-list hit — "no_hit" would misreport a real result as nothing
+    # found (Epic C).
+    status = "candidate_match" if (hits or ownership_flags) else "no_hit"
     return {
         "export_id": export_id,
         "run_id": scored.run_id,
         "entity_id": scored.entity_id,
         "canonical_name": scored.canonical_name,
-        "status": "candidate_match" if hits else "no_hit",
+        "status": status,
         "total_score": scored.score.total,
         "score_factors": json.dumps(scored.score.factors, sort_keys=True),
         "screening_hits": json.dumps(hits, sort_keys=True),
+        "ownership_flags": json.dumps(ownership_flags, sort_keys=True),
     }
 
 

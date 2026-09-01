@@ -59,13 +59,14 @@ scripts\compose-up.ps1
 
 ## Status
 
-**V1 (minimum viable screening loop) built:** NSF Award Search + OpenSanctions
-ingestion, fuzzy name/alias resolution, entity-of-concern screening against both
-OpenSanctions and DoD's Section 1260H list, an editable-weight scoring
-rubric, CSV/Excel export with a reproducibility manifest, a FastAPI layer over the
-pipeline with a Streamlit UI as its thin client, CI (GitHub Actions), a two-container
+**V1 + Epic C built:** NSF Award Search + OpenSanctions ingestion, fuzzy name/alias
+resolution, entity-of-concern screening against both OpenSanctions and DoD's Section
+1260H list, a GLEIF-backed ownership graph with foreign-control (parent-jurisdiction)
+flagging, an editable-weight scoring rubric, CSV/Excel export with a reproducibility
+manifest, a FastAPI layer over the pipeline with a Streamlit UI as its thin client, CI
+(GitHub Actions, including a real Docker Compose integration job), a two-container
 Docker Compose setup (API + UI), and a pytest suite including a known-difficult-entity
-regression set. V2 (GLEIF ownership
-graph, Section 117 disclosures) and V3 (OpenAlex bibliometric layer, LLM-based
+regression set. Section 117 disclosures and the Seven Sons seed list (the rest of "V2"
+per the roadmap's own text) and V3 (OpenAlex bibliometric layer, LLM-based
 evidence-grounded explanations) are not yet built, per the phased roadmap in
 `docs/requirements.md` Section 12 and the Section 9a addendum.

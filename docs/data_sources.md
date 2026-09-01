@@ -52,13 +52,65 @@ each source's terms.
   Being on this list is a DoD designation under Section 1260H, not a sanction, export
   control, or other legal restriction in itself.
 
-## Sources reserved for V2/V3 (not yet ingested)
+### GLEIF Golden Copy (Level 1 LEI-CDF + Level 2 RR-CDF)
+- **Provider:** Global Legal Entity Identifier Foundation (GLEIF).
+- **License:** CC0 1.0 Universal (public domain) — no attribution legally required,
+  no commercial/redistribution restriction. Attributed anyway below as good practice.
+- **Attribution:** "Data: GLEIF (gleif.org) Golden Copy files, snapshot dated in this
+  run's ownership manifest (`data/processed/runs/<run_id>/ownership/manifest.json`)."
+- **Where to actually download it — this matters, it's easy to get wrong:** use
+  `https://goldencopy.gleif.org/api/v2/golden-copies/publishes/lei2/latest.csv` (Level 1)
+  and `.../rr/latest.csv` (Level 2). GLEIF's separately-documented "Concatenated
+  Files" API (`leidata.gleif.org/api/v1/concatenated-files/...`) describes itself with
+  the same "LEI-CDF"/"RR-CDF" format names but actually serves **XML**, not CSV, at
+  that endpoint — confirmed by downloading it during this feature's build. Only the
+  Golden Copy host serves the flattened CSV `entity_screening/ownership/ingest.py`
+  expects.
+- **Column names — verified against a real download, not just GLEIF's docs:** GLEIF's
+  own documentation describes fields as `EntityStatus`, `EntityCategory`, `StartNode`,
+  `EndNode`, `RelationshipType`, `RelationshipStatus`. The real CSV nests each one
+  level deeper: `Entity.EntityStatus`, `Entity.EntityCategory`,
+  `Relationship.StartNode.NodeID`, `Relationship.EndNode.NodeID`,
+  `Relationship.RelationshipType`, `Relationship.RelationshipStatus`. This was caught
+  by downloading and inspecting the actual ~3.4M-row file, not by reading GLEIF's
+  documentation.
+- **Real-data performance (measured, not estimated):** loading the full Level 1 file
+  (~3.4M records, ~500MB) into DuckDB took ~50s; the Level 2 file (filtered to ACTIVE
+  `IS_DIRECTLY_CONSOLIDATED_BY`/`IS_ULTIMATELY_CONSOLIDATED_BY` rows) took ~3s and
+  yielded ~259K rows. The SQL-blocked LEI-matching query
+  (`ownership/match.py:resolve_entity_to_lei`, `block_size=3`) ran in 26–106ms per
+  lookup against the full real dataset — confirming the 3-character block width
+  carried over from OpenSanctions' scale is adequate at GLEIF's scale too; no widening
+  needed.
+- **Known limitations (observed against real data, not hypothetical):**
+  - **LEI registration is voluntary — coverage is genuinely incomplete**, including
+    for large, well-known companies. Toyota Motor Corporation's actual Japanese parent
+    entity does not appear in GLEIF under that name at all (only subsidiaries like
+    Toyota Motor Credit Corporation and Toyota Motor North America do) — a
+    name-resolution query for it falls back to a much weaker, unrelated fuzzy match
+    (an Indonesian joint venture, "TOYOTA-ASTRA MOTOR," at exactly the default 0.80
+    threshold) rather than finding nothing, which is a real precision risk worth
+    knowing about before trusting a borderline-confidence ownership match.
+  - **Corporate-suffix normalization can conflate distinct real entities.** "Apple
+    Inc" and the real, unrelated GLEIF-registered "Apple Ltd" both normalize to the
+    same suffix-stripped string ("apple") and matched at confidence 1.0 in testing —
+    the same normalization behavior that correctly merges "Acme Inc."/"Acme
+    Corporation" as the same entity can incorrectly merge two different real
+    companies that happen to share a base name. This is a property of
+    `resolution/matcher.py`'s shared normalization (used for every source, not just
+    GLEIF), surfaced concretely here because GLEIF's ~3.4M entities create far more
+    opportunity for this collision than OpenSanctions or DoD 1260H's smaller lists.
+    Consider a higher `threshold` for ownership-specific matching than for
+    screening-list matching if this risk matters for a given use — it's the same
+    user-configurable parameter either way.
+
+## Sources reserved for V3
 
 Documented here for completeness so attribution terms are settled before the code
-that needs them is written — GLEIF Golden Copy (CC0, per GLEIF's data policy),
-Section 117 dashboard (U.S. Government work), OpenAlex (CC0), and the Seven Sons seed
-list (curated/manual, cite ASPI's public reporting as the basis, not scraped tracker
-data) — sequenced into V3 alongside OpenAlex per `docs/requirements.md` Section 12.
+that needs them is written — Section 117 dashboard (U.S. Government work), OpenAlex
+(CC0), and the Seven Sons seed list (curated/manual, cite ASPI's public reporting as
+the basis, not scraped tracker data) — sequenced into V3 alongside OpenAlex per
+`docs/requirements.md` Section 12.
 
 ## General policy
 

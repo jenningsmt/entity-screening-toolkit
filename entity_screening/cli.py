@@ -37,6 +37,21 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
         dod_1260h_file=args.dod_1260h_file,
     )
 
+    ownership_flags_count = None
+    if args.gleif_lei_file and args.gleif_relationships_file:
+        _gleif_manifest, ownership_flags = pipeline.enrich_ownership(
+            manifest.run_id,
+            args.gleif_lei_file,
+            args.gleif_relationships_file,
+            threshold=args.threshold,
+            db_path=args.db_file,
+        )
+        ownership_flags_count = len(ownership_flags)
+        # Re-scores under the (possibly ownership-inclusive) final state before
+        # export, so the CLI writes one export reflecting everything computed
+        # rather than an initial one and a second, ownership-aware one.
+        scored_entities = pipeline.rescore_run(manifest.run_id, rubric, db_path=args.db_file)
+
     out_csv, csv_manifest = pipeline.export_scored_entities(
         scored_entities,
         source_run_id=manifest.run_id,
@@ -54,17 +69,25 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
         )
 
     total_hits = sum(len(s.screening_hits) for s in scored_entities)
-    print(
+    summary = (
         f"Run {manifest.run_id}: {len(scored_entities)} entities resolved, "
         f"{total_hits} candidate hits, "
         f"{manifest.ingestion_error_counts.get('total', 0)} ingestion errors logged.\n"
-        f"CSV: {out_csv} (export {csv_manifest.export_id})\n"
-        f"DuckDB: {args.db_file}"
     )
+    if ownership_flags_count is not None:
+        summary += f"Foreign-control flags: {ownership_flags_count}\n"
+    summary += f"CSV: {out_csv} (export {csv_manifest.export_id})\nDuckDB: {args.db_file}"
+    print(summary)
     return manifest
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
+    if bool(args.gleif_lei_file) != bool(args.gleif_relationships_file):
+        print(
+            "Error: --gleif-lei-file and --gleif-relationships-file must be "
+            "supplied together (or both omitted to skip ownership analysis)."
+        )
+        return 1
     run_pipeline(args)
     return 0
 
@@ -134,6 +157,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_DOD_1260H_FILE,
         help="DoD Section 1260H curated list JSON (defaults to the bundled snapshot)",
+    )
+    run_parser.add_argument(
+        "--gleif-lei-file",
+        type=Path,
+        default=None,
+        help="GLEIF Level 1 (LEI-CDF) concatenated CSV -- enables ownership/"
+        "foreign-control analysis (Epic C); omit both GLEIF flags to skip it",
+    )
+    run_parser.add_argument(
+        "--gleif-relationships-file",
+        type=Path,
+        default=None,
+        help="GLEIF Level 2 (RR-CDF) concatenated CSV -- required alongside --gleif-lei-file",
     )
     run_parser.set_defaults(func=_cmd_run)
 
