@@ -9,6 +9,7 @@ from pathlib import Path
 from entity_screening.common.schema import ScoredEntity
 
 FIELDNAMES = (
+    "export_id",
     "run_id",
     "entity_id",
     "canonical_name",
@@ -19,7 +20,7 @@ FIELDNAMES = (
 )
 
 
-def _serialize_row(scored: ScoredEntity) -> dict:
+def _serialize_row(scored: ScoredEntity, export_id: str) -> dict:
     hits = [
         {
             "list_name": hit.list_name,
@@ -31,6 +32,7 @@ def _serialize_row(scored: ScoredEntity) -> dict:
         for hit in scored.screening_hits
     ]
     return {
+        "export_id": export_id,
         "run_id": scored.run_id,
         "entity_id": scored.entity_id,
         "canonical_name": scored.canonical_name,
@@ -41,21 +43,29 @@ def _serialize_row(scored: ScoredEntity) -> dict:
     }
 
 
-def export_csv(scored_entities: Iterable[ScoredEntity], out_path: Path | str) -> Path:
+def export_csv(
+    scored_entities: Iterable[ScoredEntity], out_path: Path | str, export_id: str
+) -> Path:
+    """`export_id` ties every row back to the ExportManifest (see
+    common/manifest.py) that records exactly which rubric produced these
+    score values — never assume that's the same rubric as the source run's
+    original RunManifest (see docs/methodology.md)."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=FIELDNAMES)
         writer.writeheader()
         for scored in scored_entities:
-            writer.writerow(_serialize_row(scored))
+            writer.writerow(_serialize_row(scored, export_id))
     return out_path
 
 
-def export_excel(scored_entities: Iterable[ScoredEntity], out_path: Path | str) -> Path:
+def export_excel(
+    scored_entities: Iterable[ScoredEntity], out_path: Path | str, export_id: str
+) -> Path:
     import pandas as pd
 
-    rows = [_serialize_row(s) for s in scored_entities]
+    rows = [_serialize_row(s, export_id) for s in scored_entities]
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows, columns=list(FIELDNAMES)).to_excel(out_path, index=False)

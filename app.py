@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from entity_screening.cli import resolve_entities_from_nsf
+from entity_screening.pipeline import resolve_entities_from_nsf
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.nsf import NSFAwardIngester
 from entity_screening.ingestion.opensanctions import OpenSanctionsTargetsIngester
