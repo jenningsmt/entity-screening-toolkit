@@ -1,10 +1,11 @@
-# Architecture (V1 + Epic C)
+# Architecture (V1 + V2)
 
-This describes the code as built for V1 plus Epic C (GLEIF ownership graph and
-foreign-control flagging) — see `docs/requirements.md` Section 12 for the phased
-roadmap. `bibliometric/` stays an empty package stub reserved for V3 and is not part
-of this pipeline yet; Section 117 and the Seven Sons list (the rest of "V2" in the
-roadmap's own text) also aren't built.
+This describes the code as built for V1 plus V2 (Epic C's GLEIF ownership graph and
+foreign-control flagging, plus the Section 117 foreign-funding disclosure cross-check)
+— see `docs/requirements.md` Section 12 for the phased roadmap. `bibliometric/` stays
+an empty package stub reserved for V3 and is not part of this pipeline yet; the Seven
+Sons seed list is deliberately sequenced into V3 by the roadmap's own text and also
+isn't built.
 
 ## Two ways in: the CLI and the API
 
@@ -44,7 +45,9 @@ OpenSanctions   ─▶│ opensanctions.py │  malformed records to ingestion_e
                  ┌──────────────┐
                  │ screening/   │  blocks + fuzzy-matches each entity against
                  │ lists.py     │  every registered EntityOfConcernList
-                 │ screen.py    │  (OpenSanctionsList + DoD1260HList) -> ScreeningHit
+                 │ screen.py    │  (OpenSanctionsList + DoD1260HList) -> ScreeningHit,
+                 │ section_117  │  plus (if a Section 117 file was supplied) a second,
+                 │ .py          │  two-stage cross-check against the same lists
                  └──────┬───────┘
                         │ ScreeningHit
                         ▼
@@ -106,9 +109,9 @@ querying alongside the file exports.
 | Package | Responsibility |
 |---|---|
 | `entity_screening/common/` | Canonical schema (`schema.py`), DuckDB storage (`storage.py`), run/export manifests — reproducibility (`manifest.py`) |
-| `entity_screening/ingestion/` | Per-source ingesters (`nsf.py`, `opensanctions.py`, `dod_1260h.py`) implementing the `BaseIngester` streaming contract (`base.py`) |
-| `entity_screening/resolution/` | Name normalization (`normalize.py`) and fuzzy scoring (`matcher.py`) |
-| `entity_screening/screening/` | Entity-of-concern list registry (`lists.py`, registered: `OpenSanctionsList`, `DoD1260HList`), the screening pass (`screen.py`), and the bundled DoD 1260H curated snapshot (`data/dod_1260h.json`) |
+| `entity_screening/ingestion/` | Per-source ingesters (`nsf.py`, `opensanctions.py`, `dod_1260h.py`, `section_117.py`) implementing the `BaseIngester` streaming contract (`base.py`) |
+| `entity_screening/resolution/` | Name normalization (`normalize.py`, including the Section-117-specific `strip_institutional_governance_affix`) and fuzzy scoring (`matcher.py`) |
+| `entity_screening/screening/` | Entity-of-concern list registry (`lists.py`, registered: `OpenSanctionsList`, `DoD1260HList`), the screening pass (`screen.py`), the Section 117 two-stage cross-check (`section_117.py`), and the bundled DoD 1260H curated snapshot (`data/dod_1260h.json`) |
 | `entity_screening/scoring/` | User-editable rubric (`rubric.py`, includes `foreign_control_weight`) and score decomposition (`score.py`) |
 | `entity_screening/output/` | CSV/Excel export (`export.py`) |
 | `entity_screening/ownership/` | GLEIF bulk ingestion (`ingest.py` — deliberately *not* a `BaseIngester`, see its module docstring), SQL-blocked LEI resolution (`match.py`), recursive graph traversal (`graph.py`), foreign-control flagging (`flagging.py`) — Epic C |
@@ -143,6 +146,17 @@ Add `--gleif-lei-file`/`--gleif-relationships-file` (both required together, or 
 omitted) to also run ownership/foreign-control analysis (Epic C) — GLEIF's files
 aren't bundled (see `docs/data_sources.md` for exactly where to download them and two
 real gotchas: the format and the exact CSV column names).
+
+Add `--section-117-file` (a single Section 117 bulk-download `.xlsx`, also not
+bundled) to also run the foreign-funding disclosure cross-check. This chains two
+fuzzy matches: `School Name` against the resolved entity (institution match, governed
+by `--section-117-institution-threshold`, default 0.90 — see
+`entity_screening/resolution/normalize.py:strip_institutional_governance_affix` for
+why this needs its own normalization step, not the standard one), then, only for rows
+clearing that, the disclosed foreign entity against the same registered concern lists
+`screen_entity()` already checks (funder match, governed by the standard
+`--threshold`). Omit the flag entirely to skip it — behavior is identical to before
+Section 117 existed.
 
 **API + Streamlit UI (two processes):**
 

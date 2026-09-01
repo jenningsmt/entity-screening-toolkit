@@ -91,10 +91,27 @@ and can be re-run later against a newer GLEIF download. So:
   characters** (e.g. a university's English name vs. an unrelated commonly-used
   short name in another language). That class of match is out of reach for string
   similarity alone and is a documented, not silently ignored, gap.
-- **This build covers NSF Award Search, OpenSanctions, DoD's Section 1260H list, and
-  GLEIF ownership/foreign-control flagging (Epic C).** Section 117 disclosures, the
-  Seven Sons seed list, and OpenAlex bibliometric matching remain V3 scope
-  (`docs/requirements.md` Section 12) and are not reflected in any run's results.
+- **This build covers NSF Award Search, OpenSanctions, DoD's Section 1260H list,
+  GLEIF ownership/foreign-control flagging (Epic C), and the Section 117
+  foreign-funding disclosure cross-check** — all of V1 and V2. The Seven Sons seed
+  list and OpenAlex bibliometric matching remain V3 scope (`docs/requirements.md`
+  Section 12) and are not reflected in any run's results.
+- **The Section 117 cross-check only searches disclosures that name a specific
+  foreign entity** (~5% of rows in the real Feb 2025 bulk file) — the other ~95%
+  report only a country, with no entity name to fuzzy-match against anything; those
+  rows are still ingested (for potential future country-level analysis) but never
+  produce a hit. `ScreeningHit.confidence` for a Section 117 hit is the funder-match
+  confidence only; the institution match (is this disclosure even about the entity
+  being screened?) is demoted to `evidence` context, which is sound only because real
+  institution matches cluster at 0.97–1.0 once
+  `strip_institutional_governance_affix` is applied (see below) — not because the
+  institution match matters less in principle.
+- **`strip_institutional_governance_affix` handles the common NSF-legal-name-vs-
+  Section-117-common-name drift, but not every naming style.** A rarer
+  system-consortium "obo" convention (e.g. "Board of Regents, NSHE, obo University of
+  Nevada, Reno") stays a documented miss — confirmed against the real data, not
+  chased with further special-casing given how rare that specific pattern is (see
+  `docs/plans/2026-09-01-section-117-foreign-gift-disclosure-cross-check.md`).
 - **GLEIF name-to-LEI matching inherits every limitation of fuzzy name matching, at
   a scale where it shows up more often** — see `docs/data_sources.md`'s GLEIF entry
   for two concrete, real (not hypothetical) examples found while building this:
