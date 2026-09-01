@@ -11,6 +11,15 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+# curl: not in the base slim image by default. Needed so CI can exec into
+# this container and confirm it can actually reach the api service by its
+# compose service name — the literal mechanism that broke last time
+# (see .github/workflows/ci.yml's docker job) — and it's generally useful
+# for debugging network reachability from inside a running container.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
