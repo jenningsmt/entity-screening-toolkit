@@ -1,11 +1,13 @@
-# Architecture (V1 + V2)
+# Architecture (V1 through V3)
 
-This describes the code as built for V1 plus V2 (Epic C's GLEIF ownership graph and
-foreign-control flagging, plus the Section 117 foreign-funding disclosure cross-check)
-— see `docs/requirements.md` Section 12 for the phased roadmap. `bibliometric/` stays
-an empty package stub reserved for V3 and is not part of this pipeline yet; the Seven
-Sons seed list is deliberately sequenced into V3 by the roadmap's own text and also
-isn't built.
+This describes the code as built for V1 through V3 (Epic C's GLEIF ownership graph
+and foreign-control flagging, the Section 117 foreign-funding disclosure cross-check,
+and Epic E's OpenAlex bibliometric co-authorship/affiliation layer, with the Seven
+Sons universities covered via the existing OpenSanctions data rather than a
+dedicated list) — see `docs/requirements.md` Section 12 for the phased roadmap. Epic
+J (LLM-grounded explanations) and DuckDB VSS semantic-abstract matching remain
+deliberately deferred, V3-adjacent follow-ups, not part of any currently-scheduled
+phase.
 
 ## Two ways in: the CLI and the API
 
@@ -74,9 +76,22 @@ OpenSanctions   ─▶│ opensanctions.py │  malformed records to ingestion_e
                         │ ForeignControlFlag
                         ▼
                  (fed into scoring/score.py alongside ScreeningHit, via rescore_run)
+
+  Also separately, a second live-external-source enrichment step:
+                 ┌──────────────────┐
+  api.openalex   │ bibliometric/     │  resolves each entity to an OpenAlex
+  .org (live)  ─▶│ institution_match │  institution (live search+score, no bulk
+                 │ author_resolve    │  download), disambiguates each PI to an
+                 │ cross_check       │  OpenAlex author (may return several tied
+                 └──────┬────────────┘  candidates, never a forced pick), then
+                        │ ScreeningHit  walks co-authorship/affiliation history
+                        ▼               against the same registered concern lists
+                 (fed into scoring/score.py alongside every other ScreeningHit,
+                  via the existing screening_hit_weight/multiple_list_hit_bonus
+                  factors -- no new scoring changes, via rescore_run)
 ```
 
-`pipeline.py` exposes four entry points, each with a specific reproducibility
+`pipeline.py` exposes five entry points, each with a specific reproducibility
 contract (see `docs/methodology.md` for the full rationale):
 
 - **`run_screening(...)`** — ingest → resolve → screen → score → persist. The one and
@@ -94,28 +109,41 @@ contract (see `docs/methodology.md` for the full rationale):
   `gleif_relationships` are a disposable working copy, rebuilt by any call, for any
   run. Never touches `scored_entities`; writes `lei_matches`/`ownership_flags` plus a
   durable, run-scoped `GleifSnapshotManifest`.
+- **`enrich_bibliometric(run_id, ...)`** — a **separate, explicit step from
+  `run_screening`**, same posture as `enrich_ownership`: OpenAlex is a live external
+  source, not a per-run ingestion source. Re-derives PI names from `raw_nsf_awards`
+  (`resolved_entities` doesn't retain PI-level detail) and rebuilds the run's
+  concern lists from `raw_opensanctions_targets`/`raw_dod_1260h` as already
+  persisted, rather than requiring the caller to re-supply file paths. Groups
+  entities by their *resolved* OpenAlex institution ID (not `entity_id`) so a
+  spelling-variant split from Epic B's exact-match grouping doesn't duplicate
+  OpenAlex calls or hits. Never touches `scored_entities`; writes
+  `openalex_author_matches`/new `ScreeningHit`s plus a durable, run-scoped
+  `BibliometricSnapshotManifest`.
 - **`export_scored_entities(...)`** — writes a CSV or Excel file plus its own
   immutable `ExportManifest`, unconditionally, on every call. A downloaded file's
   score values are always traceable to the rubric that actually produced them, which
   is not necessarily the rubric recorded in the source run's `RunManifest`.
 
 `common/storage.py` persists raw records, resolved entities, screening hits, scored
-entities, and (if `enrich_ownership` has run) LEI matches and ownership flags into a
-DuckDB file (DuckDB, not SQLite — see `docs/requirements.md` Section 7) for ad-hoc
-querying alongside the file exports.
+entities, and (if `enrich_ownership`/`enrich_bibliometric` have run) LEI matches,
+ownership flags, and OpenAlex author matches into a DuckDB file (DuckDB, not SQLite
+— see `docs/requirements.md` Section 7) for ad-hoc querying alongside the file
+exports.
 
 ## Module map
 
 | Package | Responsibility |
 |---|---|
-| `entity_screening/common/` | Canonical schema (`schema.py`), DuckDB storage (`storage.py`), run/export manifests — reproducibility (`manifest.py`) |
+| `entity_screening/common/` | Canonical schema (`schema.py`), DuckDB storage (`storage.py`), run/export/GLEIF/bibliometric manifests — reproducibility (`manifest.py`) |
 | `entity_screening/ingestion/` | Per-source ingesters (`nsf.py`, `opensanctions.py`, `dod_1260h.py`, `section_117.py`) implementing the `BaseIngester` streaming contract (`base.py`) |
 | `entity_screening/resolution/` | Name normalization (`normalize.py`, including the Section-117-specific `strip_institutional_governance_affix`) and fuzzy scoring (`matcher.py`) |
 | `entity_screening/screening/` | Entity-of-concern list registry (`lists.py`, registered: `OpenSanctionsList`, `DoD1260HList`), the screening pass (`screen.py`), the Section 117 two-stage cross-check (`section_117.py`), and the bundled DoD 1260H curated snapshot (`data/dod_1260h.json`) |
 | `entity_screening/scoring/` | User-editable rubric (`rubric.py`, includes `foreign_control_weight`) and score decomposition (`score.py`) |
 | `entity_screening/output/` | CSV/Excel export (`export.py`) |
 | `entity_screening/ownership/` | GLEIF bulk ingestion (`ingest.py` — deliberately *not* a `BaseIngester`, see its module docstring), SQL-blocked LEI resolution (`match.py`), recursive graph traversal (`graph.py`), foreign-control flagging (`flagging.py`) — Epic C |
-| `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `enrich_ownership`, `export_scored_entities` — called by both the CLI and the API |
+| `entity_screening/bibliometric/` | OpenAlex REST client with injectable fetch (`openalex_client.py`), live institution resolution (`institution_match.py`), PI-to-author disambiguation that can return several tied candidates (`author_resolve.py`), and the co-authorship/affiliation cross-check (`cross_check.py`) — Epic E. No NetworkX dependency, unlike `docs/requirements.md` Section 7's original guess: OpenAlex's own `works` endpoint already returns each paper's full `authorships` list directly, so checking co-authors/affiliations is flat list iteration, not graph traversal — that guidance was written before this project had seen the real API shape. |
+| `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `enrich_ownership`, `enrich_bibliometric`, `export_scored_entities` — called by both the CLI and the API |
 | `entity_screening/cli.py` | `run` (full pipeline, calls `pipeline.py` in-process) and `validate` (structural sanity checks) |
 | `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (routes) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) |
 | `app.py` | Streamlit review UI: thin HTTP client of the API — scored/filterable table, rubric sliders, evidence-trail inspector, export buttons |
@@ -157,6 +185,16 @@ clearing that, the disclosed foreign entity against the same registered concern 
 `screen_entity()` already checks (funder match, governed by the standard
 `--threshold`). Omit the flag entirely to skip it — behavior is identical to before
 Section 117 existed.
+
+Add `--enrich-bibliometric` (a boolean flag — no file to supply, since this hits
+OpenAlex's live REST API rather than a downloaded snapshot) to also resolve this
+run's PIs to OpenAlex authors and cross-check their co-authorship/affiliation
+history (Epic E) against the same registered concern lists. `--openalex-contact-email`
+is optional (OpenAlex's "polite pool" `mailto` parameter). Omit the flag entirely to
+skip it — behavior is identical to before Epic E existed. See
+`docs/data_sources.md`'s OpenAlex entry for a real, confirmed example of why a PI can
+resolve to more than one tied OpenAlex author candidate, and why that's surfaced
+rather than silently collapsed.
 
 **API + Streamlit UI (two processes):**
 

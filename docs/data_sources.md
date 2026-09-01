@@ -6,7 +6,7 @@ Every exported row already carries its source dataset name via the evidence trai
 (`entity_screening/output/export.py`); this document is the canonical statement of
 each source's terms.
 
-## Sources used in V1
+## Sources used (V1 through V3)
 
 ### NSF Award Search
 - **Provider:** U.S. National Science Foundation, a U.S. federal agency.
@@ -146,12 +146,72 @@ each source's terms.
   treating a `Ministry Of Finance`-named disclosure's hit count at face value, same
   spirit as GLEIF's documented Apple Inc./Apple Ltd. collision above.
 
+### OpenAlex (bibliometric affiliation layer, Epic E)
+
+- **Provider:** OpenAlex (a project of OurResearch).
+- **License:** CC0 1.0 Universal (public domain) — no attribution legally required,
+  attributed anyway as good practice.
+- **Attribution:** "Data: OpenAlex (openalex.org), queried live via its REST API on
+  the date recorded in this run's `BibliometricSnapshotManifest`
+  (`data/processed/runs/<run_id>/bibliometric/manifest.json`)."
+- **Access pattern (per `docs/requirements.md` Section 8):** the free, targeted REST
+  API (`api.openalex.org`), not the 660+GB full bulk snapshot — confirmed live and
+  via OpenAlex's own current docs that **no API key is required** for the free tier
+  (100,000 credits/day, 100 req/sec; list/search calls cost 10 credits, singleton
+  lookups 1). This directly contradicts a stale, incorrect claim circulating online
+  (a Google Groups post) that a key became mandatory in February 2026 — verified by
+  fetching OpenAlex's own current docs directly, not the secondhand claim. A
+  `mailto` parameter is still sent for the "polite pool" (more consistent response
+  times), configurable via `--openalex-contact-email` / the UI's contact-email field.
+- **Known limitation, OpenAlex's own stated figure (surfaced inline with every
+  bibliometric result in the UI, not just here):** ">98% precision and >90% recall
+  for most academic institutions. But across the full corpus of all scholarly works
+  in OpenAlex (500M+), that's still millions of errors." (OpenAlex's own blog).
+- **Known limitation, confirmed with a real, not hypothetical, example while
+  building this:** searching a real NSF PI ("Andrew Felton", Montana State
+  University) — even after narrowing server-side to authors ever affiliated with
+  that exact institution — returned three distinct OpenAlex author records for what
+  is very likely one real person: two of the three share an identical ORCID (a
+  genuine, unmerged duplicate-author-record issue in OpenAlex's own data), and the
+  third has no ORCID and could be a genuinely different person. This project's
+  author-disambiguation step (`entity_screening/bibliometric/author_resolve.py`)
+  treats a shared ORCID as one identity and surfaces a true open tie as multiple
+  candidates rather than silently guessing — but the underlying ambiguity in
+  OpenAlex's own data is real, not something this project's logic invented or can
+  fully resolve on its own.
+- **Known limitation:** `enrich_bibliometric` only re-derives PIs from NSF award
+  records that have both `piFirstName` and `piLastName` populated; records missing
+  either are skipped for bibliometric purposes (they're still screened normally by
+  every other epic).
+
+### Seven Sons of National Defence
+
+- **Provider:** no dedicated provider for this project — covered entirely via
+  OpenSanctions' consolidated list (see above), which already carries all seven
+  real institutions (Beihang University, Beijing Institute of Technology, Harbin
+  Engineering University, Harbin Institute of Technology, Nanjing University of
+  Aeronautics and Astronautics, Nanjing University of Science and Technology,
+  Northwestern Polytechnical University), several explicitly citing NDAA Section
+  1286 as their designation basis — confirmed by grepping the real, full
+  OpenSanctions download directly, not assumed.
+- **Deliberately no dedicated curated list here**, unlike DoD 1260H: DoD 1260H
+  needed its own bundled snapshot because nothing else in this project's sources
+  carried it; the Seven Sons don't need one because OpenSanctions already does.
+  Building one anyway would duplicate coverage that already exists.
+- **Known limitation — the trade-off from that choice, stated plainly:** a static,
+  bundled curated file (like DoD 1260H's) can't silently lose coverage between
+  updates; relying on OpenSanctions' aggregation instead means this project has no
+  independent fallback if a future OpenSanctions snapshot ever drops or re-labels
+  these seven designations. `tests/test_screening_seven_sons.py` is a regression
+  guard against the *matching logic* breaking, not against OpenSanctions itself
+  changing what it carries.
+
 ## Sources reserved for V3
 
-Documented here for completeness so attribution terms are settled before the code
-that needs them is written — OpenAlex (CC0) and the Seven Sons seed list
-(curated/manual, cite ASPI's public reporting as the basis, not scraped tracker data)
-— sequenced into V3 per `docs/requirements.md` Section 12.
+None remaining — Epic E (OpenAlex) and the Seven Sons item above complete V3 per
+`docs/requirements.md` Section 12's roadmap. Epic J (LLM-grounded explanations) and
+DuckDB VSS semantic-abstract matching remain deliberately deferred, V3-adjacent
+follow-ups, not part of any currently-scheduled phase.
 
 ## General policy
 

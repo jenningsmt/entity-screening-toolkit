@@ -6,12 +6,15 @@ CSV or Excel, from the CLI or the API's `/export.csv`/`/export.xlsx` — writes 
 `ExportManifest` to `data/processed/runs/<run_id>/exports/<export_id>/manifest.json`,
 alongside the file itself. If ownership analysis (Epic C) has been run, a third
 `GleifSnapshotManifest` lands at `data/processed/runs/<run_id>/ownership/manifest.json`.
-**These are three different manifests answering three different questions**, and the
-distinction matters (see "Three manifests, not one" below): none of these files — not
+If bibliometric enrichment (Epic E) has been run, a fourth
+`BibliometricSnapshotManifest` lands at
+`data/processed/runs/<run_id>/bibliometric/manifest.json`.
+**These are four different manifests answering four different questions**, and the
+distinction matters (see "Manifests, not one" below): none of these files — not
 this document — are a substitute for shipping the actual manifest(s) alongside any
 published result.
 
-## Three manifests, not one
+## Manifests, not one
 
 `docs/requirements.md` Section 9a's FastAPI layer lets a run be re-scored under a
 different rubric via `GET /runs/{id}/scores` without re-running ingestion or
@@ -39,6 +42,12 @@ and can be re-run later against a newer GLEIF download. So:
   is the durable record. Re-running ownership enrichment for the same run overwrites
   this file (a "current state" model, like `scored_entities`, not a versioned history
   like `ExportManifest`'s per-call uniqueness).
+- **`BibliometricSnapshotManifest`** generalizes the same durability principle to a
+  source with no file path at all: OpenAlex is a live, continuously-updated API, not
+  a downloaded snapshot. Its job is provenance of *when* a run's bibliometric
+  enrichment queried OpenAlex, not *which* file — there is no "which" here the way
+  GLEIF has a specific CSV. Same "current state," overwritten-on-re-run semantics as
+  `GleifSnapshotManifest`.
 
 ## What `RunManifest` records
 
@@ -72,7 +81,17 @@ and can be re-run later against a newer GLEIF download. So:
 | `lei_record_count` / `relationship_record_count` | Rows actually loaded from the supplied GLEIF files (Level 2 count is post-filter — only ACTIVE `IS_DIRECTLY_CONSOLIDATED_BY`/`IS_ULTIMATELY_CONSOLIDATED_BY` rows are kept). |
 | `gleif_lei_file` / `gleif_relationships_file` | The exact file paths supplied for this enrichment call. |
 
-## Known limitations (V1 + Epic C)
+## What `BibliometricSnapshotManifest` records
+
+| Field | Meaning |
+|---|---|
+| `run_id` | Which run this bibliometric enrichment was computed for. |
+| `queried_at` | UTC timestamp of the enrichment call — the only "snapshot date" that exists for a live API source. |
+| `pi_count` | Distinct PI names re-derived from `raw_nsf_awards` for this run and passed to author disambiguation. |
+| `resolved_author_count` | Total `ResolvedAuthor` rows persisted (every tied candidate counts separately — see the ResolvedAuthor known limitation below). |
+| `openalex_api_base_url` | The OpenAlex API endpoint queried. |
+
+## Known limitations (V1 through V3)
 
 - **Entity resolution is intra-source only.** `pipeline.py:resolve_entities_from_nsf`
   groups NSF award records into entities by exact match on a normalized awardee name;
@@ -91,11 +110,36 @@ and can be re-run later against a newer GLEIF download. So:
   characters** (e.g. a university's English name vs. an unrelated commonly-used
   short name in another language). That class of match is out of reach for string
   similarity alone and is a documented, not silently ignored, gap.
-- **This build covers NSF Award Search, OpenSanctions, DoD's Section 1260H list,
-  GLEIF ownership/foreign-control flagging (Epic C), and the Section 117
-  foreign-funding disclosure cross-check** — all of V1 and V2. The Seven Sons seed
-  list and OpenAlex bibliometric matching remain V3 scope (`docs/requirements.md`
-  Section 12) and are not reflected in any run's results.
+- **This build covers all of V1, V2, and V3**: NSF Award Search, OpenSanctions,
+  DoD's Section 1260H list, GLEIF ownership/foreign-control flagging (Epic C), the
+  Section 117 foreign-funding disclosure cross-check, and the OpenAlex bibliometric
+  co-authorship/affiliation layer (Epic E) with the Seven Sons universities covered
+  via OpenSanctions (no dedicated list — see `docs/data_sources.md`). Epic J
+  (LLM-grounded explanations) and DuckDB VSS semantic-abstract matching remain
+  deliberately deferred, V3-adjacent follow-ups (`docs/requirements.md` Section 9a)
+  and are not reflected in any run's results.
+- **A PI can genuinely resolve to more than one OpenAlex author identity, and this
+  project does not force a single pick when that happens.** Real data confirmed this
+  is not a rare edge case: a real NSF PI's name, even narrowed server-side to
+  authors ever affiliated with the exact target institution, returned three
+  distinct OpenAlex author records — two sharing an identical ORCID (collapsed to
+  one identity, since that's almost certainly the same person, unmerged in
+  OpenAlex) and a third, distinct candidate with no ORCID (a genuine open tie).
+  `ResolvedAuthor` and any resulting bibliometric `ScreeningHit` both surface this
+  explicitly in `evidence` rather than silently guessing the "most likely" one — see
+  `docs/data_sources.md`'s OpenAlex entry for the real example.
+- **A bibliometric `ScreeningHit`'s `confidence` is the funder/institution-vs-
+  concern-list match confidence only** — the author-disambiguation confidence that
+  determined *which* real person this hit is even about is inlined into
+  `evidence["author_resolution"]`, not blended into the headline number, mirroring
+  the same funder-only-confidence design (and the same review discipline) already
+  applied to Section 117's two-stage match. Whether this needs to become a compound
+  of both confidences instead is exactly the kind of question that needs checking
+  against real, higher-volume PI data before being trusted at scale — flagged here
+  as a known open question, not a settled one.
+- **`enrich_bibliometric` only re-derives PIs from NSF records with both
+  `piFirstName` and `piLastName` populated** — records missing either are still
+  screened normally by every other epic, just not bibliometrically enriched.
 - **The Section 117 cross-check only searches disclosures that name a specific
   foreign entity** (~5% of rows in the real Feb 2025 bulk file) — the other ~95%
   report only a country, with no entity name to fuzzy-match against anything; those
@@ -153,3 +197,10 @@ and can be re-run later against a newer GLEIF download. So:
    the paths as supplied at enrichment time, not a permanent GLEIF snapshot ID, since
    GLEIF republishes Golden Copy files daily) before re-running
    `--gleif-lei-file`/`--gleif-relationships-file`.
+7. If the exported rows carry a bibliometric `ScreeningHit` (one with
+   `evidence["author_resolution"]`), locate
+   `data/processed/runs/<run_id>/bibliometric/manifest.json` for the `queried_at`
+   timestamp — there is no snapshot file to re-download here (OpenAlex is a live,
+   continuously-updated API), so exact reproduction means re-running
+   `--enrich-bibliometric` and accepting that OpenAlex's own underlying data may
+   have changed since `queried_at`, not that a fixed input is being re-supplied.
