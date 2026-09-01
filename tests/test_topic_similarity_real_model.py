@@ -10,8 +10,20 @@ as a quiet accuracy regression in production.
 
 Downloads/loads the real ~130MB pinned model on first run -- slower than the rest
 of the suite, kept in its own file for that reason.
+
+Requires sentence-transformers/torch (requirements-vss.txt), deliberately not part
+of the base install -- skipped, not failed, when they're absent (e.g. the base CI
+`test` job, which only installs requirements.txt). CI runs this file for real in
+its own dedicated `vss-real-model` job (see .github/workflows/ci.yml) that does
+install requirements-vss.txt -- a skip guard alone would let this regression guard
+go quietly unexercised in CI forever, which defeats its whole purpose, so the
+skip guard here and that dedicated job are a package deal, not alternatives.
 """
 from __future__ import annotations
+
+import pytest
+
+pytest.importorskip("sentence_transformers")
 
 from entity_screening.bibliometric.embeddings import embed_passage, embed_query
 from entity_screening.bibliometric.topic_similarity import DOD_CORPUS_FILE, load_corpus
