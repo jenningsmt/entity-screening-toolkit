@@ -95,6 +95,35 @@ def test_own_past_affiliation_match_produces_a_hit_tagged_differently_from_co_au
     assert "co_author" not in hits[0].evidence
 
 
+def test_real_false_positive_from_live_verification_is_excluded_by_the_default_threshold():
+    """Real, not hypothetical: running enrich_bibliometric live against a real NSF
+    PI turned up 27 hits against the bundled DoD 1260H list, every one a false
+    positive -- the legitimate, non-military "Chinese Academy of Sciences" (a real
+    co-author's real affiliation) fuzzy-matched DoD 1260H's real "Chinese Academy
+    of Ordnance Science" entry at 0.8387 via score_pair's token-sort fallback,
+    clearing the standard 0.80 screening threshold. This recurs at real scale
+    specifically in bibliometric cross-checking (every co-author's institution
+    across every paper gets checked, not one entity's own name once) in a way it
+    doesn't in ordinary screening. DEFAULT_CONCERN_THRESHOLD=0.90 exists
+    specifically to exclude this (see docs/data_sources.md's OpenAlex entry for the
+    full account) -- this test guards the fix, not the general matcher (score_pair
+    itself is correctly unchanged; a 0.90 bar is bibliometric-cross-check-specific)."""
+    resolved_author = _resolved_author()
+    work = _work([{
+        "author": {"id": "https://openalex.org/A_co_author", "display_name": "Real Co-Author"},
+        "institutions": [{"id": "https://openalex.org/I_cas", "display_name": "Chinese Academy of Sciences"}],
+    }])
+
+    def fake_fetch(url, params):
+        return {"results": [work]}
+
+    concern_lists = [OpenSanctionsList([_os_record("dod-1260h-style", "Chinese Academy of Ordnance Science")])]
+
+    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, fetch=fake_fetch))
+
+    assert hits == []
+
+
 def test_no_hit_when_nothing_matches_any_concern_list():
     resolved_author = _resolved_author()
     work = _work([

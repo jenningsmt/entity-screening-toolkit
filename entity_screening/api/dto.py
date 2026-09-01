@@ -12,6 +12,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from entity_screening.bibliometric.cross_check import (
+    DEFAULT_CONCERN_THRESHOLD as DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD,
+)
 from entity_screening.common.manifest import BibliometricSnapshotManifest, GleifSnapshotManifest, RunManifest
 from entity_screening.common.schema import ScoredEntity
 from entity_screening.ownership.graph import ParentChain
@@ -100,7 +103,7 @@ class OwnershipEnrichmentRequest(BaseModel):
 
 class BibliometricEnrichmentRequest(BaseModel):
     contact_email: str | None = None
-    threshold: float = 0.80
+    threshold: float = DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD
 
 
 class BibliometricSnapshotManifestOut(BaseModel):

@@ -176,10 +176,15 @@ if enrich_button:
 
 if bibliometric_button:
     try:
-        enrichment = _api_post(
-            f"/runs/{run_id}/bibliometric",
-            {"contact_email": openalex_contact_email or None, "threshold": threshold},
-        ).json()
+        # Deliberately does NOT pass the sidebar's general screening threshold --
+        # bibliometric cross-checking has a volume-multiplication precision risk
+        # screen_entity() doesn't (every co-author's institution across every
+        # paper gets checked, not one entity's own name once; a real false
+        # positive at 0.80 confirmed this during V3's build, see
+        # docs/data_sources.md), so it keeps its own higher default unless a
+        # caller explicitly overrides it.
+        payload = {"contact_email": openalex_contact_email or None}
+        enrichment = _api_post(f"/runs/{run_id}/bibliometric", payload).json()
         st.success(
             f"Bibliometric enrichment complete: {enrichment['hits_count']} "
             "candidate hit(s) found."
