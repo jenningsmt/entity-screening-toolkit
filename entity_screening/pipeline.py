@@ -19,18 +19,32 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
+from entity_screening.bibliometric import openalex_client
+from entity_screening.bibliometric.author_resolve import disambiguate_pi_to_openalex_author
+from entity_screening.bibliometric.cross_check import cross_check_bibliometric
+from entity_screening.bibliometric.institution_match import resolve_entity_to_openalex_institution
+from entity_screening.bibliometric.openalex_client import FetchFn
 from entity_screening.common import storage
 from entity_screening.common.manifest import (
     DEFAULT_RUNS_DIR,
+    BibliometricSnapshotManifest,
     DatasetSnapshot,
     ExportManifest,
     GleifSnapshotManifest,
     RunManifest,
 )
-from entity_screening.common.schema import ForeignControlFlag, ResolvedEntity, ScoredEntity, ScreeningHit, SourceRecord
+from entity_screening.common.schema import (
+    ForeignControlFlag,
+    ResolvedAuthor,
+    ResolvedEntity,
+    ScoredEntity,
+    ScreeningHit,
+    SourceRecord,
+)
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.ingestion.dod_1260h import DoD1260HIngester
@@ -343,6 +357,116 @@ def enrich_ownership(
     )
     gleif_manifest.write(runs_dir)
     return gleif_manifest, flags
+
+
+def enrich_bibliometric(
+    run_id: str,
+    *,
+    contact_email: str | None = None,
+    institution_threshold: float = DEFAULT_THRESHOLD,
+    author_threshold: float = DEFAULT_THRESHOLD,
+    concern_threshold: float = DEFAULT_THRESHOLD,
+    db_path: Path | str = storage.DEFAULT_DB_PATH,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
+    fetch: FetchFn | None = None,
+) -> tuple[BibliometricSnapshotManifest, list[ScreeningHit]]:
+    """Resolves an already-existing run's PIs to OpenAlex authors and cross-checks
+    their co-authorship/affiliation history (Epic E) -- a separate, explicit step
+    from `run_screening`, same posture as `enrich_ownership`. OpenAlex is a live
+    external source, not a per-run ingestion source.
+
+    `resolved_entities` doesn't retain PI-level detail (see
+    `load_resolved_entities`'s docstring), so PI names are re-derived from
+    `raw_nsf_awards` using the exact same grouping key `resolve_entities_from_nsf`
+    used originally. Concern lists are rebuilt from `raw_opensanctions_targets`/
+    `raw_dod_1260h` as persisted for this run, rather than requiring the caller to
+    re-supply file paths for sources that haven't changed.
+
+    Institution-resolution deduplication (binding acceptance criterion from plan
+    review): `resolve_entities_from_nsf` groups by *exact* normalized name, so two
+    ResolvedEntity rows can be spelling variants of one real institution. Entities
+    are grouped by their *resolved OpenAlex institution ID* -- each still gets its
+    own institution-resolution attempt (so its own confidence/evidence is recorded),
+    but author-resolution/cross-check for that institution's pooled PIs runs once
+    per institution ID and the same result set is stamped onto every entity that
+    landed on it, not repeated per entity.
+
+    Does NOT touch `scored_entities` -- same rule as `enrich_ownership`; a caller
+    calls `rescore_run` afterward. Writes the durable per-run
+    `BibliometricSnapshotManifest`.
+    """
+    conn = storage.connect(db_path)
+    try:
+        entities = storage.load_resolved_entities(conn, run_id)
+        raw_nsf_fields = storage.load_raw_record_fields(conn, "raw_nsf_awards", run_id)
+        os_records = storage.load_raw_records(conn, "raw_opensanctions_targets", run_id)
+        dod_records = storage.load_raw_records(conn, "raw_dod_1260h", run_id)
+        concern_lists = [OpenSanctionsList(os_records), DoD1260HList(dod_records)]
+
+        pi_names_by_entity_id: dict[str, set[str]] = defaultdict(set)
+        for fields in raw_nsf_fields:
+            name = str(fields.get("awardeeName", "")).strip()
+            key = normalize_for_matching(name)
+            if not key:
+                continue
+            entity_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, key))
+            first, last = fields.get("piFirstName"), fields.get("piLastName")
+            if first and last:
+                pi_names_by_entity_id[entity_id].add(f"{first} {last}")
+
+        entities_by_institution_id: dict[str, list[ResolvedEntity]] = defaultdict(list)
+        for entity in entities:
+            match = resolve_entity_to_openalex_institution(
+                entity, institution_threshold, contact_email, fetch
+            )
+            if match is not None:
+                entities_by_institution_id[match.openalex_institution_id].append(entity)
+
+        all_resolved_authors: list[ResolvedAuthor] = []
+        all_hits: list[ScreeningHit] = []
+        pi_count = 0
+
+        for institution_id, grouped_entities in entities_by_institution_id.items():
+            pooled_pi_names: set[str] = set()
+            for entity in grouped_entities:
+                pooled_pi_names |= pi_names_by_entity_id.get(entity.entity_id, set())
+            pi_count += len(pooled_pi_names)
+
+            template_entity_id = grouped_entities[0].entity_id
+            institution_resolved_authors: list[ResolvedAuthor] = []
+            for pi_name in pooled_pi_names:
+                institution_resolved_authors.extend(
+                    disambiguate_pi_to_openalex_author(
+                        template_entity_id, pi_name, institution_id,
+                        author_threshold, contact_email, fetch,
+                    )
+                )
+            institution_hits = list(
+                cross_check_bibliometric(
+                    template_entity_id, institution_resolved_authors, concern_lists,
+                    threshold=concern_threshold, contact_email=contact_email, fetch=fetch,
+                )
+            )
+
+            for entity in grouped_entities:
+                for resolved_author in institution_resolved_authors:
+                    all_resolved_authors.append(replace(resolved_author, entity_id=entity.entity_id))
+                for hit in institution_hits:
+                    all_hits.append(replace(hit, entity_id=entity.entity_id))
+
+        storage.insert_openalex_author_matches(conn, all_resolved_authors, run_id)
+        storage.insert_screening_hits(conn, all_hits, run_id)
+    finally:
+        conn.close()
+
+    manifest = BibliometricSnapshotManifest.create(
+        run_id=run_id,
+        pi_count=pi_count,
+        resolved_author_count=len(all_resolved_authors),
+        openalex_api_base_url=openalex_client.API_BASE_URL,
+    )
+    manifest.write(runs_dir)
+    return manifest, all_hits
 
 
 def export_scored_entities(
