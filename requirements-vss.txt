@@ -1,0 +1,13 @@
+# Optional: only needed for --enrich-topic-similarity (the semantic topic-
+# similarity layer against DoD/CET critical-technology reference corpora, see
+# docs/plans/2026-09-01-vss-topic-similarity-layer.md). Every other feature in
+# this project -- including the rest of Epic E's bibliometric layer -- runs fine
+# without these installed at all.
+#
+# Install the CPU-only PyTorch wheel FIRST to avoid pulling unneeded CUDA
+# binaries (the default PyPI wheel is much larger):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-vss.txt
+
+-r requirements.txt
+sentence-transformers

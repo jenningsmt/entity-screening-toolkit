@@ -24,8 +24,8 @@ uvicorn[standard]
 pytest
 httpx2
 
-# Bibliometric topic-similarity layer (deferred VSS work, docs/plans/2026-09-01-vss-...)
-# CPU-only torch wheel avoids pulling unneeded CUDA binaries:
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu
-torch
-sentence-transformers
+# NOT included here: torch / sentence-transformers, needed only for the optional
+# --enrich-topic-similarity / --enrich-bibliometric-adjacent VSS layer (see
+# requirements-vss.txt) -- deliberately kept out of the base install so every
+# other feature (V1 through V3's core Epic E work) never forces a multi-hundred-MB
+# ML dependency nobody asked for. See docs/plans/2026-09-01-vss-topic-similarity-layer.md.
