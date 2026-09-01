@@ -1,0 +1,7 @@
+# Normalize line endings to LF in the repository regardless of which
+# platform or editor last touched a file, and regardless of any individual
+# contributor's local core.autocrlf setting. Without this, line-ending
+# consistency depends entirely on that per-machine git config -- exactly
+# what let dod_1260h.json pick up CRLF on a Windows checkout while every
+# commit's object content stayed LF underneath it.
+* text=auto
