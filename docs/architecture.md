@@ -1,8 +1,10 @@
-# Architecture (V1)
+# Architecture (V1 + Epic C)
 
-This describes the code as built for V1 (see `docs/requirements.md` Section 12 for the
-phased roadmap). `ownership/` and `bibliometric/` are empty package stubs reserved for
-V2/V3 and are not part of this pipeline yet.
+This describes the code as built for V1 plus Epic C (GLEIF ownership graph and
+foreign-control flagging) — see `docs/requirements.md` Section 12 for the phased
+roadmap. `bibliometric/` stays an empty package stub reserved for V3 and is not part
+of this pipeline yet; Section 117 and the Seven Sons list (the rest of "V2" in the
+roadmap's own text) also aren't built.
 
 ## Two ways in: the CLI and the API
 
@@ -57,9 +59,21 @@ OpenSanctions   ─▶│ opensanctions.py │  malformed records to ingestion_e
                  │ output/      │  CSV/Excel export, one row per entity, with
                  │ export.py    │  evidence trail, run_id, and export_id
                  └──────────────┘
+
+  Separately (not part of the chain above — see below):
+                 ┌──────────────┐
+  GLEIF L1/L2  ─▶│ ownership/   │  bulk-loads GLEIF into DuckDB, resolves each
+  CSV files      │ ingest.py    │  entity to an LEI (SQL-blocked, Python-scored,
+                 │ match.py     │  reusing resolution/matcher.py), walks the
+                 │ graph.py     │  parent/subsidiary graph (recursive CTE), and
+                 │ flagging.py  │  flags a foreign ultimate-parent jurisdiction
+                 └──────┬───────┘
+                        │ ForeignControlFlag
+                        ▼
+                 (fed into scoring/score.py alongside ScreeningHit, via rescore_run)
 ```
 
-`pipeline.py` exposes three entry points, each with a specific reproducibility
+`pipeline.py` exposes four entry points, each with a specific reproducibility
 contract (see `docs/methodology.md` for the full rationale):
 
 - **`run_screening(...)`** — ingest → resolve → screen → score → persist. The one and
@@ -68,15 +82,24 @@ contract (see `docs/methodology.md` for the full rationale):
 - **`rescore_run(run_id, rubric, ...)`** — pure read-compute-return: recomputes scores
   for an already-persisted run under a different rubric, with **zero database
   writes**. This is what backs the Streamlit rubric sliders — dragging one must never
-  grow the database.
+  grow the database. Also loads any persisted `ownership_flags` for the run, so a
+  `foreign_control_weight` slider change re-scores instantly too, without redoing any
+  GLEIF matching or graph traversal.
+- **`enrich_ownership(run_id, ...)`** — a **separate, explicit step from
+  `run_screening`**, callable independently against a run that already exists. GLEIF
+  is a shared reference dataset, not a per-run ingestion source — `gleif_lei`/
+  `gleif_relationships` are a disposable working copy, rebuilt by any call, for any
+  run. Never touches `scored_entities`; writes `lei_matches`/`ownership_flags` plus a
+  durable, run-scoped `GleifSnapshotManifest`.
 - **`export_scored_entities(...)`** — writes a CSV or Excel file plus its own
   immutable `ExportManifest`, unconditionally, on every call. A downloaded file's
   score values are always traceable to the rubric that actually produced them, which
   is not necessarily the rubric recorded in the source run's `RunManifest`.
 
-`common/storage.py` persists raw records, resolved entities, screening hits, and
-scored entities into a DuckDB file (DuckDB, not SQLite — see
-`docs/requirements.md` Section 7) for ad-hoc querying alongside the file exports.
+`common/storage.py` persists raw records, resolved entities, screening hits, scored
+entities, and (if `enrich_ownership` has run) LEI matches and ownership flags into a
+DuckDB file (DuckDB, not SQLite — see `docs/requirements.md` Section 7) for ad-hoc
+querying alongside the file exports.
 
 ## Module map
 
@@ -86,9 +109,10 @@ scored entities into a DuckDB file (DuckDB, not SQLite — see
 | `entity_screening/ingestion/` | Per-source ingesters (`nsf.py`, `opensanctions.py`, `dod_1260h.py`) implementing the `BaseIngester` streaming contract (`base.py`) |
 | `entity_screening/resolution/` | Name normalization (`normalize.py`) and fuzzy scoring (`matcher.py`) |
 | `entity_screening/screening/` | Entity-of-concern list registry (`lists.py`, registered: `OpenSanctionsList`, `DoD1260HList`), the screening pass (`screen.py`), and the bundled DoD 1260H curated snapshot (`data/dod_1260h.json`) |
-| `entity_screening/scoring/` | User-editable rubric (`rubric.py`) and score decomposition (`score.py`) |
+| `entity_screening/scoring/` | User-editable rubric (`rubric.py`, includes `foreign_control_weight`) and score decomposition (`score.py`) |
 | `entity_screening/output/` | CSV/Excel export (`export.py`) |
-| `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `export_scored_entities` — called by both the CLI and the API |
+| `entity_screening/ownership/` | GLEIF bulk ingestion (`ingest.py` — deliberately *not* a `BaseIngester`, see its module docstring), SQL-blocked LEI resolution (`match.py`), recursive graph traversal (`graph.py`), foreign-control flagging (`flagging.py`) — Epic C |
+| `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `enrich_ownership`, `export_scored_entities` — called by both the CLI and the API |
 | `entity_screening/cli.py` | `run` (full pipeline, calls `pipeline.py` in-process) and `validate` (structural sanity checks) |
 | `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (routes) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) |
 | `app.py` | Streamlit review UI: thin HTTP client of the API — scored/filterable table, rubric sliders, evidence-trail inspector, export buttons |
@@ -114,6 +138,11 @@ python -m entity_screening.cli run \
     --opensanctions-file tests/fixtures/sample_opensanctions_targets.csv \
     --excel
 ```
+
+Add `--gleif-lei-file`/`--gleif-relationships-file` (both required together, or both
+omitted) to also run ownership/foreign-control analysis (Epic C) — GLEIF's files
+aren't bundled (see `docs/data_sources.md` for exactly where to download them and two
+real gotchas: the format and the exact CSV column names).
 
 **API + Streamlit UI (two processes):**
 

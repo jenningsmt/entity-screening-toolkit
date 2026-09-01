@@ -161,3 +161,71 @@ class ExportManifest:
     def load(cls, path: Path | str) -> "ExportManifest":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls(**data)
+
+
+@dataclass
+class GleifSnapshotManifest:
+    """Describes exactly which GLEIF snapshot produced a run's ownership flags.
+
+    `gleif_lei`/`gleif_relationships` (see `ownership/ingest.py`) are a disposable
+    working copy — replaced by *any* `enrich_ownership` call, for *any* run. If this
+    manifest only lived next to that mutable load operation, run A's flags would
+    silently lose the ability to say which GLEIF download produced them the moment
+    run B's enrichment call replaces the tables — the same class of bug the
+    `ExportManifest`/`git_commit` fixes addressed. So `enrich_ownership` writes a copy
+    of this into the specific run's own output directory
+    (`data/processed/runs/<run_id>/ownership/manifest.json`), immune to what happens
+    to the shared tables afterward.
+
+    Unlike `ExportManifest` (one immutable file per export call, since the same run
+    can be exported many times under different rubrics), this is a "current state"
+    record like `scored_entities` — re-running `enrich_ownership` for the same
+    `run_id` overwrites it. That's a deliberate choice, not an oversight: V2 doesn't
+    need per-enrichment history, just an accurate record of what's currently backing
+    a run's ownership flags.
+    """
+
+    run_id: str
+    loaded_at: str
+    lei_record_count: int
+    relationship_record_count: int
+    gleif_lei_file: str
+    gleif_relationships_file: str
+
+    @classmethod
+    def create(
+        cls,
+        run_id: str,
+        lei_record_count: int,
+        relationship_record_count: int,
+        gleif_lei_file: Path | str,
+        gleif_relationships_file: Path | str,
+    ) -> "GleifSnapshotManifest":
+        return cls(
+            run_id=run_id,
+            loaded_at=datetime.now(timezone.utc).isoformat(),
+            lei_record_count=lei_record_count,
+            relationship_record_count=relationship_record_count,
+            gleif_lei_file=str(gleif_lei_file),
+            gleif_relationships_file=str(gleif_relationships_file),
+        )
+
+    def ownership_dir(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        path = Path(base) / self.run_id / "ownership"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def write(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        out_path = self.ownership_dir(base) / "manifest.json"
+        out_path.write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
+        return out_path
+
+    @classmethod
+    def load(cls, path: Path | str) -> "GleifSnapshotManifest":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(**data)

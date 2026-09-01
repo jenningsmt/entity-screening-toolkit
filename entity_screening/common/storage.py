@@ -13,7 +13,9 @@ from pathlib import Path
 import duckdb
 
 from entity_screening.common.schema import (
+    ForeignControlFlag,
     MatchStatus,
+    OwnershipMatch,
     ResolvedEntity,
     ScoredEntity,
     ScreeningHit,
@@ -75,6 +77,42 @@ CREATE TABLE IF NOT EXISTS scored_entities (
     total_score DOUBLE,
     factors JSON,
     run_id VARCHAR
+);
+
+-- gleif_lei and gleif_relationships are NOT declared here: ownership/ingest.py
+-- bulk-loads them directly via CREATE OR REPLACE TABLE ... AS SELECT ... FROM
+-- read_csv_auto(...), a disposable shared working copy rebuilt on every
+-- enrich_ownership call (see GleifSnapshotManifest's docstring for why the
+-- durable per-run record lives elsewhere, not in these tables).
+
+CREATE TABLE IF NOT EXISTS lei_matches (
+    entity_id VARCHAR,
+    run_id VARCHAR,
+    lei VARCHAR,
+    legal_name VARCHAR,
+    legal_jurisdiction VARCHAR,
+    confidence DOUBLE,
+    match_basis VARCHAR,
+    status VARCHAR,
+    -- "Current state" table like resolved_entities/scored_entities, not
+    -- append-only: re-running enrich_ownership for the same run_id deletes
+    -- and replaces these rows (see insert_lei_matches).
+    PRIMARY KEY (entity_id, run_id)
+);
+
+CREATE TABLE IF NOT EXISTS ownership_flags (
+    entity_id VARCHAR,
+    run_id VARCHAR,
+    entity_lei VARCHAR,
+    entity_jurisdiction VARCHAR,
+    ultimate_parent_lei VARCHAR,
+    ultimate_parent_name VARCHAR,
+    ultimate_parent_jurisdiction VARCHAR,
+    relationship_path JSON,
+    match_confidence DOUBLE,
+    evidence JSON,
+    status VARCHAR,
+    PRIMARY KEY (entity_id, run_id)
 );
 """
 
@@ -168,6 +206,115 @@ def load_resolved_entities(conn: duckdb.DuckDBPyConnection, run_id: str) -> list
             source_records=(),
         )
         for entity_id, canonical_name, entity_type in rows
+    ]
+
+
+def insert_lei_matches(
+    conn: duckdb.DuckDBPyConnection, matches: Iterable[OwnershipMatch], run_id: str
+) -> None:
+    """Deletes any existing rows for this run_id first — enrich_ownership is
+    re-runnable for the same run (a deliberate "current state" model, see
+    GleifSnapshotManifest's docstring), not append-only, so a second call must
+    replace rather than duplicate/collide with the first."""
+    conn.execute("DELETE FROM lei_matches WHERE run_id = ?", [run_id])
+    rows = [
+        (
+            m.entity_id,
+            run_id,
+            m.lei,
+            m.legal_name,
+            m.legal_jurisdiction,
+            m.confidence,
+            m.match_basis,
+            m.status.value,
+        )
+        for m in matches
+    ]
+    if rows:
+        conn.executemany("INSERT INTO lei_matches VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+
+
+def load_lei_match(
+    conn: duckdb.DuckDBPyConnection, run_id: str, entity_id: str
+) -> OwnershipMatch | None:
+    row = conn.execute(
+        "SELECT entity_id, lei, legal_name, legal_jurisdiction, confidence, match_basis, "
+        "status FROM lei_matches WHERE run_id = ? AND entity_id = ?",
+        [run_id, entity_id],
+    ).fetchone()
+    if row is None:
+        return None
+    entity_id, lei, legal_name, legal_jurisdiction, confidence, match_basis, status = row
+    return OwnershipMatch(
+        entity_id=entity_id,
+        lei=lei,
+        legal_name=legal_name,
+        legal_jurisdiction=legal_jurisdiction,
+        confidence=confidence,
+        match_basis=match_basis,
+        status=MatchStatus(status),
+    )
+
+
+def insert_ownership_flags(
+    conn: duckdb.DuckDBPyConnection, flags: Iterable[ForeignControlFlag], run_id: str
+) -> None:
+    """Same re-runnable "current state" semantics as insert_lei_matches."""
+    conn.execute("DELETE FROM ownership_flags WHERE run_id = ?", [run_id])
+    rows = [
+        (
+            f.entity_id,
+            run_id,
+            f.entity_lei,
+            f.entity_jurisdiction,
+            f.ultimate_parent_lei,
+            f.ultimate_parent_name,
+            f.ultimate_parent_jurisdiction,
+            json.dumps(list(f.relationship_path)),
+            f.match_confidence,
+            json.dumps(f.evidence, default=str),
+            f.status.value,
+        )
+        for f in flags
+    ]
+    if rows:
+        conn.executemany(
+            "INSERT INTO ownership_flags VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
+        )
+
+
+def load_ownership_flags(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[ForeignControlFlag]:
+    rows = conn.execute(
+        "SELECT entity_id, entity_lei, entity_jurisdiction, ultimate_parent_lei, "
+        "ultimate_parent_name, ultimate_parent_jurisdiction, relationship_path, "
+        "match_confidence, evidence, status FROM ownership_flags WHERE run_id = ?",
+        [run_id],
+    ).fetchall()
+    return [
+        ForeignControlFlag(
+            entity_id=entity_id,
+            entity_lei=entity_lei,
+            entity_jurisdiction=entity_jurisdiction,
+            ultimate_parent_lei=ultimate_parent_lei,
+            ultimate_parent_name=ultimate_parent_name,
+            ultimate_parent_jurisdiction=ultimate_parent_jurisdiction,
+            relationship_path=tuple(json.loads(relationship_path)),
+            match_confidence=match_confidence,
+            evidence=json.loads(evidence),
+            status=MatchStatus(status),
+        )
+        for (
+            entity_id,
+            entity_lei,
+            entity_jurisdiction,
+            ultimate_parent_lei,
+            ultimate_parent_name,
+            ultimate_parent_jurisdiction,
+            relationship_path,
+            match_confidence,
+            evidence,
+            status,
+        ) in rows
     ]
 
 

@@ -32,6 +32,7 @@ RUBRIC_SLIDER_RANGES = {
     "screening_hit_weight": (0.0, 150.0),
     "screening_hit_confidence_multiplier": (0.0, 3.0),
     "multiple_list_hit_bonus": (0.0, 60.0),
+    "foreign_control_weight": (0.0, 150.0),
 }
 
 with st.sidebar:
@@ -46,6 +47,15 @@ with st.sidebar:
     )
     threshold = st.slider("Screening match threshold", 0.0, 1.0, 0.80, 0.01)
     run_button = st.button("Run screening", type="primary")
+
+    st.header("Ownership analysis (optional, Epic C)")
+    st.caption(
+        "Leave both blank to skip — GLEIF's files aren't bundled (~525MB combined, "
+        "updated daily; see docs/data_sources.md)."
+    )
+    gleif_lei_file = st.text_input("GLEIF Level 1 (LEI-CDF) CSV", value="")
+    gleif_relationships_file = st.text_input("GLEIF Level 2 (RR-CDF) CSV", value="")
+    enrich_button = st.button("Enrich with ownership data")
 
 
 def _api_get(path: str, **params) -> requests.Response:
@@ -120,6 +130,26 @@ if run_id is None or run_button:
 with st.expander("Run provenance", expanded=False):
     st.json(manifest)
 
+if enrich_button:
+    if gleif_lei_file and gleif_relationships_file:
+        try:
+            enrichment = _api_post(
+                f"/runs/{run_id}/ownership",
+                {
+                    "gleif_lei_file": gleif_lei_file,
+                    "gleif_relationships_file": gleif_relationships_file,
+                    "threshold": threshold,
+                },
+            ).json()
+            st.success(
+                f"Ownership analysis complete: {enrichment['flags_count']} "
+                "foreign-control flag(s) found."
+            )
+        except requests.RequestException as exc:
+            st.error(f"Ownership enrichment failed: {exc}")
+    else:
+        st.warning("Both GLEIF file paths are required to run ownership analysis.")
+
 try:
     scores = _api_get(f"/runs/{run_id}/scores", **rubric_overrides).json()
 except requests.RequestException as exc:
@@ -137,14 +167,23 @@ df = pd.DataFrame(
             "best_match_confidence": round(
                 max((h["confidence"] for h in s["screening_hits"]), default=0.0), 3
             ),
+            "foreign_control": (
+                ", ".join(
+                    sorted({f["ultimate_parent_jurisdiction"] for f in s["ownership_flags"]})
+                )
+                or "—"
+            ),
         }
         for s in scores
     ]
 ).sort_values("total_score", ascending=False)
 
+# A foreign-control flag with no screening hit is still a genuine candidate
+# match (Epic C) -- status (from the API) already reflects that, so counting
+# by status here rather than by screening_hits alone avoids undercounting.
 st.subheader(
     f"{len(df)} entities screened — "
-    f"{sum(1 for s in scores if s['screening_hits'])} candidate matches"
+    f"{sum(1 for s in scores if s['status'] == 'candidate_match')} candidate matches"
 )
 
 show_hits_only = st.checkbox("Show only candidate matches", value=True)
@@ -160,10 +199,17 @@ selected_name = st.selectbox(
 )
 if selected_name:
     hits = scores_by_name[selected_name]["screening_hits"]
+    ownership_flags = scores_by_name[selected_name]["ownership_flags"]
+
     for hit in hits:
         st.json(hit)
     if not hits:
         st.info("No screening hits for this entity.")
+
+    if ownership_flags:
+        st.markdown("**Foreign-control flags**")
+        for flag in ownership_flags:
+            st.json(flag)
 
 st.subheader("Export")
 st.caption(

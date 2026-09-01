@@ -63,6 +63,41 @@ class ScreeningHit:
 
 
 @dataclass(frozen=True)
+class OwnershipMatch:
+    """A resolved entity's match against a GLEIF LEI record — a name-to-LEI match
+    is exactly as uncertain as a screening-list match, so it carries the same
+    confidence score and MatchStatus, never a bare LEI string (Epic C)."""
+
+    entity_id: str
+    lei: str
+    legal_name: str
+    legal_jurisdiction: str
+    confidence: float
+    match_basis: str
+    status: MatchStatus = MatchStatus.CANDIDATE_MATCH
+
+
+@dataclass(frozen=True)
+class ForeignControlFlag:
+    """Flags that a resolved entity's ultimate parent (per GLEIF Level 2 data) is
+    registered in a different jurisdiction than the entity itself (Epic C). Everything
+    here inherits the uncertainty of the underlying OwnershipMatch — including whether
+    the parent chain was truncated before reaching a genuine top — so it's evidence
+    to review, never an assertion."""
+
+    entity_id: str
+    entity_lei: str
+    entity_jurisdiction: str
+    ultimate_parent_lei: str
+    ultimate_parent_name: str
+    ultimate_parent_jurisdiction: str
+    relationship_path: tuple[str, ...]
+    match_confidence: float
+    evidence: dict[str, Any]
+    status: MatchStatus = MatchStatus.CANDIDATE_MATCH
+
+
+@dataclass(frozen=True)
 class ScoreBreakdown:
     """A total score decomposed into its contributing factors — never an opaque
     single number without a breakdown available."""
@@ -78,3 +113,4 @@ class ScoredEntity:
     score: ScoreBreakdown
     screening_hits: tuple[ScreeningHit, ...]
     run_id: str
+    ownership_flags: tuple[ForeignControlFlag, ...] = ()

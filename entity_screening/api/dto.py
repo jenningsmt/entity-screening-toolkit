@@ -12,8 +12,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from entity_screening.common.manifest import RunManifest
+from entity_screening.common.manifest import GleifSnapshotManifest, RunManifest
 from entity_screening.common.schema import ScoredEntity
+from entity_screening.ownership.graph import ParentChain
 
 
 class RunRequest(BaseModel):
@@ -45,6 +46,18 @@ class ScreeningHitOut(BaseModel):
     status: str
 
 
+class ForeignControlFlagOut(BaseModel):
+    entity_lei: str
+    entity_jurisdiction: str
+    ultimate_parent_lei: str
+    ultimate_parent_name: str
+    ultimate_parent_jurisdiction: str
+    relationship_path: list[str]
+    match_confidence: float
+    evidence: dict[str, Any]
+    status: str
+
+
 class ScoredEntityOut(BaseModel):
     entity_id: str
     canonical_name: str
@@ -52,6 +65,7 @@ class ScoredEntityOut(BaseModel):
     total_score: float
     factors: dict[str, float]
     screening_hits: list[ScreeningHitOut]
+    ownership_flags: list[ForeignControlFlagOut] = []
 
 
 class DatasetSnapshotOut(BaseModel):
@@ -72,11 +86,39 @@ class RunManifestOut(BaseModel):
     ingestion_error_counts: dict[str, int]
 
 
+class OwnershipEnrichmentRequest(BaseModel):
+    gleif_lei_file: str
+    gleif_relationships_file: str
+    threshold: float = 0.80
+    max_depth: int = 10
+
+
+class GleifSnapshotManifestOut(BaseModel):
+    run_id: str
+    loaded_at: str
+    lei_record_count: int
+    relationship_record_count: int
+    gleif_lei_file: str
+    gleif_relationships_file: str
+
+
+class OwnershipEnrichmentSummary(BaseModel):
+    flags_count: int
+    gleif_snapshot: GleifSnapshotManifestOut
+
+
+class ParentChainOut(BaseModel):
+    chain: list[str]
+    truncated: bool
+
+
 def scored_entity_to_dto(scored: ScoredEntity) -> ScoredEntityOut:
     return ScoredEntityOut(
         entity_id=scored.entity_id,
         canonical_name=scored.canonical_name,
-        status="candidate_match" if scored.screening_hits else "no_hit",
+        # A foreign-control flag is a genuine finding even with no screening
+        # hit — must not report "no_hit" for it (Epic C).
+        status="candidate_match" if (scored.screening_hits or scored.ownership_flags) else "no_hit",
         total_score=scored.score.total,
         factors=scored.score.factors,
         screening_hits=[
@@ -89,7 +131,36 @@ def scored_entity_to_dto(scored: ScoredEntity) -> ScoredEntityOut:
             )
             for hit in scored.screening_hits
         ],
+        ownership_flags=[
+            ForeignControlFlagOut(
+                entity_lei=flag.entity_lei,
+                entity_jurisdiction=flag.entity_jurisdiction,
+                ultimate_parent_lei=flag.ultimate_parent_lei,
+                ultimate_parent_name=flag.ultimate_parent_name,
+                ultimate_parent_jurisdiction=flag.ultimate_parent_jurisdiction,
+                relationship_path=list(flag.relationship_path),
+                match_confidence=flag.match_confidence,
+                evidence=flag.evidence,
+                status=flag.status.value,
+            )
+            for flag in scored.ownership_flags
+        ],
     )
+
+
+def gleif_snapshot_manifest_to_dto(manifest: GleifSnapshotManifest) -> GleifSnapshotManifestOut:
+    return GleifSnapshotManifestOut(
+        run_id=manifest.run_id,
+        loaded_at=manifest.loaded_at,
+        lei_record_count=manifest.lei_record_count,
+        relationship_record_count=manifest.relationship_record_count,
+        gleif_lei_file=manifest.gleif_lei_file,
+        gleif_relationships_file=manifest.gleif_relationships_file,
+    )
+
+
+def parent_chain_to_dto(chain: ParentChain) -> ParentChainOut:
+    return ParentChainOut(chain=list(chain.chain), truncated=chain.truncated)
 
 
 def run_manifest_to_dto(manifest: RunManifest) -> RunManifestOut:

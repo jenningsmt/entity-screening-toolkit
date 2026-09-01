@@ -19,17 +19,29 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 
 from entity_screening.common import storage
-from entity_screening.common.manifest import DEFAULT_RUNS_DIR, DatasetSnapshot, ExportManifest, RunManifest
-from entity_screening.common.schema import ResolvedEntity, ScoredEntity, ScreeningHit, SourceRecord
+from entity_screening.common.manifest import (
+    DEFAULT_RUNS_DIR,
+    DatasetSnapshot,
+    ExportManifest,
+    GleifSnapshotManifest,
+    RunManifest,
+)
+from entity_screening.common.schema import ForeignControlFlag, ResolvedEntity, ScoredEntity, ScreeningHit, SourceRecord
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.ingestion.dod_1260h import DoD1260HIngester
 from entity_screening.ingestion.nsf import NSFAwardIngester
 from entity_screening.ingestion.opensanctions import OpenSanctionsTargetsIngester
 from entity_screening.output.export import export_csv, export_excel
+from entity_screening.ownership.flagging import flag_from_match
+from entity_screening.ownership.graph import DEFAULT_MAX_DEPTH
+from entity_screening.ownership.ingest import load_gleif_level1, load_gleif_level2
+from entity_screening.ownership.match import resolve_entity_to_lei
+from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.resolution.normalize import normalize_for_matching
 from entity_screening.screening.lists import DoD1260HList, OpenSanctionsList
 from entity_screening.screening.screen import screen_entity
@@ -181,14 +193,19 @@ def rescore_run(
     run_id: str, rubric: ScoringRubric, db_path: Path | str = storage.DEFAULT_DB_PATH
 ) -> list[ScoredEntity]:
     """Pure read-compute-return — recomputes scores for an existing run's
-    persisted entities/hits under a (possibly different) rubric. Performs no
-    database writes under any circumstance; this is what backs a live
-    rubric-slider preview without growing `scored_entities` on every drag.
+    persisted entities/hits/ownership-flags under a (possibly different)
+    rubric. Performs no database writes under any circumstance; this is what
+    backs a live rubric-slider preview without growing `scored_entities` (or
+    `ownership_flags`/`lei_matches`) on every drag. Ownership flags are only
+    present if `enrich_ownership` has already been run for this `run_id` —
+    otherwise `load_ownership_flags` just returns an empty list and scoring
+    proceeds exactly as it did before Epic C existed.
     """
     conn = storage.connect(db_path)
     try:
         entities = storage.load_resolved_entities(conn, run_id)
         hits = storage.load_screening_hits(conn, run_id)
+        ownership_flags = storage.load_ownership_flags(conn, run_id)
     finally:
         conn.close()
 
@@ -196,10 +213,15 @@ def rescore_run(
     for hit in hits:
         hits_by_entity[hit.entity_id].append(hit)
 
+    flags_by_entity: dict[str, list[ForeignControlFlag]] = defaultdict(list)
+    for flag in ownership_flags:
+        flags_by_entity[flag.entity_id].append(flag)
+
     scored_entities = []
     for entity in entities:
         entity_hits = hits_by_entity.get(entity.entity_id, [])
-        breakdown = score_entity(entity, entity_hits, rubric=rubric)
+        entity_flags = flags_by_entity.get(entity.entity_id, [])
+        breakdown = score_entity(entity, entity_hits, rubric=rubric, ownership_flags=entity_flags)
         scored_entities.append(
             ScoredEntity(
                 entity_id=entity.entity_id,
@@ -207,9 +229,78 @@ def rescore_run(
                 score=breakdown,
                 screening_hits=tuple(entity_hits),
                 run_id=run_id,
+                ownership_flags=tuple(entity_flags),
             )
         )
     return scored_entities
+
+
+def enrich_ownership(
+    run_id: str,
+    gleif_lei_file: Path | str,
+    gleif_relationships_file: Path | str,
+    threshold: float = DEFAULT_THRESHOLD,
+    max_depth: int = DEFAULT_MAX_DEPTH,
+    db_path: Path | str = storage.DEFAULT_DB_PATH,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
+) -> tuple[GleifSnapshotManifest, list[ForeignControlFlag]]:
+    """Resolves an already-existing run's entities against GLEIF and computes
+    foreign-control flags — a separate, explicit step from `run_screening`,
+    callable independently against a run that already exists. GLEIF is a
+    shared reference dataset, not a per-run ingestion source: `gleif_lei`/
+    `gleif_relationships` are a disposable working copy (`CREATE OR REPLACE
+    TABLE`, see `ownership/ingest.py`), rebuilt on every call, by any run.
+
+    Does NOT touch `scored_entities` — that stays `run_screening`'s exclusive
+    write. A caller wanting updated scores calls `rescore_run` afterward.
+
+    Writes `GleifSnapshotManifest` to `data/processed/runs/<run_id>/ownership/
+    manifest.json` — a durable, run-scoped copy, not just the mutable global
+    tables — so run A's flags don't silently lose the ability to say which
+    GLEIF download produced them the moment run B's enrichment call replaces
+    those tables. Re-running this for the same `run_id` overwrites that file
+    and the corresponding `lei_matches`/`ownership_flags` rows: a deliberate
+    "current state" model, like `scored_entities`, not a historical log.
+    """
+    conn = storage.connect(db_path)
+    try:
+        run_dir = Path(runs_dir) / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        error_log = IngestionErrorLog(run_dir / "ingestion_errors.jsonl")
+
+        lei_count = load_gleif_level1(conn, gleif_lei_file, date.today(), error_log)
+        relationship_count = load_gleif_level2(
+            conn, gleif_relationships_file, date.today(), error_log
+        )
+        error_log.close()
+
+        entities = storage.load_resolved_entities(conn, run_id)
+
+        matches = []
+        flags = []
+        for entity in entities:
+            match = resolve_entity_to_lei(conn, entity.entity_id, entity.canonical_name, threshold)
+            if match is None:
+                continue
+            matches.append(match)
+            flag = flag_from_match(conn, match, max_depth=max_depth)
+            if flag is not None:
+                flags.append(flag)
+
+        storage.insert_lei_matches(conn, matches, run_id)
+        storage.insert_ownership_flags(conn, flags, run_id)
+    finally:
+        conn.close()
+
+    gleif_manifest = GleifSnapshotManifest.create(
+        run_id=run_id,
+        lei_record_count=lei_count,
+        relationship_record_count=relationship_count,
+        gleif_lei_file=gleif_lei_file,
+        gleif_relationships_file=gleif_relationships_file,
+    )
+    gleif_manifest.write(runs_dir)
+    return gleif_manifest, flags
 
 
 def export_scored_entities(
