@@ -28,3 +28,51 @@ jobs:
 
       - name: Run test suite
         run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build both images
+        run: docker compose build
+
+      - name: Start the stack
+        run: docker compose up -d
+
+      - name: Wait for the API container to report healthy
+        run: |
+          timeout 60 bash -c '
+            until [ "$(docker inspect -f "{{.State.Health.Status}}" "$(docker compose ps -q api)")" = "healthy" ]; do
+              sleep 2
+            done
+          '
+
+      # This is the check that actually catches the regression that shipped
+      # once already: both containers can be "up" while the UI container
+      # still can't resolve the API by its compose service name. Exec into
+      # the streamlit container and hit the api service exactly the way
+      # app.py does — over the compose network, by service name, not by
+      # localhost or from the CI runner's own host network.
+      - name: Confirm the UI container can reach the API by its compose service name
+        run: docker compose exec -T streamlit curl -sf http://api:8000/health
+
+      # A passing health check only proves the network path exists, not that
+      # the pipeline behind it works — run a real screening job through the
+      # container split, against the fixtures already committed in the repo,
+      # and assert the actual expected result counts.
+      - name: Run a real screening job through the container split
+        run: |
+          response=$(curl -sf -X POST http://localhost:8000/runs \
+            -H "Content-Type: application/json" \
+            -d '{"nsf_file": "tests/fixtures/sample_nsf_awards.json", "opensanctions_file": "tests/fixtures/sample_opensanctions_targets.csv"}')
+          echo "$response"
+          echo "$response" | jq -e '.entities_count == 2 and .hits_count == 1'
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
