@@ -1,13 +1,15 @@
-# Architecture (V1 through V3)
+# Architecture (V1 through V3, plus the deferred VSS topic-similarity layer)
 
 This describes the code as built for V1 through V3 (Epic C's GLEIF ownership graph
 and foreign-control flagging, the Section 117 foreign-funding disclosure cross-check,
 and Epic E's OpenAlex bibliometric co-authorship/affiliation layer, with the Seven
 Sons universities covered via the existing OpenSanctions data rather than a
-dedicated list) — see `docs/requirements.md` Section 12 for the phased roadmap. Epic
-J (LLM-grounded explanations) and DuckDB VSS semantic-abstract matching remain
-deliberately deferred, V3-adjacent follow-ups, not part of any currently-scheduled
-phase.
+dedicated list), plus the semantic topic-similarity layer against real DoD/CET
+critical-technology reference corpora originally deferred out of V3 (Section 9a's
+DuckDB VSS proposal) — see `docs/requirements.md` Section 12 for the phased roadmap
+and `docs/plans/2026-09-01-vss-topic-similarity-layer.md` for that layer's own plan.
+Epic J (LLM-grounded explanations) remains a deliberately deferred, V3-adjacent
+follow-up, not part of any currently-scheduled phase.
 
 ## Two ways in: the CLI and the API
 
@@ -89,9 +91,25 @@ OpenSanctions   ─▶│ opensanctions.py │  malformed records to ingestion_e
                  (fed into scoring/score.py alongside every other ScreeningHit,
                   via the existing screening_hit_weight/multiple_list_hit_bonus
                   factors -- no new scoring changes, via rescore_run)
+
+  A third, structurally different enrichment step -- advisory, never scored:
+                 ┌──────────────────┐
+  api.openalex   │ bibliometric/     │  reconstructs each paper's abstract
+  .org (live)  ─▶│ embeddings.py     │  (OpenAlex has no plain abstract field,
+                 │ topic_similarity  │  only a word-position index), embeds it
+                 │ .py               │  (pinned BAAI/bge-small-en-v1.5), and
+                 └──────┬────────────┘  ranks it against two real reference
+                        │               corpora -- DoD's 6 Critical Technology
+                        ▼               Areas, the White House OSTP's 18-
+                 TopicSimilarityFlag    category CET list -- independently,
+                                        never pooled into one ranking
+
+  NOT fed into scoring/score.py, ever -- carries no MatchStatus, surfaced
+  separately as "consult a subject-matter expert" advisory text. Requires
+  enrich_bibliometric to have already run for this run_id.
 ```
 
-`pipeline.py` exposes five entry points, each with a specific reproducibility
+`pipeline.py` exposes six entry points, each with a specific reproducibility
 contract (see `docs/methodology.md` for the full rationale):
 
 - **`run_screening(...)`** — ingest → resolve → screen → score → persist. The one and
@@ -120,16 +138,31 @@ contract (see `docs/methodology.md` for the full rationale):
   OpenAlex calls or hits. Never touches `scored_entities`; writes
   `openalex_author_matches`/new `ScreeningHit`s plus a durable, run-scoped
   `BibliometricSnapshotManifest`.
+- **`enrich_topic_similarity(run_id, ...)`** — a **separate, explicit step**
+  requiring `enrich_bibliometric` to have already run for this `run_id` (reads
+  `openalex_author_matches` to know which PIs/authors to walk; raises a clear error
+  otherwise). Ranks each real paper against the DoD/CET reference corpora
+  independently (never pooled into one ranking — see
+  `docs/plans/2026-09-01-vss-topic-similarity-layer.md`'s binding acceptance
+  criteria). **Never touches `scored_entities` or `screening_hits`** —
+  `TopicSimilarityFlag` carries no `MatchStatus` and is deliberately excluded from
+  `scoring/score.py` entirely; a semantic-similarity signal can establish topical
+  resemblance, not application or risk. Writes `paper_embeddings`/
+  `topic_similarity_flags` plus a durable, run-scoped `TopicSimilarityManifest`.
 - **`export_scored_entities(...)`** — writes a CSV or Excel file plus its own
   immutable `ExportManifest`, unconditionally, on every call. A downloaded file's
   score values are always traceable to the rubric that actually produced them, which
   is not necessarily the rubric recorded in the source run's `RunManifest`.
 
 `common/storage.py` persists raw records, resolved entities, screening hits, scored
-entities, and (if `enrich_ownership`/`enrich_bibliometric` have run) LEI matches,
-ownership flags, and OpenAlex author matches into a DuckDB file (DuckDB, not SQLite
-— see `docs/requirements.md` Section 7) for ad-hoc querying alongside the file
-exports.
+entities, and (if the corresponding `enrich_*` step has run) LEI matches, ownership
+flags, OpenAlex author matches, paper embeddings, and topic-similarity flags into a
+DuckDB file (DuckDB, not SQLite — see `docs/requirements.md` Section 7) for ad-hoc
+querying alongside the file exports. Embeddings are stored as plain `FLOAT[384]`
+data, never via a persisted HNSW index — DuckDB's own docs flag on-disk HNSW
+persistence as experimental (WAL crash-recovery isn't implemented for custom
+indexes), so cosine similarity is computed directly via DuckDB's
+`array_cosine_distance` function instead.
 
 ## Module map
 
@@ -142,8 +175,8 @@ exports.
 | `entity_screening/scoring/` | User-editable rubric (`rubric.py`, includes `foreign_control_weight`) and score decomposition (`score.py`) |
 | `entity_screening/output/` | CSV/Excel export (`export.py`) |
 | `entity_screening/ownership/` | GLEIF bulk ingestion (`ingest.py` — deliberately *not* a `BaseIngester`, see its module docstring), SQL-blocked LEI resolution (`match.py`), recursive graph traversal (`graph.py`), foreign-control flagging (`flagging.py`) — Epic C |
-| `entity_screening/bibliometric/` | OpenAlex REST client with injectable fetch (`openalex_client.py`), live institution resolution (`institution_match.py`), PI-to-author disambiguation that can return several tied candidates (`author_resolve.py`), and the co-authorship/affiliation cross-check (`cross_check.py`) — Epic E. No NetworkX dependency, unlike `docs/requirements.md` Section 7's original guess: OpenAlex's own `works` endpoint already returns each paper's full `authorships` list directly, so checking co-authors/affiliations is flat list iteration, not graph traversal — that guidance was written before this project had seen the real API shape. |
-| `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `enrich_ownership`, `enrich_bibliometric`, `export_scored_entities` — called by both the CLI and the API |
+| `entity_screening/bibliometric/` | OpenAlex REST client with injectable fetch (`openalex_client.py`), live institution resolution (`institution_match.py`), PI-to-author disambiguation that can return several tied candidates (`author_resolve.py`), the co-authorship/affiliation cross-check (`cross_check.py`) — Epic E — plus the deferred VSS topic-similarity layer: a pinned embedding-model wrapper (`embeddings.py`) and the ranking logic against `data/dod_critical_technology_areas.json`/`data/cet_list.json` (`topic_similarity.py`). No NetworkX dependency, unlike `docs/requirements.md` Section 7's original guess: OpenAlex's own `works` endpoint already returns each paper's full `authorships` list directly, so checking co-authors/affiliations is flat list iteration, not graph traversal — that guidance was written before this project had seen the real API shape. |
+| `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `enrich_ownership`, `enrich_bibliometric`, `enrich_topic_similarity`, `export_scored_entities` — called by both the CLI and the API |
 | `entity_screening/cli.py` | `run` (full pipeline, calls `pipeline.py` in-process) and `validate` (structural sanity checks) |
 | `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (routes) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) |
 | `app.py` | Streamlit review UI: thin HTTP client of the API — scored/filterable table, rubric sliders, evidence-trail inspector, export buttons |
@@ -195,6 +228,27 @@ skip it — behavior is identical to before Epic E existed. See
 `docs/data_sources.md`'s OpenAlex entry for a real, confirmed example of why a PI can
 resolve to more than one tied OpenAlex author candidate, and why that's surfaced
 rather than silently collapsed.
+
+Add `--enrich-topic-similarity` (requires `--enrich-bibliometric` in the same
+invocation — rejected with a clear error otherwise) to also rank this run's real
+papers against the DoD/CET critical-technology reference corpora (the deferred VSS
+work). **Needs `torch`/`sentence-transformers` installed** — deliberately *not* part
+of the base `requirements.txt` install (see `requirements-vss.txt`), so every other
+feature in this project, including the rest of Epic E, never forces a
+multi-hundred-MB ML dependency nobody asked for:
+
+```
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-vss.txt
+```
+
+Results are **advisory only** — `TopicSimilarityFlag` carries no `MatchStatus`,
+never appears in `GET /runs/{run_id}/scores`, and is never blended into
+`total_score`. Real validation while designing this surfaced a genuine false-
+positive risk in a naive absolute-similarity cutoff (see
+`docs/data_sources.md`'s CET/DoD-corpus entry) — the shipped default uses a
+relative-ranking margin instead, computed independently within each corpus, and is
+explicitly flagged there as provisional pending a larger real calibration pass.
 
 **API + Streamlit UI (two processes):**
 

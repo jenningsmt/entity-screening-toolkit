@@ -59,17 +59,20 @@ scripts\compose-up.ps1
 
 ## Status
 
-**V1, V2, and V3 all built:** NSF Award Search + OpenSanctions ingestion, fuzzy
-name/alias resolution, entity-of-concern screening against both OpenSanctions and
-DoD's Section 1260H list, a GLEIF-backed ownership graph with foreign-control
-(parent-jurisdiction) flagging, a Section 117 foreign gift/contract disclosure
-cross-check, an OpenAlex bibliometric co-authorship/affiliation layer with PI
-disambiguation (the Seven Sons universities are covered via the existing
-OpenSanctions data, not a dedicated list — see `docs/data_sources.md`), an
-editable-weight scoring rubric, CSV/Excel export with a reproducibility manifest, a
-FastAPI layer over the pipeline with a Streamlit UI as its thin client, CI (GitHub
-Actions, including a real Docker Compose integration job), a two-container Docker
-Compose setup (API + UI), and a pytest suite including a known-difficult-entity
-regression set. Epic J (LLM-based evidence-grounded explanations) and DuckDB VSS
-semantic-abstract matching remain deliberately deferred, V3-adjacent follow-ups per
+**V1, V2, and V3 all built, plus the deferred VSS topic-similarity layer:** NSF
+Award Search + OpenSanctions ingestion, fuzzy name/alias resolution,
+entity-of-concern screening against both OpenSanctions and DoD's Section 1260H
+list, a GLEIF-backed ownership graph with foreign-control (parent-jurisdiction)
+flagging, a Section 117 foreign gift/contract disclosure cross-check, an OpenAlex
+bibliometric co-authorship/affiliation layer with PI disambiguation (the Seven Sons
+universities are covered via the existing OpenSanctions data, not a dedicated list
+— see `docs/data_sources.md`), a semantic topic-similarity layer that ranks PIs'
+real papers against real DoD/CET critical-technology reference corpora (advisory
+only, never a scored match — needs `requirements-vss.txt` installed, not part of
+the base install), an editable-weight scoring rubric, CSV/Excel export with a
+reproducibility manifest, a FastAPI layer over the pipeline with a Streamlit UI as
+its thin client, CI (GitHub Actions, including a real Docker Compose integration
+job), a two-container Docker Compose setup (API + UI), and a pytest suite including
+a known-difficult-entity regression set. Epic J (LLM-based evidence-grounded
+explanations) remains a deliberately deferred, V3-adjacent follow-up per
 `docs/requirements.md` Section 9a — not part of any currently-scheduled phase.

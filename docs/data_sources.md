@@ -6,7 +6,7 @@ Every exported row already carries its source dataset name via the evidence trai
 (`entity_screening/output/export.py`); this document is the canonical statement of
 each source's terms.
 
-## Sources used (V1 through V3)
+## Sources used (V1 through V3, plus the deferred VSS topic-similarity layer)
 
 ### NSF Award Search
 - **Provider:** U.S. National Science Foundation, a U.S. federal agency.
@@ -231,12 +231,93 @@ each source's terms.
   guard against the *matching logic* breaking, not against OpenSanctions itself
   changing what it carries.
 
+### DoD/War Department Critical Technology Areas (topic-similarity primary corpus)
+
+- **Provider:** the U.S. War Department (formerly Department of Defense), Office of
+  the Under Secretary of War for Research and Engineering.
+- **License:** U.S. Government work — not subject to copyright in the United States
+  (17 U.S.C. § 105).
+- **Attribution:** "Source: War Department Critical Technology Areas
+  (cto.mil/cta/), November 2025 restructuring."
+- **What it actually is, confirmed via real research, not assumed:** the current
+  framework has only **6 areas** (Applied AI, Biomanufacturing, Contested
+  Logistics, Quantum & Battlefield Information Dominance, Scaled Directed Energy,
+  Scaled Hypersonics), as of a November 17, 2025 restructuring — **not** the
+  commonly-cited 14-area framework, which this restructuring superseded. The
+  organization's current materials brand it "War Department," not "Department of
+  Defense."
+- **Known limitation, stated plainly:** `cto.mil` was unreachable from the
+  sandboxed environment this corpus was compiled in (a DNS resolution failure, the
+  same class of problem as `api.research.gov` elsewhere in this project). The
+  bundled descriptions in
+  `entity_screening/bibliometric/data/dod_critical_technology_areas.json` are
+  cross-verified across five independent defense-trade sources (DefenseScoop,
+  Breaking Defense, AFCEA, ExecutiveGov, HSToday — see the file's own `provenance`
+  field for exact URLs), not read directly from the primary page. **Re-verify the
+  live `cto.mil/cta/` page's exact wording before treating this file as
+  authoritative for anything beyond this portfolio project.**
+
+### White House OSTP Critical and Emerging Technologies (CET) List (secondary corpus)
+
+- **Provider:** White House Office of Science and Technology Policy (OSTP) /
+  National Science and Technology Council.
+- **License:** U.S. Government work, public domain (17 U.S.C. § 105) — "may be
+  distributed and copied with acknowledgment to OSTP" per the document's own
+  copyright notice.
+- **Attribution:** "Source: Critical and Emerging Technologies List Update, White
+  House OSTP, February 2024."
+- **Downloaded and read directly** (the real PDF, not a summary) — confirmed
+  current, no newer version found as of this writing: **18 top-level categories,
+  each with bulleted subcategories that are bare 2-4 word technical terms
+  ("Foundation models," "Synthetic data approaches for training, tuning, and
+  testing") with zero prose description anywhere in the source document**, for any
+  category or any subcategory.
+- **Known limitation — a real, structural weakness of this specific source for
+  embedding-based comparison:** a bare 2-4 word label embeds far more ambiguously
+  than a full sentence, and produces a much thinner evidence trail for an analyst
+  ("similar to 'Foundation models'" says little on its own). `cet_list.json`
+  mitigates this by concatenating each category's full subfield list into one
+  passage rather than embedding subfields individually, but this corpus is
+  deliberately treated as a **secondary, lower-confidence signal**, never pooled
+  with the DoD corpus in one ranking (see `docs/methodology.md`'s known
+  limitations and `docs/plans/2026-09-01-vss-topic-similarity-layer.md`'s binding
+  acceptance criteria).
+
+### BAAI/bge-small-en-v1.5 (embedding model)
+
+- **Provider:** Beijing Academy of Artificial Intelligence (BAAI), hosted on
+  HuggingFace.
+- **License:** MIT (per the model's own HuggingFace card).
+- **Why this model, not a generic default:** comparing a short technology-area
+  description against a long paper abstract is an asymmetric retrieval problem
+  (query vs. passage), not symmetric sentence-similarity — a general default like
+  `all-MiniLM-L6-v2` is the wrong shape of tool. bge-small is built for exactly
+  this pattern via an instruction prefix on the query side only.
+- **Pinned to its exact HuggingFace revision for reproducibility** (the same
+  discipline as `GleifSnapshotManifest` recording dataset versions):
+  `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`.
+- **Real validation, not assumed to work:** a real hypersonics-vehicle abstract
+  scored highest against "Scaled Hypersonics" (0.70), clearly ahead of every other
+  category; a real quantum-computing abstract scored highest against "Quantum and
+  Battlefield Information Dominance" (0.66). **But a real, unrelated
+  climate-science abstract scored 0.59 against "Biomanufacturing"** — higher than
+  either true positive's own second-best category, confirming an absolute
+  cosine-similarity cutoff alone is not reliable. See `docs/methodology.md`'s
+  known limitations for the resulting margin-based design and its real
+  calibration status.
+- **Optional dependency, deliberately not in the base install:** requires
+  `torch`/`sentence-transformers` (`requirements-vss.txt`, installed via the
+  CPU-only PyTorch wheel to avoid pulling unneeded CUDA binaries) — every other
+  feature in this project, including the rest of Epic E's bibliometric layer, runs
+  without these installed at all.
+
 ## Sources reserved for V3
 
-None remaining — Epic E (OpenAlex) and the Seven Sons item above complete V3 per
-`docs/requirements.md` Section 12's roadmap. Epic J (LLM-grounded explanations) and
-DuckDB VSS semantic-abstract matching remain deliberately deferred, V3-adjacent
-follow-ups, not part of any currently-scheduled phase.
+None remaining — Epic E (OpenAlex), the Seven Sons item, and the deferred VSS
+topic-similarity layer above complete everything currently scoped in
+`docs/requirements.md` Section 12's roadmap and Section 9a's addendum. Epic
+J (LLM-grounded explanations) remains a deliberately deferred, V3-adjacent
+follow-up, not part of any currently-scheduled phase.
 
 ## General policy
 
