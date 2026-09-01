@@ -212,10 +212,14 @@ def run_screening(
 
     conn = storage.connect(db_path)
     try:
-        storage.insert_source_records(conn, "raw_nsf_awards", nsf_records)
-        storage.insert_source_records(conn, "raw_opensanctions_targets", os_records)
-        storage.insert_source_records(conn, "raw_dod_1260h", dod_records)
-        storage.insert_source_records(conn, "raw_section_117", section_117_records)
+        storage.insert_source_records(conn, "raw_nsf_awards", nsf_records, manifest.run_id)
+        storage.insert_source_records(
+            conn, "raw_opensanctions_targets", os_records, manifest.run_id
+        )
+        storage.insert_source_records(conn, "raw_dod_1260h", dod_records, manifest.run_id)
+        storage.insert_source_records(
+            conn, "raw_section_117", section_117_records, manifest.run_id
+        )
         storage.insert_resolved_entities(conn, entities, manifest.run_id)
         storage.insert_screening_hits(conn, all_hits, manifest.run_id)
         storage.insert_scored_entities(conn, scored_entities)

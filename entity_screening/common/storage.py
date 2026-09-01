@@ -16,6 +16,7 @@ from entity_screening.common.schema import (
     ForeignControlFlag,
     MatchStatus,
     OwnershipMatch,
+    ResolvedAuthor,
     ResolvedEntity,
     ScoredEntity,
     ScreeningHit,
@@ -29,28 +30,38 @@ CREATE TABLE IF NOT EXISTS raw_nsf_awards (
     source_record_id VARCHAR,
     source_dataset VARCHAR,
     retrieval_date DATE,
-    raw JSON
+    raw JSON,
+    -- Added for Epic E: enrich_bibliometric re-derives each entity's PI names
+    -- from this table for a specific run (raw_nsf_awards has no other way to
+    -- scope a query to "records ingested during run X" without it) -- see
+    -- docs/plans/2026-09-01-v3-openalex-bibliometric-affiliation-layer.md's
+    -- Finding 4. Added to all four raw_* tables for consistency even though
+    -- only raw_nsf_awards is queried back today.
+    run_id VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS raw_opensanctions_targets (
     source_record_id VARCHAR,
     source_dataset VARCHAR,
     retrieval_date DATE,
-    raw JSON
+    raw JSON,
+    run_id VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS raw_dod_1260h (
     source_record_id VARCHAR,
     source_dataset VARCHAR,
     retrieval_date DATE,
-    raw JSON
+    raw JSON,
+    run_id VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS raw_section_117 (
     source_record_id VARCHAR,
     source_dataset VARCHAR,
     retrieval_date DATE,
-    raw JSON
+    raw JSON,
+    run_id VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS resolved_entities (
@@ -107,6 +118,23 @@ CREATE TABLE IF NOT EXISTS lei_matches (
     PRIMARY KEY (entity_id, run_id)
 );
 
+CREATE TABLE IF NOT EXISTS openalex_author_matches (
+    entity_id VARCHAR,
+    run_id VARCHAR,
+    pi_name VARCHAR,
+    openalex_author_id VARCHAR,
+    display_name VARCHAR,
+    confidence DOUBLE,
+    match_basis VARCHAR,
+    evidence JSON,
+    status VARCHAR
+    -- No PRIMARY KEY here (unlike lei_matches' (entity_id, run_id)): a single
+    -- entity can legitimately have multiple PIs, and a single PI can
+    -- legitimately resolve to multiple tied ResolvedAuthor candidates (see
+    -- docs/plans/2026-09-01-v3-openalex-bibliometric-affiliation-layer.md's
+    -- Finding 3) -- (entity_id, run_id) alone isn't unique here.
+);
+
 CREATE TABLE IF NOT EXISTS ownership_flags (
     entity_id VARCHAR,
     run_id VARCHAR,
@@ -134,14 +162,31 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
 
 
 def insert_source_records(
-    conn: duckdb.DuckDBPyConnection, table: str, records: Iterable[SourceRecord]
+    conn: duckdb.DuckDBPyConnection, table: str, records: Iterable[SourceRecord], run_id: str
 ) -> None:
     rows = [
-        (r.source_record_id, r.source_dataset, r.retrieval_date, json.dumps(r.fields, default=str))
+        (
+            r.source_record_id,
+            r.source_dataset,
+            r.retrieval_date,
+            json.dumps(r.fields, default=str),
+            run_id,
+        )
         for r in records
     ]
     if rows:
-        conn.executemany(f"INSERT INTO {table} VALUES (?, ?, ?, ?)", rows)
+        conn.executemany(f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?)", rows)
+
+
+def load_raw_record_fields(
+    conn: duckdb.DuckDBPyConnection, table: str, run_id: str
+) -> list[dict]:
+    """Reads back the raw `fields` dicts ingested into `table` for a specific run --
+    e.g. enrich_bibliometric (Epic E) re-deriving each entity's PI names from
+    raw_nsf_awards, since resolved_entities itself doesn't retain that detail (see
+    load_resolved_entities' docstring)."""
+    rows = conn.execute(f"SELECT raw FROM {table} WHERE run_id = ?", [run_id]).fetchall()
+    return [json.loads(raw) for (raw,) in rows]
 
 
 def insert_resolved_entities(
@@ -319,6 +364,65 @@ def load_ownership_flags(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[F
             ultimate_parent_jurisdiction,
             relationship_path,
             match_confidence,
+            evidence,
+            status,
+        ) in rows
+    ]
+
+
+def insert_openalex_author_matches(
+    conn: duckdb.DuckDBPyConnection, matches: Iterable[ResolvedAuthor], run_id: str
+) -> None:
+    """Deletes any existing rows for this run_id first -- same re-runnable
+    "current state" semantics as insert_lei_matches: enrich_bibliometric is
+    re-runnable for the same run, not append-only."""
+    conn.execute("DELETE FROM openalex_author_matches WHERE run_id = ?", [run_id])
+    rows = [
+        (
+            m.entity_id,
+            run_id,
+            m.pi_name,
+            m.openalex_author_id,
+            m.display_name,
+            m.confidence,
+            m.match_basis,
+            json.dumps(m.evidence, default=str),
+            m.status.value,
+        )
+        for m in matches
+    ]
+    if rows:
+        conn.executemany(
+            "INSERT INTO openalex_author_matches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
+        )
+
+
+def load_openalex_author_matches(
+    conn: duckdb.DuckDBPyConnection, run_id: str
+) -> list[ResolvedAuthor]:
+    rows = conn.execute(
+        "SELECT entity_id, pi_name, openalex_author_id, display_name, confidence, "
+        "match_basis, evidence, status FROM openalex_author_matches WHERE run_id = ?",
+        [run_id],
+    ).fetchall()
+    return [
+        ResolvedAuthor(
+            entity_id=entity_id,
+            pi_name=pi_name,
+            openalex_author_id=openalex_author_id,
+            display_name=display_name,
+            confidence=confidence,
+            match_basis=match_basis,
+            evidence=json.loads(evidence),
+            status=MatchStatus(status),
+        )
+        for (
+            entity_id,
+            pi_name,
+            openalex_author_id,
+            display_name,
+            confidence,
+            match_basis,
             evidence,
             status,
         ) in rows
