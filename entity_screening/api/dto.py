@@ -15,8 +15,13 @@ from pydantic import BaseModel
 from entity_screening.bibliometric.cross_check import (
     DEFAULT_CONCERN_THRESHOLD as DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD,
 )
-from entity_screening.common.manifest import BibliometricSnapshotManifest, GleifSnapshotManifest, RunManifest
-from entity_screening.common.schema import ScoredEntity
+from entity_screening.common.manifest import (
+    BibliometricSnapshotManifest,
+    GleifSnapshotManifest,
+    RunManifest,
+    TopicSimilarityManifest,
+)
+from entity_screening.common.schema import ScoredEntity, TopicSimilarityFlag
 from entity_screening.ownership.graph import ParentChain
 from entity_screening.screening.section_117 import DEFAULT_INSTITUTION_THRESHOLD
 
@@ -104,6 +109,36 @@ class OwnershipEnrichmentRequest(BaseModel):
 class BibliometricEnrichmentRequest(BaseModel):
     contact_email: str | None = None
     threshold: float = DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD
+
+
+class TopicSimilarityEnrichmentRequest(BaseModel):
+    margin: float | None = None
+
+
+class TopicSimilarityManifestOut(BaseModel):
+    run_id: str
+    computed_at: str
+    embedding_model: str
+    embedding_model_revision: str
+    dod_corpus_file: str
+    cet_corpus_file: str
+    flags_count: int
+
+
+class TopicSimilarityFlagOut(BaseModel):
+    pi_name: str
+    openalex_work_id: str
+    work_title: str
+    technology_area: str
+    corpus_tier: str
+    similarity_score: float
+    evidence: dict[str, Any]
+    recommendation: str
+
+
+class TopicSimilarityEnrichmentSummary(BaseModel):
+    flags: list[TopicSimilarityFlagOut]
+    topic_similarity_snapshot: TopicSimilarityManifestOut
 
 
 class BibliometricSnapshotManifestOut(BaseModel):
@@ -194,6 +229,33 @@ def bibliometric_snapshot_manifest_to_dto(
         pi_count=manifest.pi_count,
         resolved_author_count=manifest.resolved_author_count,
         openalex_api_base_url=manifest.openalex_api_base_url,
+    )
+
+
+def topic_similarity_manifest_to_dto(
+    manifest: TopicSimilarityManifest,
+) -> TopicSimilarityManifestOut:
+    return TopicSimilarityManifestOut(
+        run_id=manifest.run_id,
+        computed_at=manifest.computed_at,
+        embedding_model=manifest.embedding_model,
+        embedding_model_revision=manifest.embedding_model_revision,
+        dod_corpus_file=manifest.dod_corpus_file,
+        cet_corpus_file=manifest.cet_corpus_file,
+        flags_count=manifest.flags_count,
+    )
+
+
+def topic_similarity_flag_to_dto(flag: TopicSimilarityFlag) -> TopicSimilarityFlagOut:
+    return TopicSimilarityFlagOut(
+        pi_name=flag.pi_name,
+        openalex_work_id=flag.openalex_work_id,
+        work_title=flag.work_title,
+        technology_area=flag.technology_area,
+        corpus_tier=flag.corpus_tier,
+        similarity_score=flag.similarity_score,
+        evidence=flag.evidence,
+        recommendation=flag.recommendation,
     )
 
 
