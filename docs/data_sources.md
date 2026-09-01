@@ -104,13 +104,36 @@ each source's terms.
     screening-list matching if this risk matters for a given use — it's the same
     user-configurable parameter either way.
 
+### Section 117 foreign gift & contract disclosures
+
+- **Provider:** U.S. Department of Education, under Section 117 of the Higher
+  Education Act of 1965, as amended.
+- **License:** U.S. Government work — not subject to copyright in the United States
+  (17 U.S.C. § 105).
+- **Attribution:** "Source: U.S. Department of Education, Section 117 foreign gift and
+  contract disclosures (foreignfundinghighered.gov). Snapshot dated in this run's
+  manifest under `section_117_foreign_funding_disclosure`."
+- **Where it was verified:** the legacy bulk-download file,
+  `Sec117PublicRecordsCompleteFeb2025.xlsx` at `fsapartners.ed.gov` — 117,152 rows, 18
+  columns. **Known gap:** the portal relaunched in January/February 2026 with, per
+  ED's own press release, "11 additional data elements"; the new dashboard is a
+  JS-rendered SPA this project's tooling couldn't access directly, so this was
+  verified against the legacy file, not the current post-relaunch download.
+  Re-verify the current download URL and schema before trusting a fresh download —
+  same category of caution as GLEIF's CSV-vs-XML trap above.
+- **Self-reported; coverage gaps possible** (per `docs/requirements.md`'s data-source
+  table) — only ~4.75% of real rows in the verified file name a specific foreign
+  entity at all (embassies, cultural missions, sovereign funds); the rest report only
+  a country, with nothing to fuzzy-match. Real institution-name matching (School Name
+  vs. NSF's often-legal/governing-board awardee name) needed a dedicated
+  normalization step — see `docs/methodology.md`'s known limitations.
+
 ## Sources reserved for V3
 
 Documented here for completeness so attribution terms are settled before the code
-that needs them is written — Section 117 dashboard (U.S. Government work), OpenAlex
-(CC0), and the Seven Sons seed list (curated/manual, cite ASPI's public reporting as
-the basis, not scraped tracker data) — sequenced into V3 alongside OpenAlex per
-`docs/requirements.md` Section 12.
+that needs them is written — OpenAlex (CC0) and the Seven Sons seed list
+(curated/manual, cite ASPI's public reporting as the basis, not scraped tracker data)
+— sequenced into V3 per `docs/requirements.md` Section 12.
 
 ## General policy
 
