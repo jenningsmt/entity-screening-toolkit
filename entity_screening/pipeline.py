@@ -23,14 +23,22 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-from entity_screening.bibliometric import openalex_client
+from entity_screening.bibliometric import embeddings, openalex_client
 from entity_screening.bibliometric.author_resolve import disambiguate_pi_to_openalex_author
 from entity_screening.bibliometric.cross_check import (
     DEFAULT_CONCERN_THRESHOLD as DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD,
 )
 from entity_screening.bibliometric.cross_check import cross_check_bibliometric
+from entity_screening.bibliometric.embeddings import EmbedFn
 from entity_screening.bibliometric.institution_match import resolve_entity_to_openalex_institution
 from entity_screening.bibliometric.openalex_client import FetchFn
+from entity_screening.bibliometric.topic_similarity import (
+    CET_CORPUS_FILE,
+    DEFAULT_MARGIN,
+    DOD_CORPUS_FILE,
+    compute_topic_similarity_flags,
+    load_corpus,
+)
 from entity_screening.common import storage
 from entity_screening.common.manifest import (
     DEFAULT_RUNS_DIR,
@@ -39,6 +47,7 @@ from entity_screening.common.manifest import (
     ExportManifest,
     GleifSnapshotManifest,
     RunManifest,
+    TopicSimilarityManifest,
 )
 from entity_screening.common.schema import (
     ForeignControlFlag,
@@ -47,6 +56,7 @@ from entity_screening.common.schema import (
     ScoredEntity,
     ScreeningHit,
     SourceRecord,
+    TopicSimilarityFlag,
 )
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
@@ -470,6 +480,73 @@ def enrich_bibliometric(
     )
     manifest.write(runs_dir)
     return manifest, all_hits
+
+
+def enrich_topic_similarity(
+    run_id: str,
+    *,
+    margin: float = DEFAULT_MARGIN,
+    db_path: Path | str = storage.DEFAULT_DB_PATH,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
+    fetch: FetchFn | None = None,
+    embed_query_fn: EmbedFn | None = None,
+    embed_passage_fn: EmbedFn | None = None,
+) -> tuple[TopicSimilarityManifest, list[TopicSimilarityFlag]]:
+    """Ranks a run's resolved PIs' real papers against the DoD/CET critical-
+    technology reference corpora (deferred VSS work) -- a separate, explicit step
+    from both `run_screening` and `enrich_bibliometric`, requiring
+    `enrich_bibliometric` to have already run for this `run_id` (reads
+    `openalex_author_matches` to know which PIs/authors to walk; raises a clear
+    error otherwise rather than silently doing nothing).
+
+    Deliberately advisory-only: never touches `scored_entities` or
+    `screening_hits` -- `TopicSimilarityFlag` carries no `MatchStatus` and is
+    never read by `scoring/score.py`, by design (see the flag's own docstring).
+    Writes the durable per-run `TopicSimilarityManifest`.
+    """
+    embed_query_fn = embed_query_fn or embeddings.embed_query
+    embed_passage_fn = embed_passage_fn or embeddings.embed_passage
+
+    conn = storage.connect(db_path)
+    try:
+        author_matches = storage.load_openalex_author_matches(conn, run_id)
+        if not author_matches:
+            raise ValueError(
+                f"No openalex_author_matches found for run {run_id!r} -- "
+                "enrich_bibliometric must run for this run before enrich_topic_similarity."
+            )
+
+        authors_by_entity: dict[str, list[ResolvedAuthor]] = defaultdict(list)
+        for match in author_matches:
+            authors_by_entity[match.entity_id].append(match)
+
+        dod_corpus = load_corpus(DOD_CORPUS_FILE)
+        cet_corpus = load_corpus(CET_CORPUS_FILE)
+
+        all_flags: list[TopicSimilarityFlag] = []
+        for entity_id, resolved_authors in authors_by_entity.items():
+            all_flags.extend(
+                compute_topic_similarity_flags(
+                    conn, run_id, entity_id, resolved_authors, dod_corpus, cet_corpus,
+                    margin=margin, fetch=fetch,
+                    embed_query_fn=embed_query_fn, embed_passage_fn=embed_passage_fn,
+                )
+            )
+
+        storage.insert_topic_similarity_flags(conn, all_flags, run_id)
+    finally:
+        conn.close()
+
+    manifest = TopicSimilarityManifest.create(
+        run_id=run_id,
+        embedding_model=embeddings.MODEL_NAME,
+        embedding_model_revision=embeddings.MODEL_REVISION,
+        dod_corpus_file=DOD_CORPUS_FILE,
+        cet_corpus_file=CET_CORPUS_FILE,
+        flags_count=len(all_flags),
+    )
+    manifest.write(runs_dir)
+    return manifest, all_flags
 
 
 def export_scored_entities(
