@@ -1,25 +1,17 @@
-"""Streamlit review UI: a scored, filterable, explainable candidate-match table
-with adjustable rubric weights (docs/requirements.md Section 7 / Epic F).
+"""Streamlit review UI: a thin HTTP client of the FastAPI layer
+(entity_screening/api/main.py) — docs/requirements.md Section 9a. No direct
+imports from the entity_screening pipeline package; everything shown here
+arrived over HTTP, exactly as any other API consumer would see it.
 
-Run with: streamlit run app.py
+Run with (two terminals):
+    uvicorn entity_screening.api.main:app --reload
+    streamlit run app.py
 """
 from __future__ import annotations
 
-from dataclasses import fields as dc_fields
-from pathlib import Path
-
 import pandas as pd
+import requests
 import streamlit as st
-
-from entity_screening.pipeline import resolve_entities_from_nsf
-from entity_screening.ingestion.base import IngestionErrorLog
-from entity_screening.ingestion.nsf import NSFAwardIngester
-from entity_screening.ingestion.opensanctions import OpenSanctionsTargetsIngester
-from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
-from entity_screening.screening.lists import OpenSanctionsList
-from entity_screening.screening.screen import screen_entity
-from entity_screening.scoring.rubric import STOCK_RUBRIC, ScoringRubric
-from entity_screening.scoring.score import score_entity
 
 st.set_page_config(page_title="Entity & Research-Affiliation Screening Toolkit", layout="wide")
 
@@ -29,101 +21,177 @@ st.caption(
     "confirmed finding. See docs/requirements.md for non-goals and methodology."
 )
 
+# Wider slider ranges for weights whose sensible ceiling isn't simply
+# "a few times the default" — screening_hit_confidence_multiplier and
+# multiple_list_hit_bonus in particular.
+RUBRIC_SLIDER_RANGES = {
+    "screening_hit_weight": (0.0, 150.0),
+    "screening_hit_confidence_multiplier": (0.0, 3.0),
+    "multiple_list_hit_bonus": (0.0, 60.0),
+}
+
 with st.sidebar:
+    api_base_url = st.text_input("API base URL", value="http://localhost:8000").rstrip("/")
+
     st.header("Data sources")
     nsf_file = st.text_input("NSF awards JSON file", value="tests/fixtures/sample_nsf_awards.json")
     opensanctions_file = st.text_input(
         "OpenSanctions targets.simple.csv", value="tests/fixtures/sample_opensanctions_targets.csv"
     )
-
-    st.header("Scoring rubric")
-    st.caption("Adjust weights and re-score instantly — no code changes required.")
-    rubric_kwargs = {}
-    for f in dc_fields(STOCK_RUBRIC):
-        default = getattr(STOCK_RUBRIC, f.name)
-        rubric_kwargs[f.name] = st.slider(
-            f.name.replace("_", " "), min_value=0.0, max_value=default * 3 or 10.0,
-            value=default, step=max(default / 20, 0.1) if default else 1.0,
-        )
-    rubric = ScoringRubric(**rubric_kwargs)
-
-    threshold = st.slider("Screening match threshold", 0.0, 1.0, DEFAULT_THRESHOLD, 0.01)
+    threshold = st.slider("Screening match threshold", 0.0, 1.0, 0.80, 0.01)
     run_button = st.button("Run screening", type="primary")
 
 
-@st.cache_data(show_spinner=False)
-def _load_and_screen(nsf_path: str, opensanctions_path: str, threshold: float):
-    error_log = IngestionErrorLog(Path("data/processed/runs/_streamlit_scratch/ingestion_errors.jsonl"))
-    nsf_records = list(
-        NSFAwardIngester(error_log, local_file=nsf_path).stream_records()
+def _api_get(path: str, **params) -> requests.Response:
+    response = requests.get(f"{api_base_url}{path}", params=params or None, timeout=30)
+    response.raise_for_status()
+    return response
+
+
+def _api_post(path: str, payload: dict) -> requests.Response:
+    response = requests.post(f"{api_base_url}{path}", json=payload, timeout=120)
+    response.raise_for_status()
+    return response
+
+
+@st.cache_data(show_spinner="Fetching default rubric...")
+def _default_rubric(base_url: str) -> dict:
+    return requests.get(f"{base_url}/rubric/default", timeout=10).json()
+
+
+try:
+    default_rubric = _default_rubric(api_base_url)
+except requests.RequestException as exc:
+    st.error(
+        f"Can't reach the API at {api_base_url}: {exc}\n\n"
+        "Start it with `uvicorn entity_screening.api.main:app --reload`."
     )
-    os_records = list(
-        OpenSanctionsTargetsIngester(error_log, csv_path=opensanctions_path).stream_records()
-    )
-    error_log.close()
+    st.stop()
 
-    entities = resolve_entities_from_nsf(nsf_records)
-    concern_list = OpenSanctionsList(os_records)
+with st.sidebar:
+    st.header("Scoring rubric")
+    st.caption("Adjust weights and re-score instantly — no code changes required.")
+    rubric_overrides = {}
+    for field_name, default_value in default_rubric.items():
+        lo, hi = RUBRIC_SLIDER_RANGES.get(field_name, (0.0, max(default_value * 3, 10.0)))
+        rubric_overrides[field_name] = st.slider(
+            field_name.replace("_", " "),
+            min_value=lo,
+            max_value=hi,
+            value=float(default_value),
+            step=max((hi - lo) / 50, 0.1),
+        )
 
-    results = []
-    for entity in entities:
-        hits = list(screen_entity(entity, [concern_list], threshold=threshold))
-        results.append((entity, hits))
-    return results
+
+def _start_new_run() -> str:
+    summary = _api_post(
+        "/runs",
+        {"nsf_file": nsf_file, "opensanctions_file": opensanctions_file, "threshold": threshold},
+    ).json()
+    st.session_state["run_id"] = summary["run_id"]
+    return summary["run_id"]
 
 
-if run_button or "results" not in st.session_state:
-    if not Path(nsf_file).exists() or not Path(opensanctions_file).exists():
-        st.error("One or both data source files were not found. Check the sidebar paths.")
+run_id = st.session_state.get("run_id")
+manifest = None
+if run_id and not run_button:
+    try:
+        manifest = _api_get(f"/runs/{run_id}/manifest").json()
+    except requests.RequestException:
+        # The API may have restarted (fresh, data-wiped) since this browser
+        # session last ran — a stale run_id 404s cleanly, so just start over
+        # rather than surfacing that as an error the user has to act on.
+        run_id = None
+
+if run_id is None or run_button:
+    try:
+        run_id = _start_new_run()
+        manifest = _api_get(f"/runs/{run_id}/manifest").json()
+    except requests.RequestException as exc:
+        st.error(f"Run failed: {exc}")
         st.stop()
-    st.session_state["results"] = _load_and_screen(nsf_file, opensanctions_file, threshold)
 
-results = st.session_state["results"]
+with st.expander("Run provenance", expanded=False):
+    st.json(manifest)
 
-rows = []
-for entity, hits in results:
-    breakdown = score_entity(entity, hits, rubric=rubric)
-    rows.append(
+try:
+    scores = _api_get(f"/runs/{run_id}/scores", **rubric_overrides).json()
+except requests.RequestException as exc:
+    st.error(f"Couldn't fetch scores: {exc}")
+    st.stop()
+
+df = pd.DataFrame(
+    [
         {
-            "canonical_name": entity.canonical_name,
-            "status": "candidate_match" if hits else "no_hit",
-            "total_score": round(breakdown.total, 1),
-            "factors": ", ".join(f"{k}={v:.1f}" for k, v in breakdown.factors.items()) or "—",
-            "list_hits": ", ".join(sorted({h.list_name for h in hits})) or "—",
-            "best_match_confidence": round(max((h.confidence for h in hits), default=0.0), 3),
-            "_hits": hits,
+            "canonical_name": s["canonical_name"],
+            "status": s["status"],
+            "total_score": round(s["total_score"], 1),
+            "factors": ", ".join(f"{k}={v:.1f}" for k, v in s["factors"].items()) or "—",
+            "list_hits": ", ".join(sorted({h["list_name"] for h in s["screening_hits"]})) or "—",
+            "best_match_confidence": round(
+                max((h["confidence"] for h in s["screening_hits"]), default=0.0), 3
+            ),
         }
-    )
+        for s in scores
+    ]
+).sort_values("total_score", ascending=False)
 
-df = pd.DataFrame(rows).sort_values("total_score", ascending=False)
-
-st.subheader(f"{len(df)} entities screened — {sum(1 for r in rows if r['_hits'])} candidate matches")
+st.subheader(
+    f"{len(df)} entities screened — "
+    f"{sum(1 for s in scores if s['screening_hits'])} candidate matches"
+)
 
 show_hits_only = st.checkbox("Show only candidate matches", value=True)
 display_df = df[df["status"] == "candidate_match"] if show_hits_only else df
 
-st.dataframe(
-    display_df.drop(columns=["_hits"]),
-    width="stretch",
-    hide_index=True,
-)
+st.dataframe(display_df, width="stretch", hide_index=True)
 
 st.subheader("Evidence trail")
+scores_by_name = {s["canonical_name"]: s for s in scores}
 selected_name = st.selectbox(
     "Inspect an entity's evidence",
     options=display_df["canonical_name"].tolist() if not display_df.empty else [],
 )
 if selected_name:
-    matching_row = next(r for r in rows if r["canonical_name"] == selected_name)
-    for hit in matching_row["_hits"]:
-        st.json(
-            {
-                "list_name": hit.list_name,
-                "matched_variant": hit.matched_variant,
-                "confidence": hit.confidence,
-                "evidence": hit.evidence,
-                "status": hit.status.value,
-            }
-        )
-    if not matching_row["_hits"]:
+    hits = scores_by_name[selected_name]["screening_hits"]
+    for hit in hits:
+        st.json(hit)
+    if not hits:
         st.info("No screening hits for this entity.")
+
+st.subheader("Export")
+st.caption(
+    "Each export is a deliberate action, not a side effect of moving a slider — "
+    "every click here writes its own manifest recording exactly which rubric "
+    "produced the file, independent of the run's original one."
+)
+col1, col2 = st.columns(2)
+if col1.button("Prepare CSV export"):
+    try:
+        response = _api_get(f"/runs/{run_id}/export.csv", **rubric_overrides)
+        st.session_state["csv_export"] = (response.content, response.headers.get("X-Export-Id"))
+    except requests.RequestException as exc:
+        st.error(f"CSV export failed: {exc}")
+if col2.button("Prepare Excel export"):
+    try:
+        response = _api_get(f"/runs/{run_id}/export.xlsx", **rubric_overrides)
+        st.session_state["xlsx_export"] = (response.content, response.headers.get("X-Export-Id"))
+    except requests.RequestException as exc:
+        st.error(f"Excel export failed: {exc}")
+
+if "csv_export" in st.session_state:
+    content, export_id = st.session_state["csv_export"]
+    st.download_button(
+        f"Download CSV (export {export_id})",
+        data=content,
+        file_name="candidate_matches.csv",
+        mime="text/csv",
+    )
+if "xlsx_export" in st.session_state:
+    content, export_id = st.session_state["xlsx_export"]
+    st.download_button(
+        f"Download Excel (export {export_id})",
+        data=content,
+        file_name="candidate_matches.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )

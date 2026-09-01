@@ -24,6 +24,23 @@ def test_connect_creates_schema(tmp_path):
     } <= tables
 
 
+def test_same_entity_id_can_recur_across_different_runs(tmp_path):
+    """entity_id is a deterministic hash of the normalized name, so the same
+    real-world entity legitimately produces the same entity_id in two
+    separate runs — that must not violate a primary key."""
+    conn = storage.connect(tmp_path / "test.duckdb")
+    entity = ResolvedEntity(
+        entity_id="same-id", canonical_name="Acme Corp", entity_type="organization",
+        source_records=(),
+    )
+    storage.insert_resolved_entities(conn, [entity], run_id="run-1")
+    storage.insert_resolved_entities(conn, [entity], run_id="run-2")
+
+    count = conn.execute("SELECT count(*) FROM resolved_entities").fetchone()[0]
+    conn.close()
+    assert count == 2
+
+
 def test_insert_and_read_round_trips(tmp_path):
     conn = storage.connect(tmp_path / "test.duckdb")
 

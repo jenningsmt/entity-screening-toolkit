@@ -21,6 +21,27 @@ def _run(db_path):
     )
 
 
+def test_run_screening_twice_against_the_same_db_does_not_collide(tmp_path):
+    """Regression test: entity_id is a deterministic hash of the normalized
+    name (pipeline.py:resolve_entities_from_nsf), so the same real-world
+    entity legitimately recurs with the same entity_id across two separate
+    runs against the same persistent DB — exactly what a long-lived API
+    server does on every POST /runs. This used to raise a DuckDB primary-key
+    violation because resolved_entities keyed on entity_id alone; the key is
+    now (entity_id, run_id)."""
+    db_path = tmp_path / "test.duckdb"
+    manifest_1, scored_1 = _run(db_path)
+    manifest_2, scored_2 = _run(db_path)
+
+    assert manifest_1.run_id != manifest_2.run_id
+    assert {s.entity_id for s in scored_1} == {s.entity_id for s in scored_2}
+
+    conn = storage.connect(db_path)
+    total_rows = conn.execute("SELECT count(*) FROM resolved_entities").fetchone()[0]
+    conn.close()
+    assert total_rows == len(scored_1) + len(scored_2)
+
+
 def test_run_screening_persists_exactly_one_score_row_per_entity(tmp_path):
     db_path = tmp_path / "test.duckdb"
     manifest, scored_entities = _run(db_path)

@@ -38,10 +38,17 @@ CREATE TABLE IF NOT EXISTS raw_opensanctions_targets (
 );
 
 CREATE TABLE IF NOT EXISTS resolved_entities (
-    entity_id VARCHAR PRIMARY KEY,
+    entity_id VARCHAR,
     canonical_name VARCHAR,
     entity_type VARCHAR,
-    run_id VARCHAR
+    run_id VARCHAR,
+    -- entity_id is a deterministic hash of the normalized name (see
+    -- pipeline.py:resolve_entities_from_nsf), so the same real-world entity
+    -- legitimately recurs across separate runs with the same entity_id —
+    -- the key must be scoped per-run, not entity_id alone, or a second call
+    -- to run_screening against the same DB file (exactly what a long-lived
+    -- API server does) raises a primary-key violation.
+    PRIMARY KEY (entity_id, run_id)
 );
 
 CREATE TABLE IF NOT EXISTS screening_hits (
