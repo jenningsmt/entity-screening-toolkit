@@ -63,3 +63,17 @@ def test_blocking_does_not_drop_a_true_match_outside_default_block():
     hits = list(screen_entity(entity, [concern_list]))
 
     assert len(hits) == 1
+
+
+def test_evidence_is_self_contained_without_a_further_join():
+    """docs/requirements.md Section 9a: evidence must be usable as LLM retrieval
+    context (Epic J) without a separate lookup back to the source list."""
+    concern_list = OpenSanctionsList([_source_record("os-1", "ZTE Corporation")])
+    entity = _entity("ZTE Corporation")
+
+    hits = list(screen_entity(entity, [concern_list]))
+
+    assert len(hits) == 1
+    matched_fields = hits[0].evidence["matched_entry_fields"]
+    assert matched_fields["name"] == "ZTE Corporation"
+    assert matched_fields["id"] == "os-1"
