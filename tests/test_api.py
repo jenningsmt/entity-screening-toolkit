@@ -59,7 +59,14 @@ def test_get_run_manifest_reflects_the_run(client):
     run_id = _create_run(client)
     body = client.get(f"/runs/{run_id}/manifest").json()
     assert body["run_id"] == run_id
-    assert len(body["dataset_snapshots"]) == 2
+    # NSF, OpenSanctions, and (auto-included, bundled) DoD 1260H.
+    assert len(body["dataset_snapshots"]) == 3
+    snapshot_sources = {s["source_dataset"] for s in body["dataset_snapshots"]}
+    assert snapshot_sources == {
+        "nsf_award_search",
+        "opensanctions_targets_simple",
+        "dod_section_1260h",
+    }
 
 
 def test_scores_endpoint_never_writes_to_the_database(client, tmp_path):

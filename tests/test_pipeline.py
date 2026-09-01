@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from entity_screening import pipeline
@@ -7,6 +8,7 @@ from entity_screening.scoring.rubric import STOCK_RUBRIC, ScoringRubric
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 NSF_FILE = FIXTURES_DIR / "sample_nsf_awards.json"
 OPENSANCTIONS_FILE = FIXTURES_DIR / "sample_opensanctions_targets.csv"
+DOD_1260H_FIXTURE_FILE = FIXTURES_DIR / "sample_dod_1260h.json"
 
 
 def _run(db_path):
@@ -115,3 +117,42 @@ def test_export_scored_entities_writes_a_distinct_manifest_per_call(tmp_path):
     assert export_manifest_1.export_id != export_manifest_2.export_id
     assert export_manifest_1.rubric != export_manifest_2.rubric
     assert export_manifest_2.rubric["screening_hit_weight"] == 1.0
+
+
+def test_run_screening_checks_the_dod_1260h_list_too(tmp_path):
+    """End-to-end wiring check: a resolved entity matching a DoD 1260H
+    curated entry produces a hit tagged with that list, using a controlled
+    fixture rather than relying on coincidence with the real bundled list."""
+    nsf_file = tmp_path / "nsf_awards.json"
+    nsf_file.write_text(
+        json.dumps(
+            {
+                "response": {
+                    "award": [
+                        {
+                            "id": "9000001",
+                            "awardeeName": "Fixture Military Technology Co., Ltd.",
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    db_path = tmp_path / "test.duckdb"
+    manifest, scored_entities = pipeline.run_screening(
+        nsf_file=nsf_file,
+        nsf_date_start=None,
+        nsf_date_end=None,
+        opensanctions_file=OPENSANCTIONS_FILE,
+        rubric=STOCK_RUBRIC,
+        threshold=0.80,
+        db_path=db_path,
+        dod_1260h_file=DOD_1260H_FIXTURE_FILE,
+    )
+
+    assert any(s.source_dataset == "dod_section_1260h" for s in manifest.dataset_snapshots)
+    hits = [h for s in scored_entities for h in s.screening_hits]
+    dod_hits = [h for h in hits if h.list_name == "dod_section_1260h"]
+    assert len(dod_hits) == 1

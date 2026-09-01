@@ -1,0 +1,1732 @@
+{
+  "source_dataset": "dod_section_1260h",
+  "legal_basis": "Section 1260H of the William M. (\"Mac\") Thornberry National Defense Authorization Act for Fiscal Year 2021 (Public Law 116-283)",
+  "provenance": "Compiled from OpenSanctions' us_dod_chinese_milcorps source.csv artifact (https://data.opensanctions.org/artifacts/us_dod_chinese_milcorps/20260820150718-jrv/source.csv, OpenSanctions last-updated 2026-08-20), itself compiled from the Department of Defense's official Section 1260H releases (see https://www.opensanctions.org/datasets/us_dod_chinese_milcorps/ and https://www.opensanctions.org/programs/US-DOD-1260H/). Filtered to entries with no End date (currently active designations); 21 delisted entries from the raw 397-row source were excluded. Deduplicated by clean name (curly/straight apostrophe variants normalized first) since the raw source carries one row per historical listing event rather than one row per entity.",
+  "curated_at": "2026-09-01",
+  "entities": [
+    {
+      "id": "1260h-0001",
+      "clean_name": "360 Security Technology Inc.",
+      "aliases": [
+        "Qihoo 360"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0002",
+      "clean_name": "Advanced Micro-Fabrication Equipment Inc. China",
+      "aliases": [
+        "AMEC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0003",
+      "clean_name": "Aerospace CH UAV Co., Ltd",
+      "aliases": [
+        "CH UAV",
+        "S-SEA"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0004",
+      "clean_name": "Aviation Industry Corporation of China Ltd.",
+      "aliases": [
+        "AVIC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0005",
+      "clean_name": "AVIC Aviation High-Technology Company Limited",
+      "aliases": [
+        "AVIC Aviation Hi-Tech"
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0006",
+      "clean_name": "AVIC Heavy Machinery Company Limited",
+      "aliases": [
+        "AVIC Heavy Machinery"
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0007",
+      "clean_name": "AVIC Jonhon Optronic Technology Co., Ltd.",
+      "aliases": [
+        "AVIC Jonhon"
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0008",
+      "clean_name": "AVIC Shenyang Aircraft Company Limited",
+      "aliases": [
+        "AVIC Shenyang"
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0009",
+      "clean_name": "AVIC Xi'an Aircraft Industry Group Company Ltd.",
+      "aliases": [
+        "AVIC Xi'an",
+        "Xi'an Aircraft Industry Group Co., Ltd."
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0010",
+      "clean_name": "Jiangxi Hongdu Aviation Industry Co., Ltd.",
+      "aliases": [
+        "Hongdu Aviation"
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0011",
+      "clean_name": "Zhonghang Electronic Measuring Instruments Company Limited",
+      "aliases": [
+        "ZEMIC"
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0012",
+      "clean_name": "Beijing Zhidao Chuangyu Information Technology Co., Ltd.",
+      "aliases": [
+        "Knownsec",
+        "Knownsec,Beijing Kownsec"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0013",
+      "clean_name": "BGI Genomics Co., Ltd.",
+      "aliases": [
+        "BGI"
+      ],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0014",
+      "clean_name": "Chengdu JOUAV Automation Tech Co., Ltd.",
+      "aliases": [
+        "JOUAV"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0015",
+      "clean_name": "Chengdu M&S Electronics Technology Co., Ltd.",
+      "aliases": [
+        "M&S Electronics"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0016",
+      "clean_name": "China Aerospace Science and Industry Corporation Limited",
+      "aliases": [
+        "CASIC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0017",
+      "clean_name": "Aerosun Corporation",
+      "aliases": [
+        "Aerosun"
+      ],
+      "parent_name": "China Aerospace Science and Industry Corporation Limited",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0018",
+      "clean_name": "China Communications Construction Group Limited",
+      "aliases": [
+        "CCCG"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0019",
+      "clean_name": "China Communications Construction Company Limited",
+      "aliases": [
+        "CCCC"
+      ],
+      "parent_name": "China Communications Construction Group Limited",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0020",
+      "clean_name": "China Construction Technology Co., Ltd.",
+      "aliases": [
+        "CCTC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0021",
+      "clean_name": "China Electronics Corporation",
+      "aliases": [
+        "CEC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0022",
+      "clean_name": "China Electronics Technology Group Corporation",
+      "aliases": [
+        "CETC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0023",
+      "clean_name": "Hangzhou Hikvision Digital Technology Co., Ltd.",
+      "aliases": [
+        "Hikvision"
+      ],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0024",
+      "clean_name": "China General Nuclear Power Corporation",
+      "aliases": [
+        "CGN"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0025",
+      "clean_name": "China Mobile Communications Group Co., Ltd.",
+      "aliases": [
+        "China Mobile Comm"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0026",
+      "clean_name": "China Mobile Limited",
+      "aliases": [
+        "China Mobile"
+      ],
+      "parent_name": "China Mobile Communications Group Co., Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0027",
+      "clean_name": "China National Chemical Corporation Ltd.",
+      "aliases": [
+        "ChemChina"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0028",
+      "clean_name": "China National Chemical Engineering Group Corporation",
+      "aliases": [
+        "CNCEC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0029",
+      "clean_name": "China National Nuclear Corporation",
+      "aliases": [
+        "CNNC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0030",
+      "clean_name": "China National Offshore Oil Corporation",
+      "aliases": [
+        "CNOOC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0031",
+      "clean_name": "CNOOC Limited",
+      "aliases": [],
+      "parent_name": "China National Offshore Oil Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0032",
+      "clean_name": "China North Industries Group Corporation Limited",
+      "aliases": [
+        "Norinco Group"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0033",
+      "clean_name": "Inner Mongolia First Machinery Group Co., Ltd.",
+      "aliases": [
+        "Inner Monoglia"
+      ],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0034",
+      "clean_name": "China South Industries Group Corporation",
+      "aliases": [
+        "CSGC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0035",
+      "clean_name": "Costar Group Co., Ltd.",
+      "aliases": [
+        "Costar"
+      ],
+      "parent_name": "China South Industries Group Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0036",
+      "clean_name": "China SpaceSat Co.",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0037",
+      "clean_name": "China State Construction Engineering Corporation Limited",
+      "aliases": [
+        "CSCEC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0038",
+      "clean_name": "China State Shipbuilding Corporation Limited",
+      "aliases": [
+        "CSSC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0039",
+      "clean_name": "China Telecom Group Co., Ltd.",
+      "aliases": [
+        "China Telecom"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0040",
+      "clean_name": "China Telecom Corporation Limited",
+      "aliases": [],
+      "parent_name": "China Telecom Group Co., Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0041",
+      "clean_name": "China Three Gorges Corporation",
+      "aliases": [
+        "CTG"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0042",
+      "clean_name": "China United Network Communications Group Co., Ltd.",
+      "aliases": [
+        "China Unicom"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0043",
+      "clean_name": "China Unicom (Hong Kong) Limited",
+      "aliases": [
+        "China Unicom HK"
+      ],
+      "parent_name": "China United Network Communications Group Co., Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0044",
+      "clean_name": "CloudWalk Technology Co., Ltd",
+      "aliases": [
+        "CloudWalk"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0045",
+      "clean_name": "CRRC Corporation Limited",
+      "aliases": [
+        "CRRC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0046",
+      "clean_name": "Dawning Information Industry Co., Ltd.",
+      "aliases": [
+        "Sugon"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0047",
+      "clean_name": "Global Tone Communication Technology Co Ltd.",
+      "aliases": [
+        "GTCOM"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0048",
+      "clean_name": "Guizhou Aviation Technical Development Co., Ltd.",
+      "aliases": [
+        "Guizhou Aviation Tech"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0049",
+      "clean_name": "Hesai Technology Co., Ltd.",
+      "aliases": [
+        "Hesai"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0050",
+      "clean_name": "Huawei Investment & Holding Co., Ltd.",
+      "aliases": [
+        "Huawei Holding"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0051",
+      "clean_name": "Huawei Technologies Co., Ltd.",
+      "aliases": [
+        "Huawei"
+      ],
+      "parent_name": "Huawei Investment & Holding Co., Ltd.",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0052",
+      "clean_name": "IDG Capital Partners Co., Ltd.",
+      "aliases": [
+        "IDG Capital"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0053",
+      "clean_name": "Inspur Group Co., Ltd.",
+      "aliases": [
+        "Inspur"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0054",
+      "clean_name": "NetPosa Technologies, Ltd.",
+      "aliases": [
+        "NetPosa"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0055",
+      "clean_name": "Semiconductor Manufacturing International Corporation",
+      "aliases": [
+        "SMIC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0056",
+      "clean_name": "Semiconductor Manufacturing International (Beijing) Corporation",
+      "aliases": [
+        "SMIC Beijing"
+      ],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0057",
+      "clean_name": "Semiconductor Manufacturing International (Shenzhen) Corporation",
+      "aliases": [
+        "SMIC Shenzhen"
+      ],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0058",
+      "clean_name": "Semiconductor Manufacturing International (Tianjin) Corporation",
+      "aliases": [
+        "SMIC Tianjin"
+      ],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0059",
+      "clean_name": "Semiconductor Manufacturing South China Corporation",
+      "aliases": [
+        "SMIC South China"
+      ],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0060",
+      "clean_name": "SMIC Holdings Limited",
+      "aliases": [
+        "SMIC Holdings"
+      ],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0061",
+      "clean_name": "SMIC Northern Integrated Circuit Manufacturing (Beijing) Co., Ltd",
+      "aliases": [
+        "SMIC NICM"
+      ],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0062",
+      "clean_name": "SMIC Semiconductor Manufacturing (Shanghai) Co., Ltd",
+      "aliases": [
+        "SMIC Shanghai"
+      ],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-0063",
+      "clean_name": "Shanghai Yitu Network Technology Co., Ltd.",
+      "aliases": [
+        "Yitu"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0064",
+      "clean_name": "Shenzhen DJI Innovation Technology Co., Ltd.",
+      "aliases": [
+        "DJI"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0065",
+      "clean_name": "Wuhan Geosun Navigation Technology Co., Ltd.",
+      "aliases": [
+        "Geosun"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0066",
+      "clean_name": "Yangtze Memory Technologies Co., Ltd.",
+      "aliases": [
+        "YMTC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-0067",
+      "clean_name": "Zhejiang Dahua Technology Co., Ltd.",
+      "aliases": [
+        "Dahua"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2022-10-05"
+    },
+    {
+      "id": "1260h-0068",
+      "clean_name": "Addsino Co. Ltd.",
+      "aliases": [],
+      "parent_name": "China Aerospace Science and Industry Corporation Limited (CASIC)",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0069",
+      "clean_name": "Aerospace CH UAV Co., Ltd (CH UAV)",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0070",
+      "clean_name": "Aerospace Precision Products Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Aerospace Science and Industry Corporation Limited (CASIC)",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0071",
+      "clean_name": "Aisino Corporation",
+      "aliases": [],
+      "parent_name": "China Aerospace Science and Industry Corporation Limited (CASIC)",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0072",
+      "clean_name": "Autel Robotics Co., Ltd.",
+      "aliases": [
+        "Autel Robotics"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0073",
+      "clean_name": "AVIC Aerospace Systems Co., Ltd.",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China Ltd",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0074",
+      "clean_name": "AVIC Airborne Systems Co., Ltd.",
+      "aliases": [
+        "China Avionics Systems Co., Ltd."
+      ],
+      "parent_name": "Aviation Industry Corporation of China Ltd",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0075",
+      "clean_name": "AVIC Asset Management Corporation Ltd.",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China Ltd",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0076",
+      "clean_name": "AVIC Electromechanical Systems Co. Ltd.",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China Ltd",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0077",
+      "clean_name": "AVIC JONHON Optronic Technology Co., Ltd.",
+      "aliases": [
+        "AVIC Jonhon"
+      ],
+      "parent_name": "Aviation Industry Corporation of China, Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0078",
+      "clean_name": "Baicells Technologies Co., Ltd.",
+      "aliases": [
+        "Baicells"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0079",
+      "clean_name": "Beijing Aeronautical Science & Technology Research Institute",
+      "aliases": [
+        "Beijing Research Center"
+      ],
+      "parent_name": "Commercial Aircraft Corporation of China Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0080",
+      "clean_name": "Better Way Enterprises Limited",
+      "aliases": [],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0081",
+      "clean_name": "BGI Group",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0082",
+      "clean_name": "Changhe Aircraft Industries (Group) Co., Ltd.",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0083",
+      "clean_name": "Cheng Du Westone Information Industry Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0084",
+      "clean_name": "Chengdu Dahua Wisdom Information Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "Zhejiang Dahua Technology Co., Ltd",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0085",
+      "clean_name": "China Aerospace Automotive Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Aerospace Science and Industry Corporation Limited (CASIC)",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0086",
+      "clean_name": "China Airport Construction Group Corporation",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0087",
+      "clean_name": "China Cargo Airlines Co., Ltd.",
+      "aliases": [
+        "CCA"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0088",
+      "clean_name": "China Communications Construction Group (Limited)",
+      "aliases": [
+        "CCCG"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0089",
+      "clean_name": "China Communications Constructions USA, Inc.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0090",
+      "clean_name": "China Construction America, Inc.",
+      "aliases": [],
+      "parent_name": "China State Construction Engineering Corporation Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0091",
+      "clean_name": "China COSCO SHIPPING Corporation Limited",
+      "aliases": [
+        "COSCO SHIPPING"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0092",
+      "clean_name": "China IC Capital Co., Ltd.",
+      "aliases": [],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0093",
+      "clean_name": "China International Marine Containers (Group) Co., Ltd.",
+      "aliases": [
+        "CIMC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0094",
+      "clean_name": "China Shipbuilding Trading Co., Ltd.",
+      "aliases": [
+        "CSTC"
+      ],
+      "parent_name": "China State Shipbuilding Corporation Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0095",
+      "clean_name": "China SpaceSat Co., Ltd.",
+      "aliases": [
+        "China SpaceSat"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0096",
+      "clean_name": "China Unicom (BVI) Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China United Network Communications Group Co., Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0097",
+      "clean_name": "China Unicom Group (BVI) Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China United Network Communications Group Co., Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0098",
+      "clean_name": "China United Network Communications Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China United Network Communications Group Co., Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0099",
+      "clean_name": "CloudWalk Technology Co., Ltd.",
+      "aliases": [
+        "CloudWalk"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0100",
+      "clean_name": "COMAC America Corporation",
+      "aliases": [
+        "CAC"
+      ],
+      "parent_name": "Commercial Aircraft Corporation of China Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0101",
+      "clean_name": "Commercial Aircraft Corporation of China Limited",
+      "aliases": [
+        "COMAC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0102",
+      "clean_name": "Contemporary Amperex Technology Co., Ltd.",
+      "aliases": [
+        "CATL"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0103",
+      "clean_name": "COSCO SHIPPING (North America) Inc.",
+      "aliases": [],
+      "parent_name": "China COSCO SHIPPING Corporation Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0104",
+      "clean_name": "CSSC Offshore & Marine Engineering (Group) Company Limited",
+      "aliases": [
+        "COMEC"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0105",
+      "clean_name": "Dawning Information Industry Co., Ltd. (Sugon)",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0106",
+      "clean_name": "Forensic Genomics International",
+      "aliases": [
+        "FGI"
+      ],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0107",
+      "clean_name": "Global Tone Communication Technology Co., Ltd.",
+      "aliases": [
+        "GTCOM"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0108",
+      "clean_name": "GTCOM Technology Corporation",
+      "aliases": [
+        "GTCOM-US"
+      ],
+      "parent_name": "Global Tone Communication Technology Co., Ltd",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0109",
+      "clean_name": "Guangzhou GCI Science & Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0110",
+      "clean_name": "Guangzhou Wenchong Shipyard Co., Ltd.",
+      "aliases": [],
+      "parent_name": "CSSC Offshore & Marine Engineering (Group) Company Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0111",
+      "clean_name": "Harbin First Machinery Group Ltd.",
+      "aliases": [],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0112",
+      "clean_name": "Heilongjiang Northern Tools Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China South Industries Group Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0113",
+      "clean_name": "Huacheng (Tianjin) Ship Leasing Co., Ltd.",
+      "aliases": [],
+      "parent_name": "CSSC Offshore & Marine Engineering (Group) Company Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0114",
+      "clean_name": "Inner Mongolia First Machinery Group Co., Ltd. (Inner Mongolia)",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0115",
+      "clean_name": "John Holland Group Pty Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0116",
+      "clean_name": "John Holland Services Pty Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0117",
+      "clean_name": "Magnificent Tower Limited",
+      "aliases": [],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0118",
+      "clean_name": "MGI Tech Co., Ltd. (MGI)",
+      "aliases": [],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0119",
+      "clean_name": "Oriental Blue Sky Titanium Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China SpaceSat Co., Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0120",
+      "clean_name": "Origincell Technology Co., Ltd.",
+      "aliases": [
+        "Origincell"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0121",
+      "clean_name": "Phoenix Optics Company Limited",
+      "aliases": [],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0122",
+      "clean_name": "Quectel Wireless Solutions Co., Ltd.",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0123",
+      "clean_name": "SDIC Intelligence (Xiamen) Information Co., Ltd.",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0124",
+      "clean_name": "Semiconductor Manufacturing North China (Beijing) Corporation",
+      "aliases": [],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0125",
+      "clean_name": "SenseTime Group, Inc.",
+      "aliases": [
+        "SenseTime"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0126",
+      "clean_name": "Shanghai Aircraft Manufacturing Co., Ltd.",
+      "aliases": [
+        "Assembly Manufacturing Center"
+      ],
+      "parent_name": "Commercial Aircraft Corporation of China Limited",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0127",
+      "clean_name": "Shanghai East China Computer Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0128",
+      "clean_name": "Shenyang Aircraft Design Institute",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0129",
+      "clean_name": "Shenzhen Dajiang Baiwang Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "Shenzhen DJI Innovation Technology Co., Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0130",
+      "clean_name": "SilTech Semiconductor Corporation",
+      "aliases": [],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0131",
+      "clean_name": "Sinotrans & CSC Holdings Co., Ltd.",
+      "aliases": [
+        "SinoTrans"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0132",
+      "clean_name": "SMIC, Americas",
+      "aliases": [],
+      "parent_name": "Semiconductor Manufacturing International Corporation",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0133",
+      "clean_name": "Tencent Holdings Limited",
+      "aliases": [
+        "Tencent"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0134",
+      "clean_name": "Xi'an Aerospace Tianhua Data Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China SpaceSat Co., Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0135",
+      "clean_name": "Xi'an Aircraft Industry Group Co., Ltd.",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China Ltd.",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0136",
+      "clean_name": "Xiamen Meiya Zhongmin Electronic Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "SDIC Intelligence (Xiamen) Information Co., Ltd",
+      "earliest_start_date": "2025-01-07"
+    },
+    {
+      "id": "1260h-0137",
+      "clean_name": "Alibaba Group Holding Limited",
+      "aliases": [
+        "Alibaba"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0138",
+      "clean_name": "Autel Intelligent Technology Corp., Ltd.",
+      "aliases": [
+        "Autel Technology"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0139",
+      "clean_name": "Align Aerospace LLC",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China, Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0140",
+      "clean_name": "Avicopter PLC",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China, Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0141",
+      "clean_name": "AVIC Chengdu Aircraft Co., Ltd.",
+      "aliases": [
+        "ZEMIC",
+        "Zhonghang Electronic Measuring Instruments Company Limited"
+      ],
+      "parent_name": "Aviation Industry Corporation of China, Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0142",
+      "clean_name": "Cirrus Design Corporation",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China, Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0143",
+      "clean_name": "Continental Aerospace Technologies, Inc.",
+      "aliases": [],
+      "parent_name": "Aviation Industry Corporation of China, Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0144",
+      "clean_name": "Baidu, Inc.",
+      "aliases": [
+        "Baidu"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0145",
+      "clean_name": "BGI Americas Corporation",
+      "aliases": [],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0146",
+      "clean_name": "Complete Genomics, Inc.",
+      "aliases": [],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0147",
+      "clean_name": "GBI Diagnostics, Inc.",
+      "aliases": [],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0148",
+      "clean_name": "Innomics Inc.",
+      "aliases": [],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0149",
+      "clean_name": "STOmics Americas Ltd.",
+      "aliases": [],
+      "parent_name": "BGI Group",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0150",
+      "clean_name": "BOE Technology Group Company Limited",
+      "aliases": [
+        "BOE"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0151",
+      "clean_name": "BYD Company Limited",
+      "aliases": [
+        "BYD"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0152",
+      "clean_name": "CALB Group Co., Ltd.",
+      "aliases": [
+        "CALB"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0153",
+      "clean_name": "CETC Cyberspace Security Technology Co., Ltd.",
+      "aliases": [
+        "Chen Du Westone Information Industry Co., Ltd."
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0154",
+      "clean_name": "CETC Digital Technology Co., Ltd.",
+      "aliases": [
+        "Shanghai East China Computer Co., Ltd."
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0155",
+      "clean_name": "CETC Potevio Science & Technology Co., Ltd",
+      "aliases": [
+        "Guangzhou GCI Science & Technology Co., Ltd."
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0156",
+      "clean_name": "ChangXin Memory Technologies, Inc.",
+      "aliases": [
+        "CXMT"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0157",
+      "clean_name": "Addsino Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Aerospace Science and Industry Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0158",
+      "clean_name": "CCCC Design and Consulting Group Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0159",
+      "clean_name": "CCCC First Harbor Engineering Bureau Co. Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0160",
+      "clean_name": "CCCC Second Navigation Engineering Bureau Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0161",
+      "clean_name": "CCCC Third Navigation Engineering Bureau Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0162",
+      "clean_name": "China Communications Construction (USA) Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0163",
+      "clean_name": "China Transportation Materials Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0164",
+      "clean_name": "Shanghai Zhenhua Shipping Co. Ltd.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0165",
+      "clean_name": "ZPMC North America, Inc.",
+      "aliases": [],
+      "parent_name": "China Communications Construction Group (Limited)",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0166",
+      "clean_name": "China Ocean Shipping Company Ltd.",
+      "aliases": [],
+      "parent_name": "China COSCO SHIPPING Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0167",
+      "clean_name": "COSCO SHIPPING Logistics Supply Chain Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China COSCO SHIPPING Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0168",
+      "clean_name": "Shanghai Ship and Shipping Research",
+      "aliases": [],
+      "parent_name": "China COSCO SHIPPING Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0169",
+      "clean_name": "China Information Security Research Institute",
+      "aliases": [],
+      "parent_name": "China Electronics Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0170",
+      "clean_name": "IRICO Group Company, Ltd.",
+      "aliases": [],
+      "parent_name": "China Electronics Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0171",
+      "clean_name": "Shenzhen CEC Blue Ocean Holdings Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Electronics Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0172",
+      "clean_name": "The 6th Research Institute of CEC",
+      "aliases": [],
+      "parent_name": "China Electronics Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0173",
+      "clean_name": "14th Research Institute of CETC",
+      "aliases": [],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0174",
+      "clean_name": "15th Research Institute of CETC",
+      "aliases": [],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0175",
+      "clean_name": "CETC Research Institute 32",
+      "aliases": [],
+      "parent_name": "China Electronics Technology Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0176",
+      "clean_name": "Aspire Technologies (Shenzhen) Limited",
+      "aliases": [],
+      "parent_name": "China Mobile Communications Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0177",
+      "clean_name": "China Mobile Hong Kong (BVI) Limited",
+      "aliases": [],
+      "parent_name": "China Mobile Communications Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0178",
+      "clean_name": "China BlueChemical Limited",
+      "aliases": [],
+      "parent_name": "China National Offshore Oil Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0179",
+      "clean_name": "China North Chemical Research Academy Group Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0180",
+      "clean_name": "Chinese Academy of Ordnance Science",
+      "aliases": [],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0181",
+      "clean_name": "Kiekert USA Inc.",
+      "aliases": [],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0182",
+      "clean_name": "Merit Automotive Electronics Systems S.L.U",
+      "aliases": [],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0183",
+      "clean_name": "North Petroleum International Company Limited",
+      "aliases": [],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0184",
+      "clean_name": "Yunnan Yuanjin Optical Instrument Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China North Industries Group Corporation Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0185",
+      "clean_name": "Baoding Tianwei Baobian Electric Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China South Industries Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0186",
+      "clean_name": "Beijing Beiji Mechanical and Electrical Industry Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China South Industries Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0187",
+      "clean_name": "Changan US R&D Center, Inc.",
+      "aliases": [],
+      "parent_name": "China South Industries Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0188",
+      "clean_name": "China South Industries Group Corporation No. 59 Research Institute Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China South Industries Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0189",
+      "clean_name": "Sichuan Jian'an Industry Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China South Industries Group Corporation",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0190",
+      "clean_name": "Aerospace Star Space Technology Application Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China SpaceSat Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0191",
+      "clean_name": "China Telecom Satellite Communications Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Telecom Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0192",
+      "clean_name": "New Guomai Digital Culture Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Telecom Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0193",
+      "clean_name": "Tianyi Cloud Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Telecom Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0194",
+      "clean_name": "Zhongjie Communications Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China Telecom Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0195",
+      "clean_name": "Beijing Telecom Planning and Designing Institute Company Limited",
+      "aliases": [],
+      "parent_name": "China United Network Communications Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0196",
+      "clean_name": "China Unicom Group Corporation (BVI) Co., Ltd.",
+      "aliases": [],
+      "parent_name": "China United Network Communications Group Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0197",
+      "clean_name": "Shanghai Aircraft Design and Research Institute",
+      "aliases": [],
+      "parent_name": "Commercial Aircraft Corporation of China Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0198",
+      "clean_name": "Guangzhou Wenchuan Heavy Industry Co., Ltd.",
+      "aliases": [],
+      "parent_name": "CSSC Offshore & Marine Engineering (Group) Company Limited",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0199",
+      "clean_name": "EVE Energy Co., Ltd.",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0200",
+      "clean_name": "Hangzhou Yushu Technology Co., Ltd.",
+      "aliases": [
+        "Unitree"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0201",
+      "clean_name": "Hesai Group",
+      "aliases": [
+        "Hesai Technology Co., Ltd."
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0202",
+      "clean_name": "JA Solar Technology Co., Ltd.",
+      "aliases": [
+        "JA Solar"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0203",
+      "clean_name": "MGI Tech Co., Ltd.",
+      "aliases": [
+        "MGI"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0204",
+      "clean_name": "NIO, Inc.",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0205",
+      "clean_name": "Novogene Company Limited",
+      "aliases": [
+        "Novogene"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0206",
+      "clean_name": "Phenix Optical Company Limited",
+      "aliases": [
+        "Phoenix Optics Company Limited"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0207",
+      "clean_name": "Robosense Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0208",
+      "clean_name": "Beijing Meiya Hongshu Technology Co., Ltd.",
+      "aliases": [],
+      "parent_name": "SDIC Intelligence (Xiamen) Information Co., Ltd.",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0209",
+      "clean_name": "Shenzhen DJI Technology Co., Ltd.",
+      "aliases": [
+        "DJI"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0210",
+      "clean_name": "Tianma Microelectronics Co., Ltd.",
+      "aliases": [
+        "Tianma"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0211",
+      "clean_name": "TP-Link Technologies Co., Ltd.",
+      "aliases": [
+        "TP-Link"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0212",
+      "clean_name": "Trina Solar Co., Ltd.",
+      "aliases": [
+        "Trina Solar"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0213",
+      "clean_name": "WuXi AppTec Co., Ltd.",
+      "aliases": [
+        "WuXi AppTec"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    },
+    {
+      "id": "1260h-0214",
+      "clean_name": "Zhongji Innolight Co., Ltd.",
+      "aliases": [
+        "Innolight"
+      ],
+      "parent_name": "",
+      "earliest_start_date": "2026-06-08"
+    }
+  ]
+}

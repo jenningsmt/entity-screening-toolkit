@@ -25,11 +25,13 @@ from entity_screening.common import storage
 from entity_screening.common.manifest import DEFAULT_RUNS_DIR, DatasetSnapshot, ExportManifest, RunManifest
 from entity_screening.common.schema import ResolvedEntity, ScoredEntity, ScreeningHit, SourceRecord
 from entity_screening.ingestion.base import IngestionErrorLog
+from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
+from entity_screening.ingestion.dod_1260h import DoD1260HIngester
 from entity_screening.ingestion.nsf import NSFAwardIngester
 from entity_screening.ingestion.opensanctions import OpenSanctionsTargetsIngester
 from entity_screening.output.export import export_csv, export_excel
 from entity_screening.resolution.normalize import normalize_for_matching
-from entity_screening.screening.lists import OpenSanctionsList
+from entity_screening.screening.lists import DoD1260HList, OpenSanctionsList
 from entity_screening.screening.screen import screen_entity
 from entity_screening.scoring.rubric import ScoringRubric, rubric_to_dict
 from entity_screening.scoring.score import score_entity
@@ -75,6 +77,7 @@ def run_screening(
     threshold: float,
     db_path: Path | str = storage.DEFAULT_DB_PATH,
     runs_dir: Path | str = DEFAULT_RUNS_DIR,
+    dod_1260h_file: Path | str = DEFAULT_DOD_1260H_FILE,
 ) -> tuple[RunManifest, list[ScoredEntity]]:
     """Ingest -> resolve -> screen -> score -> persist.
 
@@ -86,7 +89,10 @@ def run_screening(
     can redirect manifest/export output away from the real
     data/processed/runs/ without patching a module-level constant, which
     wouldn't work anyway since RunManifest's default argument is bound at
-    import time, not looked up per call.
+    import time, not looked up per call. `dod_1260h_file` defaults to the
+    bundled curated snapshot (screening/data/dod_1260h.json) — unlike NSF
+    and OpenSanctions, there's no live source a user needs to point this at
+    each run; the override exists for tests.
     """
     manifest = RunManifest.start()
     run_dir = manifest.run_dir(runs_dir)
@@ -119,6 +125,17 @@ def run_screening(
         )
     )
 
+    dod_ingester = DoD1260HIngester(error_log, data_file=dod_1260h_file)
+    dod_records = list(dod_ingester.stream_records())
+    manifest.add_dataset_snapshot(
+        DatasetSnapshot(
+            source_dataset=dod_ingester.source_dataset,
+            retrieved_at=dod_ingester.retrieval_date.isoformat(),
+            location=str(dod_1260h_file),
+            record_count=len(dod_records),
+        )
+    )
+
     manifest.ingestion_error_counts["total"] = error_log.count
     error_log.close()
 
@@ -126,12 +143,12 @@ def run_screening(
     manifest.match_thresholds = {"screening_threshold": threshold}
 
     entities = resolve_entities_from_nsf(nsf_records)
-    concern_list = OpenSanctionsList(os_records)
+    concern_lists = [OpenSanctionsList(os_records), DoD1260HList(dod_records)]
 
     scored_entities: list[ScoredEntity] = []
     all_hits: list[ScreeningHit] = []
     for entity in entities:
-        hits = list(screen_entity(entity, [concern_list], threshold=threshold))
+        hits = list(screen_entity(entity, concern_lists, threshold=threshold))
         all_hits.extend(hits)
         breakdown = score_entity(entity, hits, rubric=rubric)
         scored_entities.append(
@@ -148,6 +165,7 @@ def run_screening(
     try:
         storage.insert_source_records(conn, "raw_nsf_awards", nsf_records)
         storage.insert_source_records(conn, "raw_opensanctions_targets", os_records)
+        storage.insert_source_records(conn, "raw_dod_1260h", dod_records)
         storage.insert_resolved_entities(conn, entities, manifest.run_id)
         storage.insert_screening_hits(conn, all_hits, manifest.run_id)
         storage.insert_scored_entities(conn, scored_entities)

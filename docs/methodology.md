@@ -70,10 +70,17 @@ exported file's score values can legitimately differ. So:
   characters** (e.g. a university's English name vs. an unrelated commonly-used
   short name in another language). That class of match is out of reach for string
   similarity alone and is a documented, not silently ignored, gap.
-- **V1 covers only NSF Award Search and OpenSanctions.** GLEIF ownership chains,
-  Section 117 disclosures, DoD's 1260H list, the Seven Sons seed list, and OpenAlex
+- **V1 covers NSF Award Search, OpenSanctions, and DoD's Section 1260H list.** GLEIF
+  ownership chains, Section 117 disclosures, the Seven Sons seed list, and OpenAlex
   bibliometric matching are V2/V3 scope (`docs/requirements.md` Section 12) and are
   not reflected in any V1 run's results.
+- **The DoD 1260H list is a static, hand-curated snapshot, not a live feed** (see
+  `docs/data_sources.md`). It's bundled with the package
+  (`entity_screening/screening/data/dod_1260h.json`) and needs periodic manual
+  re-curation from its source — a run's manifest records which snapshot was used via
+  the `dod_section_1260h` dataset snapshot's `location` and `retrieved_at` fields, but
+  it won't ever reflect a more recent designation than whatever's bundled in the
+  codebase at the time.
 
 ## Reproducing a published result
 

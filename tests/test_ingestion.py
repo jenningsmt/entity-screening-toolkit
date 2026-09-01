@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from entity_screening.ingestion.base import IngestionErrorLog
+from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE, DoD1260HIngester
 from entity_screening.ingestion.nsf import NSFAwardIngester
 from entity_screening.ingestion.opensanctions import OpenSanctionsTargetsIngester
 
@@ -59,3 +60,43 @@ def test_opensanctions_ingester_streams_and_tags_provenance(tmp_path):
     assert len(records) == 2
     assert all(r.source_dataset == "opensanctions_targets_simple" for r in records)
     assert error_log.count == 1
+
+
+def test_dod_1260h_ingester_streams_and_tags_provenance(tmp_path):
+    error_log = IngestionErrorLog(tmp_path / "errors.jsonl")
+    ingester = DoD1260HIngester(
+        error_log, data_file=FIXTURES_DIR / "sample_dod_1260h.json"
+    )
+
+    records = list(ingester.stream_records())
+    error_log.close()
+
+    # 3 entities in the fixture, 1 missing clean_name -> 2 good records
+    assert len(records) == 2
+    assert all(r.source_dataset == "dod_section_1260h" for r in records)
+    assert error_log.count == 1
+
+
+def test_dod_1260h_ingester_retrieval_date_defaults_to_curated_at_not_today(tmp_path):
+    """This is a static, dated snapshot — the manifest should say when the
+    snapshot was captured, not when the pipeline happened to run."""
+    error_log = IngestionErrorLog(tmp_path / "errors.jsonl")
+    ingester = DoD1260HIngester(
+        error_log, data_file=FIXTURES_DIR / "sample_dod_1260h.json"
+    )
+    error_log.close()
+
+    assert ingester.retrieval_date == datetime.date(2026, 1, 15)
+
+
+def test_dod_1260h_default_bundled_file_exists_and_parses(tmp_path):
+    """Guards against the real, shipped curated list ever going missing or
+    developing a syntax error."""
+    error_log = IngestionErrorLog(tmp_path / "errors.jsonl")
+    ingester = DoD1260HIngester(error_log, data_file=DEFAULT_DATA_FILE)
+
+    records = list(ingester.stream_records())
+    error_log.close()
+
+    assert len(records) > 100
+    assert error_log.count == 0

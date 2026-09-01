@@ -21,6 +21,11 @@ class RunRequest(BaseModel):
     nsf_date_start: str | None = None
     nsf_date_end: str | None = None
     opensanctions_file: str
+    # DoD's Section 1260H list is small and bundled with the package (see
+    # entity_screening/screening/data/dod_1260h.json) — unlike the other two
+    # sources, there's no live/per-run file a caller needs to supply, so
+    # this is optional purely as a test/override hook, not a normal input.
+    dod_1260h_file: str | None = None
     rubric: dict[str, float] | None = None
     threshold: float = 0.80
 

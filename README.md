@@ -58,8 +58,9 @@ scripts\compose-up.ps1
 
 ## Status
 
-**V1 (minimum viable screening loop) built:** NSF Award Search + OpenSanctions ingestion,
-fuzzy name/alias resolution, entity-of-concern screening, an editable-weight scoring
+**V1 (minimum viable screening loop) built:** NSF Award Search + OpenSanctions
+ingestion, fuzzy name/alias resolution, entity-of-concern screening against both
+OpenSanctions and DoD's Section 1260H list, an editable-weight scoring
 rubric, CSV/Excel export with a reproducibility manifest, a FastAPI layer over the
 pipeline with a Streamlit UI as its thin client, CI (GitHub Actions), a two-container
 Docker Compose setup (API + UI), and a pytest suite including a known-difficult-entity
