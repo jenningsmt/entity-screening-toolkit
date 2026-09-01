@@ -1,0 +1,115 @@
+{
+  "_note": "Real response shapes captured live from api.openalex.org while designing Epic E (see docs/plans/2026-09-01-v3-openalex-bibliometric-affiliation-layer.md), trimmed to the fields entity_screening/bibliometric actually reads. institution_beijing and authors_andrew_felton are genuine real records, including the real tied-ORCID case (author candidates 1 and 3 below share ORCID 0000-0002-1533-6071).",
+
+  "institutions_search_beijing_institute_of_technology": {
+    "results": [
+      {
+        "id": "https://openalex.org/I125839683",
+        "ror": "https://ror.org/01skt4w74",
+        "display_name": "Beijing Institute of Technology",
+        "country_code": "CN",
+        "display_name_acronyms": ["BIT"],
+        "display_name_alternatives": ["Beijing Institute of Technology", "北京理工大学"]
+      }
+    ]
+  },
+
+  "authors_search_andrew_felton_montana_state": {
+    "results": [
+      {
+        "id": "https://openalex.org/A5067979033",
+        "orcid": "https://orcid.org/0000-0002-1533-6071",
+        "display_name": "Andrew J. Felton",
+        "raw_author_names": ["Andrew Felton", "Andrew J Felton", "Andrew J. Felton", "Felton, Andrew"],
+        "affiliations": [
+          {
+            "institution": {
+              "id": "https://openalex.org/I23732399",
+              "display_name": "Montana State University",
+              "country_code": "US"
+            },
+            "years": [2026]
+          }
+        ]
+      },
+      {
+        "id": "https://openalex.org/A5110303932",
+        "orcid": null,
+        "display_name": "Andrew Felton",
+        "raw_author_names": ["Andrew Felton", "Andrew J. Felton", "Felton, Andrew"],
+        "affiliations": [
+          {
+            "institution": {
+              "id": "https://openalex.org/I23732399",
+              "display_name": "Montana State University",
+              "country_code": "US"
+            },
+            "years": [2026]
+          }
+        ]
+      },
+      {
+        "id": "https://openalex.org/A5140693917",
+        "orcid": "https://orcid.org/0000-0002-1533-6071",
+        "display_name": "Andrew J. Felton",
+        "raw_author_names": ["Andrew J. Felton", "Andrew Felton"],
+        "affiliations": [
+          {
+            "institution": {
+              "id": "https://openalex.org/I23732399",
+              "display_name": "Montana State University",
+              "country_code": "US"
+            },
+            "years": [2026]
+          }
+        ]
+      }
+    ]
+  },
+
+  "works_by_author_A5067979033_page_1": {
+    "results": [
+      {
+        "id": "https://openalex.org/W7162201148",
+        "title": "Primary productivity declines when species composition and climate are mismatched",
+        "publication_date": "2026-05-22",
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5030862260",
+              "display_name": "Michael Stemkovski",
+              "orcid": "https://orcid.org/0000-0002-9854-887X"
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I121980950",
+                "display_name": "Utah State University",
+                "country_code": "US"
+              }
+            ],
+            "raw_affiliation_strings": [
+              "Department of Wildland Resources and the Ecology Center, Utah State University, Logan, UT, USA"
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5067979033",
+              "display_name": "Andrew J. Felton",
+              "orcid": "https://orcid.org/0000-0002-1533-6071"
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I23732399",
+                "display_name": "Montana State University",
+                "country_code": "US"
+              }
+            ],
+            "raw_affiliation_strings": ["Montana State University, Bozeman, MT, USA"]
+          }
+        ]
+      }
+    ]
+  }
+}
