@@ -183,6 +183,31 @@ each source's terms.
   records that have both `piFirstName` and `piLastName` populated; records missing
   either are skipped for bibliometric purposes (they're still screened normally by
   every other epic).
+- **Real precision bug, found and fixed during this feature's real-data verification
+  pass, not left as a documented-only limitation:** running `enrich_bibliometric`
+  live against a real NSF PI turned up 27 candidate hits against the bundled DoD
+  1260H list, every one of them a false positive. The actual matched institution
+  was the legitimate, non-military **Chinese Academy of Sciences** — China's
+  foremost civilian science academy, appearing as a co-author's affiliation across
+  more than a dozen of this PI's genuine international climate-science
+  collaborations — fuzzy-matching the DoD 1260H list's real entry "**Chinese
+  Academy of Ordnance Science**" at 0.8387 confidence via `score_pair`'s
+  token-sort fuzzy fallback, comfortably clearing the standard 0.80 screening
+  threshold. This is a real "true negative that looks similar" case (the same class
+  `tests/fixtures/known_difficult_pairs.json` exists to guard against for company
+  names), but it recurs at real scale specifically in bibliometric cross-checking
+  in a way it doesn't in ordinary screening: every co-author's institution across
+  every one of a PI's papers gets checked, not one entity's own name once, so one
+  fuzzy collision compounds across dozens of papers instead of surfacing once.
+  Fixed by giving `cross_check_bibliometric` its own higher default threshold
+  (`DEFAULT_CONCERN_THRESHOLD = 0.90` in `bibliometric/cross_check.py`) — verified
+  against real data that this excludes the false positive (0.8387 < 0.90) while
+  still clearing every real DoD 1260H match already confirmed during Section 117's
+  own real-data pass (exact matches at 1.0) and acronym matches (exactly 0.9, at
+  the boundary). The Streamlit UI's bibliometric enrichment button deliberately
+  does **not** pass the sidebar's general screening-threshold slider into this
+  call, for the same reason — the two thresholds now serve different risk
+  profiles, not one shared value.
 
 ### Seven Sons of National Defence
 

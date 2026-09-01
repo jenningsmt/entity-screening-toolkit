@@ -25,6 +25,9 @@ from pathlib import Path
 
 from entity_screening.bibliometric import openalex_client
 from entity_screening.bibliometric.author_resolve import disambiguate_pi_to_openalex_author
+from entity_screening.bibliometric.cross_check import (
+    DEFAULT_CONCERN_THRESHOLD as DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD,
+)
 from entity_screening.bibliometric.cross_check import cross_check_bibliometric
 from entity_screening.bibliometric.institution_match import resolve_entity_to_openalex_institution
 from entity_screening.bibliometric.openalex_client import FetchFn
@@ -365,7 +368,7 @@ def enrich_bibliometric(
     contact_email: str | None = None,
     institution_threshold: float = DEFAULT_THRESHOLD,
     author_threshold: float = DEFAULT_THRESHOLD,
-    concern_threshold: float = DEFAULT_THRESHOLD,
+    concern_threshold: float = DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD,
     db_path: Path | str = storage.DEFAULT_DB_PATH,
     runs_dir: Path | str = DEFAULT_RUNS_DIR,
     fetch: FetchFn | None = None,
