@@ -31,6 +31,13 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    env:
+      # docker-compose.yml's api service reads this to pass GIT_COMMIT
+      # through as a build arg (see Dockerfile.api) — without it, the image
+      # builds fine but RunManifest.git_commit reads null, exactly the bug
+      # this env var exists to prevent. Locally, scripts/compose-up.ps1 sets
+      # the equivalent value from `git rev-parse HEAD`.
+      GIT_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,6 +75,16 @@ jobs:
             -d '{"nsf_file": "tests/fixtures/sample_nsf_awards.json", "opensanctions_file": "tests/fixtures/sample_opensanctions_targets.csv"}')
           echo "$response"
           echo "$response" | jq -e '.entities_count == 2 and .hits_count == 1'
+
+          # Not just "doesn't crash" — the reproducibility guarantee itself
+          # has to actually hold in the exact environment this project
+          # deploys to. GIT_COMMIT was baked into the api image at build
+          # time (the env: block above); confirm the manifest it produced
+          # actually reflects that, not a null fallen back to silently.
+          run_id=$(echo "$response" | jq -r '.run_id')
+          manifest=$(curl -sf "http://localhost:8000/runs/$run_id/manifest")
+          echo "$manifest"
+          echo "$manifest" | jq -e --arg sha "$GITHUB_SHA" '.git_commit == $sha'
 
       - name: Dump container logs on failure
         if: failure()

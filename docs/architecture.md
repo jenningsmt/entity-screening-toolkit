@@ -125,7 +125,7 @@ streamlit run app.py   # in a second terminal
 **Or via Docker Compose (two containers, wired together):**
 
 ```
-docker compose up --build
+scripts\compose-up.ps1
 ```
 
 `docker-compose.yml` builds `Dockerfile.api` (the FastAPI service, port 8000) and
@@ -137,6 +137,15 @@ container so manifests/exports/the DuckDB file persist on the host across restar
 There is deliberately no single combined image: one container per process is the
 standard Docker pattern, and it mirrors how these two would actually be deployed
 (Section 9's nginx + systemd plan runs them as separate managed processes too).
+
+**Why `scripts\compose-up.ps1` and not a bare `docker compose up --build`:**
+`.dockerignore` excludes `.git` from the build context — shipping this repo's whole
+history into a runtime image just to read one commit hash isn't worth it — so
+`common/manifest.py`'s `_git_commit()` can't shell out to `git rev-parse HEAD` inside
+the API container the way it can natively. `Dockerfile.api` instead bakes the commit
+in at build time via a `GIT_COMMIT` build arg, and the wrapper script is what actually
+supplies that value from your current checkout; a bare `docker compose up --build`
+will silently build without it and `RunManifest.git_commit` will read `null` again.
 
 `--nsf-file` (CLI) / the "NSF awards JSON file" field (UI) accepts a local,
 pre-downloaded NSF Award Search JSON response (the "size-capped demo dataset"

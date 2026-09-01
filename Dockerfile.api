@@ -1,10 +1,21 @@
 # API service: the FastAPI layer over the entity_screening pipeline
 # (entity_screening/api/main.py) — docs/requirements.md Section 9a.
 #
-# Run standalone: docker build -f Dockerfile.api -t entity-screening-api .
+# Run standalone: docker build -f Dockerfile.api --build-arg GIT_COMMIT=$(git rev-parse HEAD) \
+#                     -t entity-screening-api .
 #                  docker run -p 8000:8000 -v "$PWD/data:/app/data" entity-screening-api
-# Or via docker-compose.yml, which wires this up with Dockerfile.streamlit.
+# Or via docker-compose.yml, which wires this up with Dockerfile.streamlit
+# (docker-compose.yml passes GIT_COMMIT through as a build arg too).
 FROM python:3.13-slim
+
+# .git is excluded from the build context (.dockerignore) on purpose — no
+# point shipping this repo's whole history into a runtime image just to
+# read one commit hash. Bake the hash in at build time instead;
+# common/manifest.py's _git_commit() reads it back out of this env var.
+# Defaults to "unknown" so an image built without the arg still starts
+# (RunManifest.git_commit just won't be a real commit) rather than failing.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
 
 WORKDIR /app
 

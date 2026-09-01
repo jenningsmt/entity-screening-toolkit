@@ -1,6 +1,6 @@
 import json
 
-from entity_screening.common.manifest import DatasetSnapshot, ExportManifest, RunManifest
+from entity_screening.common.manifest import DatasetSnapshot, ExportManifest, RunManifest, _git_commit
 
 
 def test_manifest_round_trips_through_disk(tmp_path):
@@ -60,3 +60,20 @@ def test_export_manifest_gets_a_fresh_id_every_call():
     first = ExportManifest.create("run-1", rubric={}, match_thresholds={}, fmt="csv")
     second = ExportManifest.create("run-1", rubric={}, match_thresholds={}, fmt="csv")
     assert first.export_id != second.export_id
+
+
+def test_git_commit_prefers_the_env_var(monkeypatch):
+    """The API container has no .git directory (.dockerignore excludes it);
+    Dockerfile.api bakes the commit in via GIT_COMMIT instead. This must
+    take priority over shelling out to git, not just be a fallback."""
+    monkeypatch.setenv("GIT_COMMIT", "baked-in-abc123")
+    assert _git_commit() == "baked-in-abc123"
+
+
+def test_git_commit_falls_back_to_git_rev_parse_when_env_unset(monkeypatch):
+    monkeypatch.delenv("GIT_COMMIT", raising=False)
+    commit = _git_commit()
+    # Running inside an actual git checkout, so this should resolve to a
+    # real 40-character hex commit hash, not None.
+    assert commit is not None
+    assert len(commit) == 40
