@@ -9,11 +9,16 @@ rapidfuzz
 # UI
 streamlit
 
-# HTTP / API access (NSF, OpenAlex, EDSM-style APIs)
+# HTTP / API access (NSF, OpenAlex, EDSM-style APIs; Streamlit -> API client)
 requests
 
 # Excel export (Epic G)
 openpyxl
 
-# Testing
+# API layer (Section 9a)
+fastapi
+uvicorn[standard]
+
+# Testing (httpx required by FastAPI's TestClient)
 pytest
+httpx

@@ -12,7 +12,13 @@ from pathlib import Path
 
 import duckdb
 
-from entity_screening.common.schema import ResolvedEntity, ScoredEntity, ScreeningHit, SourceRecord
+from entity_screening.common.schema import (
+    MatchStatus,
+    ResolvedEntity,
+    ScoredEntity,
+    ScreeningHit,
+    SourceRecord,
+)
 
 DEFAULT_DB_PATH = Path("data/processed/entity_screening.duckdb")
 
@@ -124,3 +130,48 @@ def insert_scored_entities(
     ]
     if rows:
         conn.executemany("INSERT INTO scored_entities VALUES (?, ?, ?, ?, ?)", rows)
+
+
+def load_resolved_entities(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[ResolvedEntity]:
+    """Reconstructs the ResolvedEntity rows persisted for a run.
+
+    `source_records` always comes back empty: the resolved_entities table
+    doesn't persist which raw records fed into each entity, only the entity
+    itself. Scoring (`scoring/score.py:score_entity`) doesn't read that field,
+    so this is sufficient for re-scoring; a deeper join back to
+    raw_nsf_awards by source_record_id would be needed for anything that
+    does.
+    """
+    rows = conn.execute(
+        "SELECT entity_id, canonical_name, entity_type FROM resolved_entities WHERE run_id = ?",
+        [run_id],
+    ).fetchall()
+    return [
+        ResolvedEntity(
+            entity_id=entity_id,
+            canonical_name=canonical_name,
+            entity_type=entity_type,
+            source_records=(),
+        )
+        for entity_id, canonical_name, entity_type in rows
+    ]
+
+
+def load_screening_hits(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[ScreeningHit]:
+    rows = conn.execute(
+        "SELECT entity_id, list_name, matched_variant, matched_field, confidence, "
+        "evidence, status FROM screening_hits WHERE run_id = ?",
+        [run_id],
+    ).fetchall()
+    return [
+        ScreeningHit(
+            entity_id=entity_id,
+            list_name=list_name,
+            matched_variant=matched_variant,
+            matched_field=matched_field,
+            confidence=confidence,
+            evidence=json.loads(evidence),
+            status=MatchStatus(status),
+        )
+        for entity_id, list_name, matched_variant, matched_field, confidence, evidence, status in rows
+    ]

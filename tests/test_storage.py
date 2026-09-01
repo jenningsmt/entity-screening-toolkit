@@ -65,3 +65,50 @@ def test_insert_and_read_round_trips(tmp_path):
     assert conn.execute("SELECT status FROM screening_hits").fetchone()[0] == "candidate_match"
     assert conn.execute("SELECT total_score FROM scored_entities").fetchone()[0] == 47.5
     conn.close()
+
+
+def test_load_resolved_entities_and_screening_hits_round_trip(tmp_path):
+    conn = storage.connect(tmp_path / "test.duckdb")
+
+    entity = ResolvedEntity(
+        entity_id="e1", canonical_name="Acme Corp", entity_type="organization", source_records=()
+    )
+    storage.insert_resolved_entities(conn, [entity], run_id="run-1")
+
+    hit = ScreeningHit(
+        entity_id="e1",
+        list_name="opensanctions_consolidated",
+        matched_variant="Acme",
+        matched_field="name_variants",
+        confidence=0.95,
+        evidence={"entry_id": "os-1", "matched_entry_fields": {"name": "Acme"}},
+        status=MatchStatus.CANDIDATE_MATCH,
+    )
+    storage.insert_screening_hits(conn, [hit], run_id="run-1")
+
+    loaded_entities = storage.load_resolved_entities(conn, "run-1")
+    loaded_hits = storage.load_screening_hits(conn, "run-1")
+    conn.close()
+
+    assert len(loaded_entities) == 1
+    assert loaded_entities[0].entity_id == "e1"
+    assert loaded_entities[0].canonical_name == "Acme Corp"
+    assert loaded_entities[0].source_records == ()
+
+    assert len(loaded_hits) == 1
+    assert loaded_hits[0].entity_id == "e1"
+    assert loaded_hits[0].confidence == 0.95
+    assert loaded_hits[0].status is MatchStatus.CANDIDATE_MATCH
+    assert loaded_hits[0].evidence["matched_entry_fields"]["name"] == "Acme"
+
+
+def test_load_resolved_entities_scoped_to_run_id(tmp_path):
+    conn = storage.connect(tmp_path / "test.duckdb")
+    entity = ResolvedEntity(
+        entity_id="e1", canonical_name="Acme Corp", entity_type="organization", source_records=()
+    )
+    storage.insert_resolved_entities(conn, [entity], run_id="run-1")
+
+    assert len(storage.load_resolved_entities(conn, "run-1")) == 1
+    assert len(storage.load_resolved_entities(conn, "run-2")) == 0
+    conn.close()
