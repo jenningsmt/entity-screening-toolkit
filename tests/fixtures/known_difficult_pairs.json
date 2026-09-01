@@ -1,0 +1,50 @@
+[
+  {
+    "left": "International Business Machines Corporation",
+    "right": "IBM",
+    "expect_match": true,
+    "reason": "acronym variant"
+  },
+  {
+    "left": "Zhongxing Telecommunication Equipment Corporation",
+    "right": "ZTE Corporation",
+    "expect_match": true,
+    "reason": "acronym variant"
+  },
+  {
+    "left": "Huawei Technologies Co., Ltd.",
+    "right": "Huawei Technologies Company Limited",
+    "expect_match": true,
+    "reason": "corporate-suffix normalization (Co./Ltd. vs Company/Limited)"
+  },
+  {
+    "left": "Societe Generale",
+    "right": "Société Générale",
+    "expect_match": true,
+    "reason": "transliteration variant (accented characters)"
+  },
+  {
+    "left": "Beijing Institute of Technology",
+    "right": "BIT",
+    "expect_match": true,
+    "reason": "acronym variant, skips stopword 'of'"
+  },
+  {
+    "left": "National Institutes of Health",
+    "right": "National Instruments Corporation",
+    "expect_match": false,
+    "reason": "true negative: shares 'National In...' prefix but is a different entity"
+  },
+  {
+    "left": "American Electric Power Company",
+    "right": "American Electric Technologies Inc",
+    "expect_match": false,
+    "reason": "true negative: shares 'American Electric' prefix but is a different entity"
+  },
+  {
+    "left": "Apple Inc.",
+    "right": "Apple Leasing Corporation",
+    "expect_match": false,
+    "reason": "true negative: shares 'Apple' but is an unrelated entity"
+  }
+]

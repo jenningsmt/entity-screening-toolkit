@@ -21,7 +21,28 @@ Built the same way as this author's other independent projects ([ed-sector-surve
 ## Documentation
 
 - [`docs/requirements.md`](docs/requirements.md) — full requirements: data sources, functional requirements (epics/stories/acceptance criteria), technology stack, storage estimates, and deployment plan.
+- [`docs/architecture.md`](docs/architecture.md) — pipeline-stage breakdown and module map.
+- [`docs/methodology.md`](docs/methodology.md) — how to read a run's manifest, and this version's known limitations.
+- [`docs/data_sources.md`](docs/data_sources.md) — per-source license and attribution terms.
+
+## Quickstart
+
+```
+pip install -r requirements.txt
+python -m entity_screening.cli validate
+python -m entity_screening.cli run \
+    --nsf-file tests/fixtures/sample_nsf_awards.json \
+    --opensanctions-file tests/fixtures/sample_opensanctions_targets.csv \
+    --excel
+streamlit run app.py
+pytest
+```
 
 ## Status
 
-Requirements and planning complete. Development not yet started — this README will be updated as each phase (V1/V2/V3, per the roadmap in the requirements doc) ships.
+**V1 (minimum viable screening loop) built:** NSF Award Search + OpenSanctions ingestion,
+fuzzy name/alias resolution, entity-of-concern screening, an editable-weight scoring
+rubric, CSV/Excel export with a reproducibility manifest, a Streamlit review UI, and a
+pytest suite including a known-difficult-entity regression set. V2 (GLEIF ownership
+graph, Section 117 disclosures) and V3 (OpenAlex bibliometric layer) are not yet built,
+per the phased roadmap in `docs/requirements.md` Section 12.

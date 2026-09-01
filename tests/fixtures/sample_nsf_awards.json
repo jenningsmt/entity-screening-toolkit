@@ -1,0 +1,31 @@
+{
+  "response": {
+    "award": [
+      {
+        "id": "1000001",
+        "title": "Collaborative Research: Sample Award One",
+        "awardeeName": "Zhongxing Telecommunication Equipment Corporation",
+        "piFirstName": "Jane",
+        "piLastName": "Doe"
+      },
+      {
+        "id": "1000002",
+        "title": "Sample Award Two",
+        "awardeeName": "Springfield State University",
+        "piFirstName": "John",
+        "piLastName": "Smith"
+      },
+      {
+        "id": "1000003",
+        "title": "Sample Award Three, duplicate awardee",
+        "awardeeName": "Springfield State University",
+        "piFirstName": "Alex",
+        "piLastName": "Nguyen"
+      },
+      {
+        "id": "1000004",
+        "title": "Malformed record missing awardeeName"
+      }
+    ]
+  }
+}
