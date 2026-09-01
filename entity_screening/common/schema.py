@@ -123,6 +123,34 @@ class ResolvedAuthor:
 
 
 @dataclass(frozen=True)
+class TopicSimilarityFlag:
+    """A paper's topic resembles a named critical-technology area (deferred VSS
+    work, docs/plans/2026-09-01-vss-topic-similarity-layer.md).
+
+    Deliberately NOT a ScreeningHit and carries no MatchStatus: a semantic-
+    similarity signal can establish that a paper's topic *resembles* a technology
+    area description, but it cannot establish that the paper has any actual
+    application or risk -- that judgment genuinely needs a subject-matter expert,
+    not this system. This type is advisory-only and is never read by
+    scoring/score.py -- it does not and must not contribute to an entity's
+    numeric score, by design, not by omission."""
+
+    entity_id: str
+    pi_name: str
+    openalex_work_id: str
+    work_title: str
+    technology_area: str
+    corpus_tier: str  # "primary" (DoD) or "secondary" (CET) -- never blended
+    similarity_score: float
+    evidence: dict[str, Any]
+    recommendation: str = (
+        "Topically similar to a named critical-technology area; consult a "
+        "subject-matter expert to assess actual relevance -- this signal "
+        "establishes topical resemblance only, not application or risk."
+    )
+
+
+@dataclass(frozen=True)
 class ScoreBreakdown:
     """A total score decomposed into its contributing factors — never an opaque
     single number without a breakdown available."""
