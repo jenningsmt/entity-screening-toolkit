@@ -23,3 +23,9 @@ uvicorn[standard]
 # plain httpx is deprecated there and triggers a warning on every test run)
 pytest
 httpx2
+
+# Bibliometric topic-similarity layer (deferred VSS work, docs/plans/2026-09-01-vss-...)
+# CPU-only torch wheel avoids pulling unneeded CUDA binaries:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch
+sentence-transformers
