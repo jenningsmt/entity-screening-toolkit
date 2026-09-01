@@ -22,6 +22,8 @@ from fastapi.responses import FileResponse
 
 from entity_screening import pipeline
 from entity_screening.api.dto import (
+    BibliometricEnrichmentRequest,
+    BibliometricEnrichmentSummary,
     OwnershipEnrichmentRequest,
     OwnershipEnrichmentSummary,
     ParentChainOut,
@@ -29,6 +31,7 @@ from entity_screening.api.dto import (
     RunRequest,
     RunSummary,
     ScoredEntityOut,
+    bibliometric_snapshot_manifest_to_dto,
     gleif_snapshot_manifest_to_dto,
     parent_chain_to_dto,
     run_manifest_to_dto,
@@ -208,6 +211,29 @@ def enrich_ownership_route(
     return OwnershipEnrichmentSummary(
         flags_count=len(flags),
         gleif_snapshot=gleif_snapshot_manifest_to_dto(gleif_manifest),
+    )
+
+
+@app.post("/runs/{run_id}/bibliometric", response_model=BibliometricEnrichmentSummary)
+def enrich_bibliometric_route(
+    run_id: str, request: BibliometricEnrichmentRequest
+) -> BibliometricEnrichmentSummary:
+    """Resolves this run's PIs to OpenAlex authors and cross-checks their
+    co-authorship/affiliation history (Epic E) -- a separate call from POST /runs,
+    matching pipeline.enrich_bibliometric's own separation from run_screening. Does
+    not touch scored_entities; call GET /runs/{run_id}/scores afterward (or the
+    export routes) to see the hits reflected in scores."""
+    _load_manifest(run_id)  # 404s cleanly on an unknown run_id
+    bib_manifest, hits = pipeline.enrich_bibliometric(
+        run_id,
+        contact_email=request.contact_email,
+        concern_threshold=request.threshold,
+        db_path=_db_path(),
+        runs_dir=_runs_dir(),
+    )
+    return BibliometricEnrichmentSummary(
+        hits_count=len(hits),
+        bibliometric_snapshot=bibliometric_snapshot_manifest_to_dto(bib_manifest),
     )
 
 

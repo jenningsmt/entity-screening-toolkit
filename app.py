@@ -28,6 +28,14 @@ st.caption(
 # Wider slider ranges for weights whose sensible ceiling isn't simply
 # "a few times the default" — screening_hit_confidence_multiplier and
 # multiple_list_hit_bonus in particular.
+OPENALEX_PRECISION_DISCLAIMER = (
+    "OpenAlex's own stated affiliation-matching precision: \">98% precision and >90% "
+    "recall for most academic institutions. But across the full corpus of all "
+    "scholarly works in OpenAlex (500M+), that's still millions of errors.\" "
+    "(source: OpenAlex's own blog) -- a bibliometric hit inherits this uncertainty "
+    "on top of this project's own author-disambiguation and cross-check confidence."
+)
+
 RUBRIC_SLIDER_RANGES = {
     "screening_hit_weight": (0.0, 150.0),
     "screening_hit_confidence_multiplier": (0.0, 3.0),
@@ -59,6 +67,15 @@ with st.sidebar:
     gleif_lei_file = st.text_input("GLEIF Level 1 (LEI-CDF) CSV", value="")
     gleif_relationships_file = st.text_input("GLEIF Level 2 (RR-CDF) CSV", value="")
     enrich_button = st.button("Enrich with ownership data")
+
+    st.header("Bibliometric affiliation layer (optional, Epic E)")
+    st.caption(
+        "Resolves this run's PIs to OpenAlex authors and checks their co-authorship/"
+        "affiliation history against the same concern lists -- a live API call, no "
+        "file to supply."
+    )
+    openalex_contact_email = st.text_input("Contact email (OpenAlex 'polite pool', optional)", value="")
+    bibliometric_button = st.button("Enrich with bibliometric data")
 
 
 def _api_get(path: str, **params) -> requests.Response:
@@ -157,6 +174,19 @@ if enrich_button:
     else:
         st.warning("Both GLEIF file paths are required to run ownership analysis.")
 
+if bibliometric_button:
+    try:
+        enrichment = _api_post(
+            f"/runs/{run_id}/bibliometric",
+            {"contact_email": openalex_contact_email or None, "threshold": threshold},
+        ).json()
+        st.success(
+            f"Bibliometric enrichment complete: {enrichment['hits_count']} "
+            "candidate hit(s) found."
+        )
+    except requests.RequestException as exc:
+        st.error(f"Bibliometric enrichment failed: {exc}")
+
 try:
     scores = _api_get(f"/runs/{run_id}/scores", **rubric_overrides).json()
 except requests.RequestException as exc:
@@ -209,6 +239,11 @@ if selected_name:
     ownership_flags = scores_by_name[selected_name]["ownership_flags"]
 
     for hit in hits:
+        # Every bibliometric hit's evidence carries "author_resolution" (see
+        # bibliometric/cross_check.py) -- a reliable signal without needing
+        # matched_field exposed over the API's ScreeningHitOut DTO.
+        if "author_resolution" in hit.get("evidence", {}):
+            st.caption(f"⚠️ {OPENALEX_PRECISION_DISCLAIMER}")
         st.json(hit)
     if not hits:
         st.info("No screening hits for this entity.")
