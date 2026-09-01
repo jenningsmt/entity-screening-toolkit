@@ -127,6 +127,24 @@ each source's terms.
   a country, with nothing to fuzzy-match. Real institution-name matching (School Name
   vs. NSF's often-legal/governing-board awardee name) needed a dedicated
   normalization step — see `docs/methodology.md`'s known limitations.
+- **Real end-to-end run against the actual current bulk file, cross-checked against
+  the real bundled DoD 1260H list and a real full OpenSanctions pull (455MB,
+  ~1.22M rows)** — not hypothetical: all 117,152 real rows ingest cleanly (zero
+  errors); of 878 unique named foreign entities, 3 match the real DoD 1260H list
+  (including "Huawei Technologies Co., Ltd." verbatim) and 164 clear the default
+  0.80 threshold against real OpenSanctions entries, among them genuinely useful
+  real findings (Beijing Institute of Technology, Dalian University of Technology,
+  Xidian University, PetroChina, China National Offshore Oil, China Petrochemical).
+  **A real precision caveat surfaced by this same run:** 43 of those 164 matches are
+  against OpenSanctions `Security` (bond/ISIN) records, 20 of them a single generic
+  name ("Ministry Of Finance") that many different countries' government bond
+  issuers share in OpenSanctions' consolidated dataset — a real disclosure naming a
+  foreign "Ministry of Finance" will candidate-match several unrelated countries'
+  bond securities at confidence 1.0. This is visible and inspectable (the hit's
+  evidence carries the matched entry's own `entity_type` and source fields, so a
+  reviewer sees "Security"/ISIN immediately), not hidden — worth knowing before
+  treating a `Ministry Of Finance`-named disclosure's hit count at face value, same
+  spirit as GLEIF's documented Apple Inc./Apple Ltd. collision above.
 
 ## Sources reserved for V3
 
