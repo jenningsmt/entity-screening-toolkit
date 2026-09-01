@@ -31,11 +31,15 @@ from entity_screening.api.dto import (
     RunRequest,
     RunSummary,
     ScoredEntityOut,
+    TopicSimilarityEnrichmentRequest,
+    TopicSimilarityEnrichmentSummary,
     bibliometric_snapshot_manifest_to_dto,
     gleif_snapshot_manifest_to_dto,
     parent_chain_to_dto,
     run_manifest_to_dto,
     scored_entity_to_dto,
+    topic_similarity_flag_to_dto,
+    topic_similarity_manifest_to_dto,
 )
 from entity_screening.common import storage
 from entity_screening.common import manifest as manifest_module
@@ -234,6 +238,32 @@ def enrich_bibliometric_route(
     return BibliometricEnrichmentSummary(
         hits_count=len(hits),
         bibliometric_snapshot=bibliometric_snapshot_manifest_to_dto(bib_manifest),
+    )
+
+
+@app.post("/runs/{run_id}/topic-similarity", response_model=TopicSimilarityEnrichmentSummary)
+def enrich_topic_similarity_route(
+    run_id: str, request: TopicSimilarityEnrichmentRequest
+) -> TopicSimilarityEnrichmentSummary:
+    """Ranks this run's PIs' real papers against the DoD/CET critical-technology
+    reference corpora (deferred VSS work) -- a separate call from both POST /runs
+    and POST /runs/{run_id}/bibliometric, requiring the latter to have already run
+    for this run_id. Advisory only: the resulting flags are never reflected in
+    GET /runs/{run_id}/scores, by design -- they carry no MatchStatus and are
+    never read by scoring."""
+    _load_manifest(run_id)  # 404s cleanly on an unknown run_id
+    extra_kwargs = {}
+    if request.margin is not None:
+        extra_kwargs["margin"] = request.margin
+    try:
+        topic_manifest, flags = pipeline.enrich_topic_similarity(
+            run_id, db_path=_db_path(), runs_dir=_runs_dir(), **extra_kwargs
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return TopicSimilarityEnrichmentSummary(
+        flags=[topic_similarity_flag_to_dto(f) for f in flags],
+        topic_similarity_snapshot=topic_similarity_manifest_to_dto(topic_manifest),
     )
 
 

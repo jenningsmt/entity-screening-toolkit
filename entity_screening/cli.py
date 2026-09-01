@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from entity_screening import pipeline
+from entity_screening.bibliometric.topic_similarity import CET_CORPUS_FILE, DOD_CORPUS_FILE
 from entity_screening.common import storage
 from entity_screening.common.manifest import RunManifest
 from entity_screening.common.schema import MatchStatus
@@ -65,6 +66,13 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
         bibliometric_hits_count = len(bibliometric_hits)
         scored_entities = pipeline.rescore_run(manifest.run_id, rubric, db_path=args.db_file)
 
+    topic_similarity_flags_count = None
+    if args.enrich_topic_similarity:
+        _topic_manifest, topic_flags = pipeline.enrich_topic_similarity(
+            manifest.run_id, db_path=args.db_file
+        )
+        topic_similarity_flags_count = len(topic_flags)
+
     out_csv, csv_manifest = pipeline.export_scored_entities(
         scored_entities,
         source_run_id=manifest.run_id,
@@ -91,6 +99,10 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
         summary += f"Foreign-control flags: {ownership_flags_count}\n"
     if bibliometric_hits_count is not None:
         summary += f"Bibliometric candidate hits: {bibliometric_hits_count}\n"
+    if topic_similarity_flags_count is not None:
+        summary += (
+            f"Topic-similarity flags (advisory, not scored): {topic_similarity_flags_count}\n"
+        )
     summary += f"CSV: {out_csv} (export {csv_manifest.export_id})\nDuckDB: {args.db_file}"
     print(summary)
     return manifest
@@ -101,6 +113,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(
             "Error: --gleif-lei-file and --gleif-relationships-file must be "
             "supplied together (or both omitted to skip ownership analysis)."
+        )
+        return 1
+    if args.enrich_topic_similarity and not args.enrich_bibliometric:
+        print(
+            "Error: --enrich-topic-similarity requires --enrich-bibliometric in "
+            "the same run (topic similarity ranks the PIs enrich_bibliometric "
+            "resolves; it has nothing to walk otherwise)."
         )
         return 1
     run_pipeline(args)
@@ -127,6 +146,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
     if not DEFAULT_DOD_1260H_FILE.exists():
         problems.append(f"Missing bundled DoD 1260H curated list: {DEFAULT_DOD_1260H_FILE}")
+
+    if not DOD_CORPUS_FILE.exists():
+        problems.append(f"Missing bundled DoD critical-technology-areas corpus: {DOD_CORPUS_FILE}")
+    if not CET_CORPUS_FILE.exists():
+        problems.append(f"Missing bundled CET list corpus: {CET_CORPUS_FILE}")
 
     from dataclasses import fields as dc_fields
 
@@ -210,6 +234,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--openalex-contact-email",
         default=None,
         help="Optional contact email sent as OpenAlex's 'mailto' polite-pool parameter",
+    )
+    run_parser.add_argument(
+        "--enrich-topic-similarity",
+        action="store_true",
+        help="Rank this run's PIs' real papers against DoD/CET critical-technology "
+        "reference corpora (deferred VSS work) -- advisory only, never scored. "
+        "Requires --enrich-bibliometric in the same invocation. Needs torch/"
+        "sentence-transformers (see requirements-vss.txt), not installed by default.",
     )
     run_parser.set_defaults(func=_cmd_run)
 
