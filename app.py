@@ -77,6 +77,16 @@ with st.sidebar:
     openalex_contact_email = st.text_input("Contact email (OpenAlex 'polite pool', optional)", value="")
     bibliometric_button = st.button("Enrich with bibliometric data")
 
+    st.header("Topic-similarity flags (optional, advisory only)")
+    st.caption(
+        "Ranks PIs' real papers against DoD/CET critical-technology reference "
+        "corpora -- requires bibliometric enrichment to have run first for this "
+        "run. These are never scored matches: a topical-resemblance signal alone "
+        "cannot establish application or risk, so results are recommendations to "
+        "consult a subject-matter expert, shown separately from the scored table."
+    )
+    topic_similarity_button = st.button("Compute topic-similarity flags")
+
 
 def _api_get(path: str, **params) -> requests.Response:
     response = requests.get(f"{api_base_url}{path}", params=params or None, timeout=30)
@@ -192,6 +202,18 @@ if bibliometric_button:
     except requests.RequestException as exc:
         st.error(f"Bibliometric enrichment failed: {exc}")
 
+if topic_similarity_button:
+    try:
+        result = _api_post(f"/runs/{run_id}/topic-similarity", {}).json()
+        st.session_state["topic_similarity_flags"] = result["flags"]
+        st.success(
+            f"Topic-similarity ranking complete: {len(result['flags'])} advisory "
+            "flag(s) -- not scored matches, see the section below."
+        )
+    except requests.RequestException as exc:
+        detail = exc.response.json().get("detail") if exc.response is not None else str(exc)
+        st.error(f"Topic-similarity ranking failed: {detail}")
+
 try:
     scores = _api_get(f"/runs/{run_id}/scores", **rubric_overrides).json()
 except requests.RequestException as exc:
@@ -257,6 +279,28 @@ if selected_name:
         st.markdown("**Foreign-control flags**")
         for flag in ownership_flags:
             st.json(flag)
+
+st.divider()
+st.subheader("Topic-similarity flags (advisory — not a scored match)")
+st.caption(
+    "A topical-resemblance signal alone cannot establish application or risk -- "
+    "these are recommendations to consult a subject-matter expert, never blended "
+    "into the scored table above or into total_score."
+)
+topic_flags = st.session_state.get("topic_similarity_flags", [])
+if topic_flags:
+    for flag in topic_flags:
+        tier_label = "Primary (DoD)" if flag["corpus_tier"] == "primary" else "Secondary (CET)"
+        st.markdown(
+            f"**{flag['pi_name']}** — *{flag['work_title']}* — "
+            f"similar to **{flag['technology_area']}** ({tier_label}, "
+            f"similarity {flag['similarity_score']:.2f}, runner-up "
+            f"{flag['evidence'].get('runner_up_area')} at "
+            f"{flag['evidence'].get('runner_up_similarity', 0):.2f})"
+        )
+        st.caption(flag["recommendation"])
+else:
+    st.info("No topic-similarity flags yet — use the sidebar button to compute them.")
 
 st.subheader("Export")
 st.caption(
