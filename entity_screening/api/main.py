@@ -91,6 +91,12 @@ def create_run(request: RunRequest) -> RunSummary:
     blocking the event loop) — V1 stays batch, no job queue, per Section 10's
     batch-first NFR."""
     rubric = rubric_from_dict(request.rubric or {})
+    # dod_1260h_file is only forwarded when the caller actually supplied one —
+    # passing None explicitly would override run_screening's own bundled-file
+    # default with None, which the ingester can't open.
+    extra_kwargs = {}
+    if request.dod_1260h_file:
+        extra_kwargs["dod_1260h_file"] = request.dod_1260h_file
     manifest, scored_entities = pipeline.run_screening(
         nsf_file=request.nsf_file,
         nsf_date_start=request.nsf_date_start,
@@ -100,6 +106,7 @@ def create_run(request: RunRequest) -> RunSummary:
         threshold=request.threshold,
         db_path=_db_path(),
         runs_dir=_runs_dir(),
+        **extra_kwargs,
     )
     return RunSummary(
         run_id=manifest.run_id,

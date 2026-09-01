@@ -93,8 +93,39 @@ class OpenSanctionsList(EntityOfConcernList):
             )
 
 
+class DoD1260HList(EntityOfConcernList):
+    """DoD's Section 1260H list of Chinese military companies — Epic D names
+    this alongside OpenSanctions and Seven Sons, and unlike Seven Sons
+    (deliberately sequenced into V3, docs/requirements.md Section 12) it's
+    never assigned to a phase, so it ships now rather than waiting."""
+
+    list_name = "dod_section_1260h"
+
+    def __init__(self, source_records: Iterable[SourceRecord]):
+        self._source_records = list(source_records)
+
+    def entries(self) -> Iterator[ConcernListEntry]:
+        for record in self._source_records:
+            fields = record.fields
+            clean_name = fields.get("clean_name")
+            if not clean_name:
+                continue
+            aliases = fields.get("aliases") or []
+            variants = tuple(
+                v.strip() for v in [clean_name, *aliases] if v and str(v).strip()
+            )
+            yield ConcernListEntry(
+                list_name=self.list_name,
+                entry_id=record.source_record_id,
+                name_variants=variants,
+                entity_type="chinese_military_company",
+                source_fields=fields,
+            )
+
+
 _REGISTRY: dict[str, type[EntityOfConcernList]] = {
     OpenSanctionsList.list_name: OpenSanctionsList,
+    DoD1260HList.list_name: DoD1260HList,
 }
 
 

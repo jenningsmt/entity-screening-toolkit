@@ -15,6 +15,7 @@ from entity_screening import pipeline
 from entity_screening.common import storage
 from entity_screening.common.manifest import RunManifest
 from entity_screening.common.schema import MatchStatus
+from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.screening.lists import registered_lists
 from entity_screening.scoring.rubric import STOCK_RUBRIC, rubric_from_dict
@@ -33,6 +34,7 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
         rubric=rubric,
         threshold=args.threshold,
         db_path=args.db_file,
+        dod_1260h_file=args.dod_1260h_file,
     )
 
     out_csv, csv_manifest = pipeline.export_scored_entities(
@@ -77,8 +79,16 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             "output must never be able to assert a confirmed match."
         )
 
-    if not registered_lists():
-        problems.append("No entity-of-concern lists are registered in screening/lists.py.")
+    expected_lists = {"opensanctions_consolidated", "dod_section_1260h"}
+    missing_lists = expected_lists - registered_lists().keys()
+    if missing_lists:
+        problems.append(
+            "Missing expected entity-of-concern list(s) in screening/lists.py's "
+            f"registry: {sorted(missing_lists)}"
+        )
+
+    if not DEFAULT_DOD_1260H_FILE.exists():
+        problems.append(f"Missing bundled DoD 1260H curated list: {DEFAULT_DOD_1260H_FILE}")
 
     from dataclasses import fields as dc_fields
 
@@ -118,6 +128,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--excel", action="store_true", help="Also export .xlsx")
     run_parser.add_argument(
         "--db-file", type=Path, default=storage.DEFAULT_DB_PATH, help="DuckDB working file"
+    )
+    run_parser.add_argument(
+        "--dod-1260h-file",
+        type=Path,
+        default=DEFAULT_DOD_1260H_FILE,
+        help="DoD Section 1260H curated list JSON (defaults to the bundled snapshot)",
     )
     run_parser.set_defaults(func=_cmd_run)
 

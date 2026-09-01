@@ -37,6 +37,13 @@ CREATE TABLE IF NOT EXISTS raw_opensanctions_targets (
     raw JSON
 );
 
+CREATE TABLE IF NOT EXISTS raw_dod_1260h (
+    source_record_id VARCHAR,
+    source_dataset VARCHAR,
+    retrieval_date DATE,
+    raw JSON
+);
+
 CREATE TABLE IF NOT EXISTS resolved_entities (
     entity_id VARCHAR,
     canonical_name VARCHAR,

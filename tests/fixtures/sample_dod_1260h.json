@@ -1,0 +1,26 @@
+{
+  "source_dataset": "dod_section_1260h",
+  "legal_basis": "Section 1260H of the National Defense Authorization Act for Fiscal Year 2021 (Public Law 116-283)",
+  "provenance": "Synthetic test fixture, not the real curated list.",
+  "curated_at": "2026-01-15",
+  "entities": [
+    {
+      "id": "1260h-test-0001",
+      "clean_name": "Fixture Military Technology Co., Ltd.",
+      "aliases": ["FMT"],
+      "parent_name": "",
+      "earliest_start_date": "2021-06-03"
+    },
+    {
+      "id": "1260h-test-0002",
+      "clean_name": "Fixture Aerospace Group",
+      "aliases": ["FAG", "Fixture Aerospace"],
+      "parent_name": "Fixture Holding Corporation",
+      "earliest_start_date": "2024-01-31"
+    },
+    {
+      "id": "1260h-test-0003",
+      "aliases": ["Missing Name Entity"]
+    }
+  ]
+}

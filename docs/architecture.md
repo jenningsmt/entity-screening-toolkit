@@ -42,7 +42,7 @@ OpenSanctions   ─▶│ opensanctions.py │  malformed records to ingestion_e
                  ┌──────────────┐
                  │ screening/   │  blocks + fuzzy-matches each entity against
                  │ lists.py     │  every registered EntityOfConcernList
-                 │ screen.py    │  (only OpenSanctionsList in V1) -> ScreeningHit
+                 │ screen.py    │  (OpenSanctionsList + DoD1260HList) -> ScreeningHit
                  └──────┬───────┘
                         │ ScreeningHit
                         ▼
@@ -83,9 +83,9 @@ scored entities into a DuckDB file (DuckDB, not SQLite — see
 | Package | Responsibility |
 |---|---|
 | `entity_screening/common/` | Canonical schema (`schema.py`), DuckDB storage (`storage.py`), run/export manifests — reproducibility (`manifest.py`) |
-| `entity_screening/ingestion/` | Per-source ingesters (`nsf.py`, `opensanctions.py`) implementing the `BaseIngester` streaming contract (`base.py`) |
+| `entity_screening/ingestion/` | Per-source ingesters (`nsf.py`, `opensanctions.py`, `dod_1260h.py`) implementing the `BaseIngester` streaming contract (`base.py`) |
 | `entity_screening/resolution/` | Name normalization (`normalize.py`) and fuzzy scoring (`matcher.py`) |
-| `entity_screening/screening/` | Entity-of-concern list registry (`lists.py`) and the screening pass (`screen.py`) |
+| `entity_screening/screening/` | Entity-of-concern list registry (`lists.py`, registered: `OpenSanctionsList`, `DoD1260HList`), the screening pass (`screen.py`), and the bundled DoD 1260H curated snapshot (`data/dod_1260h.json`) |
 | `entity_screening/scoring/` | User-editable rubric (`rubric.py`) and score decomposition (`score.py`) |
 | `entity_screening/output/` | CSV/Excel export (`export.py`) |
 | `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `export_scored_entities` — called by both the CLI and the API |
