@@ -59,15 +59,17 @@ scripts\compose-up.ps1
 
 ## Status
 
-**V1 + V2 built:** NSF Award Search + OpenSanctions ingestion, fuzzy name/alias
-resolution, entity-of-concern screening against both OpenSanctions and DoD's Section
-1260H list, a GLEIF-backed ownership graph with foreign-control (parent-jurisdiction)
-flagging, a Section 117 foreign gift/contract disclosure cross-check, an
+**V1, V2, and V3 all built:** NSF Award Search + OpenSanctions ingestion, fuzzy
+name/alias resolution, entity-of-concern screening against both OpenSanctions and
+DoD's Section 1260H list, a GLEIF-backed ownership graph with foreign-control
+(parent-jurisdiction) flagging, a Section 117 foreign gift/contract disclosure
+cross-check, an OpenAlex bibliometric co-authorship/affiliation layer with PI
+disambiguation (the Seven Sons universities are covered via the existing
+OpenSanctions data, not a dedicated list — see `docs/data_sources.md`), an
 editable-weight scoring rubric, CSV/Excel export with a reproducibility manifest, a
 FastAPI layer over the pipeline with a Streamlit UI as its thin client, CI (GitHub
 Actions, including a real Docker Compose integration job), a two-container Docker
 Compose setup (API + UI), and a pytest suite including a known-difficult-entity
-regression set. The Seven Sons seed list (deliberately sequenced last into V3 by the
-roadmap's own text) and the rest of V3 (OpenAlex bibliometric layer, LLM-based
-evidence-grounded explanations) are not yet built, per the phased roadmap in
-`docs/requirements.md` Section 12 and the Section 9a addendum.
+regression set. Epic J (LLM-based evidence-grounded explanations) and DuckDB VSS
+semantic-abstract matching remain deliberately deferred, V3-adjacent follow-ups per
+`docs/requirements.md` Section 9a — not part of any currently-scheduled phase.
