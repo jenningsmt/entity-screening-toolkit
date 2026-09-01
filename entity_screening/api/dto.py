@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from entity_screening.common.manifest import GleifSnapshotManifest, RunManifest
 from entity_screening.common.schema import ScoredEntity
 from entity_screening.ownership.graph import ParentChain
+from entity_screening.screening.section_117 import DEFAULT_INSTITUTION_THRESHOLD
 
 
 class RunRequest(BaseModel):
@@ -27,6 +28,10 @@ class RunRequest(BaseModel):
     # sources, there's no live/per-run file a caller needs to supply, so
     # this is optional purely as a test/override hook, not a normal input.
     dod_1260h_file: str | None = None
+    # Optional, no bundled default (like GLEIF's files) -- omit to skip the
+    # Section 117 foreign-funding cross-check entirely.
+    section_117_file: str | None = None
+    section_117_institution_threshold: float = DEFAULT_INSTITUTION_THRESHOLD
     rubric: dict[str, float] | None = None
     threshold: float = 0.80
 
