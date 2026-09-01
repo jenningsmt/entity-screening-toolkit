@@ -122,6 +122,22 @@ uvicorn entity_screening.api.main:app --reload
 streamlit run app.py   # in a second terminal
 ```
 
+**Or via Docker Compose (two containers, wired together):**
+
+```
+docker compose up --build
+```
+
+`docker-compose.yml` builds `Dockerfile.api` (the FastAPI service, port 8000) and
+`Dockerfile.streamlit` (the UI, port 8501) as separate containers — Streamlit is a
+client of the API, so it has nothing to talk to on its own; `docker-compose.yml` sets
+`API_BASE_URL=http://api:8000` on the Streamlit container so it resolves the API by
+its compose service name rather than `localhost`. `./data` is mounted into the API
+container so manifests/exports/the DuckDB file persist on the host across restarts.
+There is deliberately no single combined image: one container per process is the
+standard Docker pattern, and it mirrors how these two would actually be deployed
+(Section 9's nginx + systemd plan runs them as separate managed processes too).
+
 `--nsf-file` (CLI) / the "NSF awards JSON file" field (UI) accepts a local,
 pre-downloaded NSF Award Search JSON response (the "size-capped demo dataset"
 pattern from Section 9); omit it and pass `--nsf-date-start`/`--nsf-date-end`

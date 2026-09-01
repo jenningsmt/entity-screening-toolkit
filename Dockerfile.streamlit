@@ -1,0 +1,21 @@
+# UI service: the Streamlit review app — a thin HTTP client of the API
+# service (Dockerfile.api), not a direct pipeline caller. It has nothing to
+# talk to on its own; run it alongside the API container (docker-compose.yml
+# sets API_BASE_URL to the api service's address automatically).
+#
+# Run standalone against an API already listening on the host:
+#   docker build -f Dockerfile.streamlit -t entity-screening-ui .
+#   docker run -p 8501:8501 -e API_BASE_URL=http://host.docker.internal:8000 \
+#       entity-screening-ui
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]

@@ -47,13 +47,20 @@ uvicorn entity_screening.api.main:app --reload
 streamlit run app.py   # in a second terminal
 ```
 
+Or the same two services as containers:
+
+```
+docker compose up --build
+```
+
 ## Status
 
 **V1 (minimum viable screening loop) built:** NSF Award Search + OpenSanctions ingestion,
 fuzzy name/alias resolution, entity-of-concern screening, an editable-weight scoring
 rubric, CSV/Excel export with a reproducibility manifest, a FastAPI layer over the
-pipeline with a Streamlit UI as its thin client, CI (GitHub Actions), a Dockerfile, and
-a pytest suite including a known-difficult-entity regression set. V2 (GLEIF ownership
+pipeline with a Streamlit UI as its thin client, CI (GitHub Actions), a two-container
+Docker Compose setup (API + UI), and a pytest suite including a known-difficult-entity
+regression set. V2 (GLEIF ownership
 graph, Section 117 disclosures) and V3 (OpenAlex bibliometric layer, LLM-based
 evidence-grounded explanations) are not yet built, per the phased roadmap in
 `docs/requirements.md` Section 12 and the Section 9a addendum.
