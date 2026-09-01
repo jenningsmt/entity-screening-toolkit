@@ -38,6 +38,11 @@ def screen_entity(
                     "entry_id": entry.entry_id,
                     "match_basis": best_candidate.match_basis,
                     "entity_type": entry.entity_type,
+                    # The matched entry's own record, inlined rather than left as a
+                    # foreign key — docs/requirements.md Section 9a requires evidence
+                    # to be self-contained enough to hand an LLM (Epic J) without a
+                    # separate join back to the source list.
+                    "matched_entry_fields": entry.source_fields,
                 },
                 status=MatchStatus.CANDIDATE_MATCH,
             )
