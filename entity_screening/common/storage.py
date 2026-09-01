@@ -21,6 +21,7 @@ from entity_screening.common.schema import (
     ScoredEntity,
     ScreeningHit,
     SourceRecord,
+    TopicSimilarityFlag,
 )
 
 DEFAULT_DB_PATH = Path("data/processed/entity_screening.duckdb")
@@ -133,6 +134,38 @@ CREATE TABLE IF NOT EXISTS openalex_author_matches (
     -- legitimately resolve to multiple tied ResolvedAuthor candidates (see
     -- docs/plans/2026-09-01-v3-openalex-bibliometric-affiliation-layer.md's
     -- Finding 3) -- (entity_id, run_id) alone isn't unique here.
+);
+
+CREATE TABLE IF NOT EXISTS paper_embeddings (
+    openalex_work_id VARCHAR,
+    run_id VARCHAR,
+    entity_id VARCHAR,
+    pi_name VARCHAR,
+    work_title VARCHAR,
+    -- BAAI/bge-small-en-v1.5 produces 384-dim vectors. Persisted as plain data
+    -- (safe -- no custom-index WAL risk), not via a persisted HNSW index: DuckDB's
+    -- own current docs flag on-disk HNSW persistence as experimental specifically
+    -- because WAL crash-recovery isn't implemented for custom indexes. An HNSW
+    -- index is built ephemerally in memory per query call instead -- see
+    -- bibliometric/topic_similarity.py.
+    embedding FLOAT[384]
+);
+
+CREATE TABLE IF NOT EXISTS topic_similarity_flags (
+    entity_id VARCHAR,
+    run_id VARCHAR,
+    pi_name VARCHAR,
+    openalex_work_id VARCHAR,
+    work_title VARCHAR,
+    technology_area VARCHAR,
+    corpus_tier VARCHAR,
+    similarity_score DOUBLE,
+    evidence JSON,
+    recommendation VARCHAR
+    -- No PRIMARY KEY: a single paper can legitimately clear both the primary
+    -- (DoD) and secondary (CET) corpus's margin rule independently (see the V3
+    -- VSS plan's binding acceptance criterion 1 -- the two corpora are ranked
+    -- separately, never pooled), producing two distinct rows for one paper.
 );
 
 CREATE TABLE IF NOT EXISTS ownership_flags (
@@ -445,6 +478,100 @@ def load_openalex_author_matches(
             match_basis,
             evidence,
             status,
+        ) in rows
+    ]
+
+
+def insert_paper_embeddings(
+    conn: duckdb.DuckDBPyConnection,
+    embeddings: Iterable[tuple[str, str, str, str, list[float]]],
+    run_id: str,
+) -> None:
+    """Each item is (openalex_work_id, entity_id, pi_name, work_title, embedding)."""
+    rows = [
+        (openalex_work_id, run_id, entity_id, pi_name, work_title, embedding)
+        for openalex_work_id, entity_id, pi_name, work_title, embedding in embeddings
+    ]
+    if rows:
+        conn.executemany("INSERT INTO paper_embeddings VALUES (?, ?, ?, ?, ?, ?)", rows)
+
+
+def load_paper_embeddings(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT openalex_work_id, entity_id, pi_name, work_title, embedding "
+        "FROM paper_embeddings WHERE run_id = ?",
+        [run_id],
+    ).fetchall()
+    return [
+        {
+            "openalex_work_id": openalex_work_id,
+            "entity_id": entity_id,
+            "pi_name": pi_name,
+            "work_title": work_title,
+            "embedding": list(embedding),
+        }
+        for openalex_work_id, entity_id, pi_name, work_title, embedding in rows
+    ]
+
+
+def insert_topic_similarity_flags(
+    conn: duckdb.DuckDBPyConnection, flags: Iterable[TopicSimilarityFlag], run_id: str
+) -> None:
+    """Deletes any existing rows for this run_id first -- same re-runnable
+    "current state" semantics as insert_lei_matches/insert_openalex_author_matches."""
+    conn.execute("DELETE FROM topic_similarity_flags WHERE run_id = ?", [run_id])
+    rows = [
+        (
+            f.entity_id,
+            run_id,
+            f.pi_name,
+            f.openalex_work_id,
+            f.work_title,
+            f.technology_area,
+            f.corpus_tier,
+            f.similarity_score,
+            json.dumps(f.evidence, default=str),
+            f.recommendation,
+        )
+        for f in flags
+    ]
+    if rows:
+        conn.executemany(
+            "INSERT INTO topic_similarity_flags VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
+        )
+
+
+def load_topic_similarity_flags(
+    conn: duckdb.DuckDBPyConnection, run_id: str
+) -> list[TopicSimilarityFlag]:
+    rows = conn.execute(
+        "SELECT entity_id, pi_name, openalex_work_id, work_title, technology_area, "
+        "corpus_tier, similarity_score, evidence, recommendation "
+        "FROM topic_similarity_flags WHERE run_id = ?",
+        [run_id],
+    ).fetchall()
+    return [
+        TopicSimilarityFlag(
+            entity_id=entity_id,
+            pi_name=pi_name,
+            openalex_work_id=openalex_work_id,
+            work_title=work_title,
+            technology_area=technology_area,
+            corpus_tier=corpus_tier,
+            similarity_score=similarity_score,
+            evidence=json.loads(evidence),
+            recommendation=recommendation,
+        )
+        for (
+            entity_id,
+            pi_name,
+            openalex_work_id,
+            work_title,
+            technology_area,
+            corpus_tier,
+            similarity_score,
+            evidence,
+            recommendation,
         ) in rows
     ]
 

@@ -1,0 +1,58 @@
+{
+  "provenance": {
+    "title": "War Department's Critical Technology Areas",
+    "restructured_date": "2025-11-17",
+    "restructured_by": "Emil Michael, Under Secretary of War for Research and Engineering",
+    "primary_source_url": "https://www.cto.mil/cta/",
+    "primary_source_note": "cto.mil was unreachable from the sandboxed environment this file was compiled in (DNS resolution failure, the same class of problem hit with api.research.gov elsewhere in this project). Descriptions below were cross-verified across multiple independent defense-trade sources rather than read directly from the primary page. RE-VERIFY the live cto.mil/cta/ page's exact wording before treating this file as authoritative.",
+    "secondary_sources": [
+      "https://defensescoop.com/2025/11/17/dod-six-critical-technology-areas-emil-michael-dow/",
+      "https://breakingdefense.com/2025/11/from-lasers-to-logistics-pentagon-cto-announces-top-six-tech-priorities/",
+      "https://www.afcea.org/signal-media/under-secretary-war-research-and-engineering-outlines-6-critical-technology-areas",
+      "https://www.executivegov.com/articles/dow-leaders-critical-technology-areas",
+      "https://www.hstoday.us/dod-national-defense/war-department-narrows-tech-focus-to-six-critical-imperatives/"
+    ],
+    "note": "This is NOT the commonly-cited 14-area Critical Technology framework -- that was narrowed to these 6 areas as of the November 2025 restructuring. The organization is now branded 'War Department' on its own current materials, not 'Department of Defense'.",
+    "license": "U.S. Government work -- not subject to copyright in the United States (17 U.S.C. Section 105)",
+    "retrieved_at": "2026-09-01",
+    "confidence_tier": "primary"
+  },
+  "technology_areas": [
+    {
+      "id": "aai",
+      "name": "Applied Artificial Intelligence",
+      "abbreviation": "AAI",
+      "description": "Applied Artificial Intelligence focuses on transforming the organization into an AI-First organization, aligned with the White House AI Action Plan, to revolutionize decision-making and operational efficiency, covering AI from back-office business functions to frontline warfighting."
+    },
+    {
+      "id": "bio",
+      "name": "Biomanufacturing",
+      "abbreviation": "BIO",
+      "description": "Biomanufacturing will harness living systems to enhance resilience and eliminate potential supply chain vulnerabilities, harnessing living systems for mass production of key materials."
+    },
+    {
+      "id": "log",
+      "name": "Contested Logistics Technologies",
+      "abbreviation": "LOG",
+      "description": "Contested Logistics Technologies enable the department to operate and resupply in austere environments, ensuring seamless resupply and operational continuity in contested environments."
+    },
+    {
+      "id": "q_bid",
+      "name": "Quantum and Battlefield Information Dominance",
+      "abbreviation": "Q-BID",
+      "description": "Quantum and Battlefield Information Dominance provides warfighters with freedom of movement on the battlefield, even in degraded or denied environments, improving both longstanding radio-frequency technology and emerging quantum technologies to help forces communicate and navigate."
+    },
+    {
+      "id": "scade",
+      "name": "Scaled Directed Energy",
+      "abbreviation": "SCADE",
+      "description": "Scaled Directed Energy accelerates research and development for this novel weapon system, moving high-energy lasers and microwave-beam weapons from promising small-scale demonstrations into mass production."
+    },
+    {
+      "id": "shy",
+      "name": "Scaled Hypersonics",
+      "abbreviation": "SHY",
+      "description": "Scaled Hypersonics accelerates research and development for this novel weapon system, moving hypersonic missiles from the current array of small-scale prototypes to mass production."
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "provenance": {
+    "title": "Critical and Emerging Technologies List Update",
+    "publisher": "Fast Track Action Subcommittee on Critical and Emerging Technologies, National Science and Technology Council, White House Office of Science and Technology Policy (OSTP)",
+    "published_date": "2024-02",
+    "primary_source_url": "https://bidenwhitehouse.archives.gov/wp-content/uploads/2024/02/Critical-and-Emerging-Technologies-List-2024-Update.pdf",
+    "verified_current_as_of": "2026-09-01",
+    "note": "Downloaded and read directly (the real PDF, not a summary). All 18 categories' subfields are bare 2-4 word technical terms -- zero prose description anywhere in the source document, for any category or subfield. Each category below is embedded as ONE passage concatenating all of its subfield terms together, not per-subfield, to give the embedding more than a 2-3 word fragment to work with. Treated as a secondary, explicitly lower-confidence signal relative to the DoD corpus -- never pooled with it in one ranking (see docs/plans/2026-09-01-vss-topic-similarity-layer.md's binding acceptance criterion 1).",
+    "license": "U.S. Government work, public domain (17 U.S.C. Section 105) -- 'may be distributed and copied with acknowledgment to OSTP' per the document's own copyright notice",
+    "retrieved_at": "2026-09-01",
+    "confidence_tier": "secondary"
+  },
+  "technology_areas": [
+    {
+      "id": "advanced_computing",
+      "name": "Advanced Computing",
+      "subfields": ["Advanced supercomputing, including for AI applications", "Edge computing and devices", "Advanced cloud services", "High-performance data storage and data centers", "Advanced computing architectures", "Advanced modeling and simulation", "Data processing and analysis techniques", "Spatial computing"]
+    },
+    {
+      "id": "advanced_engineering_materials",
+      "name": "Advanced Engineering Materials",
+      "subfields": ["Materials by design and material genomics", "Materials with novel properties to include substantial improvements to existing properties", "Novel and emerging techniques for material property characterization and lifecycle assessment"]
+    },
+    {
+      "id": "advanced_gas_turbine_engine_technologies",
+      "name": "Advanced Gas Turbine Engine Technologies",
+      "subfields": ["Aerospace, maritime, and industrial development and production technologies", "Full-authority digital engine control, hot-section manufacturing, and associated technologies"]
+    },
+    {
+      "id": "advanced_networked_sensing_and_signature_management",
+      "name": "Advanced and Networked Sensing and Signature Management",
+      "subfields": ["Payloads, sensors, and instruments", "Sensor processing and data fusion", "Adaptive optics", "Remote sensing of the Earth", "Geophysical sensing", "Signature management", "Detection and characterization of pathogens and of chemical, biological, radiological and nuclear weapons and materials", "Transportation-sector sensing", "Security-sector sensing", "Health-sector sensing", "Energy-sector sensing", "Manufacturing-sector sensing", "Building-sector sensing", "Environmental-sector sensing"]
+    },
+    {
+      "id": "advanced_manufacturing",
+      "name": "Advanced Manufacturing",
+      "subfields": ["Advanced additive manufacturing", "Advanced manufacturing technologies and techniques including those supporting clean, sustainable, and smart manufacturing, nanomanufacturing, lightweight metal manufacturing, and product and material recovery"]
+    },
+    {
+      "id": "artificial_intelligence",
+      "name": "Artificial Intelligence",
+      "subfields": ["Machine learning", "Deep learning", "Reinforcement learning", "Sensory perception and recognition", "AI assurance and assessment techniques", "Foundation models", "Generative AI systems, multimodal and large language models", "Synthetic data approaches for training, tuning, and testing", "Planning, reasoning, and decision making", "Technologies for improving AI safety, trust, security, and responsible use"]
+    },
+    {
+      "id": "biotechnologies",
+      "name": "Biotechnologies",
+      "subfields": ["Novel synthetic biology including nucleic acid, genome, epigenome, and protein synthesis and engineering, including design tools", "Multi-omics and other biometrology, bioinformatics, computational biology, predictive modeling, and analytical tools for functional phenotypes", "Engineering of sub-cellular, multicellular, and multi-scale systems", "Cell-free systems and technologies", "Engineering of viral and viral delivery systems", "Biotic/abiotic interfaces", "Biomanufacturing and bioprocessing technologies"]
+    },
+    {
+      "id": "clean_energy_generation_and_storage",
+      "name": "Clean Energy Generation and Storage",
+      "subfields": ["Renewable generation", "Renewable and sustainable chemistries, fuels, and feedstocks", "Nuclear energy systems", "Fusion energy", "Energy storage", "Electric and hybrid engines", "Batteries", "Grid integration technologies", "Energy-efficiency technologies", "Carbon management technologies"]
+    },
+    {
+      "id": "data_privacy_security_and_cybersecurity_technologies",
+      "name": "Data Privacy, Data Security, and Cybersecurity Technologies",
+      "subfields": ["Distributed ledger technologies", "Digital assets", "Digital payment technologies", "Digital identity technologies, biometrics, and associated infrastructure", "Communications and network security", "Privacy-enhancing technologies", "Technologies for data fusion and improving data interoperability, privacy, and security", "Distributed confidential computing", "Computing supply chain security", "Security and privacy technologies in augmented reality/virtual reality"]
+    },
+    {
+      "id": "directed_energy",
+      "name": "Directed Energy",
+      "subfields": ["Lasers", "High-power microwaves", "Particle beams"]
+    },
+    {
+      "id": "highly_automated_autonomous_uncrewed_systems_and_robotics",
+      "name": "Highly Automated, Autonomous, and Uncrewed Systems (UxS), and Robotics",
+      "subfields": ["Surface", "Air", "Maritime", "Space", "Supporting digital infrastructure, including High Definition (HD) maps", "Autonomous command and control"]
+    },
+    {
+      "id": "human_machine_interfaces",
+      "name": "Human-Machine Interfaces",
+      "subfields": ["Augmented reality", "Virtual reality", "Human-machine teaming", "Neurotechnologies"]
+    },
+    {
+      "id": "hypersonics",
+      "name": "Hypersonics",
+      "subfields": ["Propulsion", "Aerodynamics and control", "Materials, structures, and manufacturing", "Detection, tracking, characterization, and defense", "Testing"]
+    },
+    {
+      "id": "integrated_communication_and_networking_technologies",
+      "name": "Integrated Communication and Networking Technologies",
+      "subfields": ["Radio-frequency (RF) and mixed-signal circuits, antennas, filters, and components", "Spectrum management and sensing technologies", "Future generation wireless networks", "Optical links and fiber technologies", "Terrestrial/undersea cables", "Satellite-based and stratospheric communications", "Delay-tolerant networking", "Mesh networks/infrastructure independent communication technologies", "Software-defined networking and radios", "Modern data exchange techniques", "Adaptive network controls", "Resilient and adaptive waveforms"]
+    },
+    {
+      "id": "positioning_navigation_and_timing_technologies",
+      "name": "Positioning, Navigation, and Timing (PNT) Technologies",
+      "subfields": ["Diversified PNT-enabling technologies for users and systems in airborne, space-based, terrestrial, subterranean, and underwater settings", "Interference, jamming, and spoofing detection technologies, algorithms, analytics, and networked monitoring systems", "Disruption/denial-resisting and hardening technologies"]
+    },
+    {
+      "id": "quantum_information_and_enabling_technologies",
+      "name": "Quantum Information and Enabling Technologies",
+      "subfields": ["Quantum computing", "Materials, isotopes, and fabrication techniques for quantum devices", "Quantum sensing", "Quantum communications and networking", "Supporting systems"]
+    },
+    {
+      "id": "semiconductors_and_microelectronics",
+      "name": "Semiconductors and Microelectronics",
+      "subfields": ["Design and electronic design automation tools", "Manufacturing process technologies and manufacturing equipment", "Beyond complementary metal-oxide-semiconductor (CMOS) technology", "Heterogeneous integration and advanced packaging", "Specialized/tailored hardware components for artificial intelligence, natural and hostile radiation environments, RF and optical components, high-power devices, and other critical applications", "Novel materials for advanced microelectronics", "Microelectromechanical systems (MEMS) and Nanoelectromechanical systems (NEMS)", "Novel architectures for non-Von Neumann computing"]
+    },
+    {
+      "id": "space_technologies_and_systems",
+      "name": "Space Technologies and Systems",
+      "subfields": ["In-space servicing, assembly, and manufacturing as well as enabling technologies", "Technology enablers for cost-effective on-demand, and reusable space launch systems", "Technologies that enable access to and use of cislunar space and/or novel orbits", "Sensors and data analysis tools for space-based observations", "Space propulsion", "Advanced space vehicle power generation", "Novel space vehicle thermal management", "Crewed spaceflight enablers", "Resilient and path-diverse space communication systems, networks, and ground stations", "Space launch, range, and safety technologies"]
+    }
+  ]
+}

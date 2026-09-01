@@ -288,3 +288,65 @@ class BibliometricSnapshotManifest:
     def load(cls, path: Path | str) -> "BibliometricSnapshotManifest":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls(**data)
+
+
+@dataclass
+class TopicSimilarityManifest:
+    """Describes exactly which embedding model and reference-corpus files produced
+    a run's topic-similarity flags (deferred VSS work).
+
+    Same "current state," run-scoped, overwritten-on-re-run pattern as
+    BibliometricSnapshotManifest. Recording the exact embedding model *and its
+    pinned revision* is the same reproducibility discipline as GleifSnapshotManifest
+    recording dataset versions -- an embedding model is exactly the same class of
+    external dependency whose exact version needs to be part of the reproducibility
+    record.
+    """
+
+    run_id: str
+    computed_at: str
+    embedding_model: str
+    embedding_model_revision: str
+    dod_corpus_file: str
+    cet_corpus_file: str
+    flags_count: int
+
+    @classmethod
+    def create(
+        cls,
+        run_id: str,
+        embedding_model: str,
+        embedding_model_revision: str,
+        dod_corpus_file: Path | str,
+        cet_corpus_file: Path | str,
+        flags_count: int,
+    ) -> "TopicSimilarityManifest":
+        return cls(
+            run_id=run_id,
+            computed_at=datetime.now(timezone.utc).isoformat(),
+            embedding_model=embedding_model,
+            embedding_model_revision=embedding_model_revision,
+            dod_corpus_file=str(dod_corpus_file),
+            cet_corpus_file=str(cet_corpus_file),
+            flags_count=flags_count,
+        )
+
+    def topic_similarity_dir(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        path = Path(base) / self.run_id / "topic_similarity"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def write(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        out_path = self.topic_similarity_dir(base) / "manifest.json"
+        out_path.write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
+        return out_path
+
+    @classmethod
+    def load(cls, path: Path | str) -> "TopicSimilarityManifest":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(**data)
