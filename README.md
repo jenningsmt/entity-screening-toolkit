@@ -27,6 +27,8 @@ Built the same way as this author's other independent projects ([ed-sector-surve
 
 ## Quickstart
 
+Batch CLI (no server required):
+
 ```
 pip install -r requirements.txt
 python -m entity_screening.cli validate
@@ -34,15 +36,24 @@ python -m entity_screening.cli run \
     --nsf-file tests/fixtures/sample_nsf_awards.json \
     --opensanctions-file tests/fixtures/sample_opensanctions_targets.csv \
     --excel
-streamlit run app.py
 pytest
+```
+
+Interactive review UI (two processes — the Streamlit app is a thin client of the API,
+not a direct pipeline caller):
+
+```
+uvicorn entity_screening.api.main:app --reload
+streamlit run app.py   # in a second terminal
 ```
 
 ## Status
 
 **V1 (minimum viable screening loop) built:** NSF Award Search + OpenSanctions ingestion,
 fuzzy name/alias resolution, entity-of-concern screening, an editable-weight scoring
-rubric, CSV/Excel export with a reproducibility manifest, a Streamlit review UI, and a
-pytest suite including a known-difficult-entity regression set. V2 (GLEIF ownership
-graph, Section 117 disclosures) and V3 (OpenAlex bibliometric layer) are not yet built,
-per the phased roadmap in `docs/requirements.md` Section 12.
+rubric, CSV/Excel export with a reproducibility manifest, a FastAPI layer over the
+pipeline with a Streamlit UI as its thin client, CI (GitHub Actions), a Dockerfile, and
+a pytest suite including a known-difficult-entity regression set. V2 (GLEIF ownership
+graph, Section 117 disclosures) and V3 (OpenAlex bibliometric layer, LLM-based
+evidence-grounded explanations) are not yet built, per the phased roadmap in
+`docs/requirements.md` Section 12 and the Section 9a addendum.
