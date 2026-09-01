@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from entity_screening.common.manifest import GleifSnapshotManifest, RunManifest
+from entity_screening.common.manifest import BibliometricSnapshotManifest, GleifSnapshotManifest, RunManifest
 from entity_screening.common.schema import ScoredEntity
 from entity_screening.ownership.graph import ParentChain
 from entity_screening.screening.section_117 import DEFAULT_INSTITUTION_THRESHOLD
@@ -98,6 +98,24 @@ class OwnershipEnrichmentRequest(BaseModel):
     max_depth: int = 10
 
 
+class BibliometricEnrichmentRequest(BaseModel):
+    contact_email: str | None = None
+    threshold: float = 0.80
+
+
+class BibliometricSnapshotManifestOut(BaseModel):
+    run_id: str
+    queried_at: str
+    pi_count: int
+    resolved_author_count: int
+    openalex_api_base_url: str
+
+
+class BibliometricEnrichmentSummary(BaseModel):
+    hits_count: int
+    bibliometric_snapshot: BibliometricSnapshotManifestOut
+
+
 class GleifSnapshotManifestOut(BaseModel):
     run_id: str
     loaded_at: str
@@ -161,6 +179,18 @@ def gleif_snapshot_manifest_to_dto(manifest: GleifSnapshotManifest) -> GleifSnap
         relationship_record_count=manifest.relationship_record_count,
         gleif_lei_file=manifest.gleif_lei_file,
         gleif_relationships_file=manifest.gleif_relationships_file,
+    )
+
+
+def bibliometric_snapshot_manifest_to_dto(
+    manifest: BibliometricSnapshotManifest,
+) -> BibliometricSnapshotManifestOut:
+    return BibliometricSnapshotManifestOut(
+        run_id=manifest.run_id,
+        queried_at=manifest.queried_at,
+        pi_count=manifest.pi_count,
+        resolved_author_count=manifest.resolved_author_count,
+        openalex_api_base_url=manifest.openalex_api_base_url,
     )
 
 

@@ -55,6 +55,16 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
         # rather than an initial one and a second, ownership-aware one.
         scored_entities = pipeline.rescore_run(manifest.run_id, rubric, db_path=args.db_file)
 
+    bibliometric_hits_count = None
+    if args.enrich_bibliometric:
+        _bib_manifest, bibliometric_hits = pipeline.enrich_bibliometric(
+            manifest.run_id,
+            contact_email=args.openalex_contact_email,
+            db_path=args.db_file,
+        )
+        bibliometric_hits_count = len(bibliometric_hits)
+        scored_entities = pipeline.rescore_run(manifest.run_id, rubric, db_path=args.db_file)
+
     out_csv, csv_manifest = pipeline.export_scored_entities(
         scored_entities,
         source_run_id=manifest.run_id,
@@ -79,6 +89,8 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
     )
     if ownership_flags_count is not None:
         summary += f"Foreign-control flags: {ownership_flags_count}\n"
+    if bibliometric_hits_count is not None:
+        summary += f"Bibliometric candidate hits: {bibliometric_hits_count}\n"
     summary += f"CSV: {out_csv} (export {csv_manifest.export_id})\nDuckDB: {args.db_file}"
     print(summary)
     return manifest
@@ -187,6 +199,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="GLEIF Level 2 (RR-CDF) concatenated CSV -- required alongside --gleif-lei-file",
+    )
+    run_parser.add_argument(
+        "--enrich-bibliometric",
+        action="store_true",
+        help="Resolve this run's PIs to OpenAlex authors and cross-check their "
+        "co-authorship/affiliation history (Epic E) -- a live API call, no file to supply",
+    )
+    run_parser.add_argument(
+        "--openalex-contact-email",
+        default=None,
+        help="Optional contact email sent as OpenAlex's 'mailto' polite-pool parameter",
     )
     run_parser.set_defaults(func=_cmd_run)
 
