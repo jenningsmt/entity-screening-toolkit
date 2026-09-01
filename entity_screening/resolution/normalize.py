@@ -75,3 +75,40 @@ def normalize_for_matching(name: str) -> str:
     text = text.lower()
     text = _NON_ALNUM.sub(" ", text)
     return " ".join(text.split())
+
+
+_LEADING_GOVERNANCE_AFFIX = re.compile(
+    r"^\s*(the\s+)?(board of )?regents(,)?\s+(of\s+(the\s+)?)?", re.IGNORECASE
+)
+_LEADING_TRUSTEES_AFFIX = re.compile(r"^\s*trustees\s+of\s+(the\s+)?", re.IGNORECASE)
+_LEADING_ARTICLE = re.compile(r"^\s*the\s+", re.IGNORECASE)
+_TRAILING_BOARD_OF_TRUSTEES = re.compile(r"\s*,?\s*board of trustees\s*$", re.IGNORECASE)
+_TRAILING_THE_PAREN = re.compile(r"\s*\(the\)\s*$", re.IGNORECASE)
+
+
+def strip_institutional_governance_affix(name: str) -> str:
+    """Strips higher-ed governing-board naming conventions.
+
+    Section 117 cross-check use only (see entity_screening/screening/
+    section_117.py's module docstring for why this isn't folded into
+    normalize_for_matching, used by every other source): NSF award data often
+    records a legal awardee name under its governing board ("Regents of the
+    University of Idaho", "Trustees of Boston University", "The University of
+    Central Florida Board of Trustees") where Section 117's `School Name`
+    uses the common name ("University of Idaho", "Boston University",
+    "University of Central Florida"). Verified against real pairs pulled from
+    both sources (docs/plans/2026-09-01-section-117-foreign-gift-disclosure-
+    cross-check.md): without this step these score 0.72-0.81 via
+    resolution/matcher.py:score_pair and land in a different 3-character
+    block; with it, 5 of 6 real pairs go to a clean 1.0 in the same block. A
+    residual system-consortium "obo" naming style (e.g. "Board of Regents,
+    NSHE, obo University of Nevada, Reno") stays a documented miss — see
+    docs/methodology.md.
+    """
+    text = name
+    text = _LEADING_GOVERNANCE_AFFIX.sub("", text)
+    text = _LEADING_TRUSTEES_AFFIX.sub("", text)
+    text = _LEADING_ARTICLE.sub("", text)
+    text = _TRAILING_BOARD_OF_TRUSTEES.sub("", text)
+    text = _TRAILING_THE_PAREN.sub("", text)
+    return text.strip()
