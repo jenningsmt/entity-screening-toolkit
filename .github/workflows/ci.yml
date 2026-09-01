@@ -29,6 +29,32 @@ jobs:
       - name: Run test suite
         run: pytest -q
 
+  # A separate, heavier job from `test` above -- same pattern as `docker` below.
+  # `test` only installs requirements.txt, so tests/test_topic_similarity_real_model.py
+  # skips itself there (sentence-transformers/torch aren't installed). That guard
+  # exists so `test` doesn't fail on a dependency it was never meant to have, but a
+  # skip guard alone would leave this file's actual regression check never run
+  # anywhere in CI -- this job is what makes sure it still is, for real.
+  vss-real-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: requirements-vss.txt
+
+      - name: Install dependencies (CPU-only torch, then requirements-vss.txt)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-vss.txt
+
+      - name: Run the real-model topic-similarity regression guard
+        run: pytest tests/test_topic_similarity_real_model.py -q -v
+
   docker:
     runs-on: ubuntu-latest
     env:
