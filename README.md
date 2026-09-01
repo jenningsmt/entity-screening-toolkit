@@ -47,10 +47,13 @@ uvicorn entity_screening.api.main:app --reload
 streamlit run app.py   # in a second terminal
 ```
 
-Or the same two services as containers:
+Or the same two services as containers (the wrapper sets `GIT_COMMIT` from
+your current checkout before building, so the "Run provenance" panel in the
+UI shows a real commit hash instead of null — a bare `docker compose up
+--build` will silently skip that):
 
 ```
-docker compose up --build
+scripts\compose-up.ps1
 ```
 
 ## Status

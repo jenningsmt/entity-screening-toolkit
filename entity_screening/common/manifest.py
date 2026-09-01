@@ -10,6 +10,7 @@ this project's V1 scale doesn't need a long-lived provenance database).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -21,6 +22,18 @@ DEFAULT_RUNS_DIR = Path("data/processed/runs")
 
 
 def _git_commit() -> str | None:
+    """The commit this code is running against, for the RunManifest.
+
+    Checks GIT_COMMIT first — the API container (Dockerfile.api) bakes this
+    in at build time via an ARG/ENV pair, since .dockerignore deliberately
+    excludes .git from the build context (no point shipping this repo's
+    whole history into a runtime image just to read one 40-character hash).
+    Falls back to `git rev-parse HEAD` for native runs — the CLI, or uvicorn
+    run directly on the host — where an actual .git directory is present.
+    """
+    env_commit = os.environ.get("GIT_COMMIT")
+    if env_commit:
+        return env_commit
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],

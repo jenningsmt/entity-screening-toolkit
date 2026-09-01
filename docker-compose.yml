@@ -3,6 +3,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      # Read from the host's GIT_COMMIT env var — scripts/compose-up.ps1 sets
+      # this from `git rev-parse HEAD` for local dev; CI sets it to
+      # github.sha. Without it, this defaults to empty and the image falls
+      # back to Dockerfile.api's own ARG default ("unknown").
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
     ports:
       - "8000:8000"
     volumes:

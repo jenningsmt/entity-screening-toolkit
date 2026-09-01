@@ -34,7 +34,7 @@ exported file's score values can legitimately differ. So:
 |---|---|
 | `run_id` | Unique identifier for this run; every row exported under it carries this as `run_id`. |
 | `started_at` / `finished_at` | UTC timestamps bounding the run. |
-| `git_commit` | The exact commit of this codebase the run executed against, if run from a git checkout. |
+| `git_commit` | The exact commit of this codebase the run executed against — read from a `GIT_COMMIT` env var if set (how the API container gets it; see `Dockerfile.api` and `scripts/compose-up.ps1`), otherwise from `git rev-parse HEAD` for native runs. `null` if neither is available. |
 | `dataset_snapshots` | Per source: `source_dataset`, `retrieved_at`, `location` (file path or API endpoint), and `record_count` — the exact data snapshot used. |
 | `rubric` | The `ScoringRubric` weights active when the run was created — historical, see above. |
 | `match_thresholds` | The screening confidence threshold applied during screening (this one doesn't drift — screening, unlike scoring, isn't redone on rescore). |
