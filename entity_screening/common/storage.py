@@ -189,6 +189,26 @@ def load_raw_record_fields(
     return [json.loads(raw) for (raw,) in rows]
 
 
+def load_raw_records(conn: duckdb.DuckDBPyConnection, table: str, run_id: str) -> list[SourceRecord]:
+    """Like load_raw_record_fields, but reconstructs full SourceRecords -- e.g.
+    enrich_bibliometric rebuilding the same OpenSanctionsList/DoD1260HList a run's
+    original screen_entity call used, from what's already persisted, rather than
+    requiring the caller to re-supply file paths for a source that hasn't changed."""
+    rows = conn.execute(
+        f"SELECT source_record_id, source_dataset, retrieval_date, raw FROM {table} WHERE run_id = ?",
+        [run_id],
+    ).fetchall()
+    return [
+        SourceRecord(
+            source_dataset=source_dataset,
+            retrieval_date=retrieval_date,
+            source_record_id=source_record_id,
+            fields=json.loads(raw),
+        )
+        for source_record_id, source_dataset, retrieval_date, raw in rows
+    ]
+
+
 def insert_resolved_entities(
     conn: duckdb.DuckDBPyConnection, entities: Iterable[ResolvedEntity], run_id: str
 ) -> None:
