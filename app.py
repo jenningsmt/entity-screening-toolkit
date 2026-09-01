@@ -6,8 +6,12 @@ arrived over HTTP, exactly as any other API consumer would see it.
 Run with (two terminals):
     uvicorn entity_screening.api.main:app --reload
     streamlit run app.py
+Or via `docker compose up` (see docker-compose.yml), which points this at
+the api container automatically through the API_BASE_URL env var.
 """
 from __future__ import annotations
+
+import os
 
 import pandas as pd
 import requests
@@ -31,7 +35,9 @@ RUBRIC_SLIDER_RANGES = {
 }
 
 with st.sidebar:
-    api_base_url = st.text_input("API base URL", value="http://localhost:8000").rstrip("/")
+    api_base_url = st.text_input(
+        "API base URL", value=os.environ.get("API_BASE_URL", "http://localhost:8000")
+    ).rstrip("/")
 
     st.header("Data sources")
     nsf_file = st.text_input("NSF awards JSON file", value="tests/fixtures/sample_nsf_awards.json")

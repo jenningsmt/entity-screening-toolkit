@@ -1,0 +1,18 @@
+# API service: the FastAPI layer over the entity_screening pipeline
+# (entity_screening/api/main.py) — docs/requirements.md Section 9a.
+#
+# Run standalone: docker build -f Dockerfile.api -t entity-screening-api .
+#                  docker run -p 8000:8000 -v "$PWD/data:/app/data" entity-screening-api
+# Or via docker-compose.yml, which wires this up with Dockerfile.streamlit.
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "entity_screening.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
