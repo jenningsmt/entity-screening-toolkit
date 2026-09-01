@@ -172,6 +172,32 @@ Unlike the four ED tools, everything this project touches is public, open data �
 - **A short recorded demo (GIF or 60–90 second video) at the top of the README** is still worth having — a self-hosted instance removes the free-tier cold-start quirk, but a recording is cheap insurance against the instance being paused, mid-patch, or simply retired after the planned hosting window ends while the GitHub repo (and README) live on indefinitely.
 - The GitHub repo itself, following the documentation standard already set by the four ED repos (architecture breakdown, methodology doc, explicit non-goals up front per Epic I), remains the primary artifact — the hosted demo is a convenience layer on top of it, not a replacement for it, and especially so here since the hosted instance has a planned end date and the repo doesn't.
 
+## 9a. Adjustments Following FinchAI/ARGUS Research (added while still in V1 — see `finchai-argus-tech-research.md`)
+
+Reading FinchAI's own open technical postings (not just the Product Analyst one) surfaced enough real signal about their actual stack and ARGUS's own architecture to justify a few changes, made now specifically because V1 isn't far enough along for them to be costly. Each is defended on its own engineering merits, not adopted just because FinchAI does it — see the "deliberately not adopted" list at the end for the ones that didn't clear that bar.
+
+**Architecture change — add a FastAPI layer under Streamlit.** Confirmed: FinchAI's own data/visualization platform (very likely ARGUS or a close sibling) is built on Python/FastAPI with a separate frontend, and "API design"/"REST API interactions"/"microservices" appear across multiple of their postings. Streamlit remains the demo UI, but it should be a thin consumer of a REST API sitting over the `entity_screening` engine package, not the entire application. This is better architecture regardless of FinchAI, and it keeps the door open to a real frontend later without rework.
+
+**New epic — Epic J: Evidence-Grounded Explanation Generation (V3-adjacent).** This is the one substantive gap the research surfaced: the project as scoped is pure structured matching (fuzzy names, confidence scores), while ARGUS's own stated differentiator, per NSF's program materials, is a RAG pipeline and "AI agents" layered on top of the entity knowledge base — and the AI/ML Engineer posting is built entirely around that (embedding generation, retrieval, prompt assembly, LLM integration).
+
+- *As an analyst, I want a natural-language explanation of why a candidate match was flagged, grounded strictly in its retrieved evidence, so I can understand a result without reading raw scoring fields.*
+- Acceptance: the explanation generator is only given the specific evidence records (matched name variant, source dataset, contributing score factors) already produced by Epics D/F as its context — it is never allowed to assert anything beyond what that evidence supports. This is a real RAG constraint, not decoration, and it's the same "transparent, trustworthy" principle FinchAI states as its own differentiator, not just a stack imitation.
+- Sequencing: proposed for V3 alongside or after the bibliometric layer, not V1 — but flagged now because it changes a design decision that's cheap now and expensive later (below).
+
+**Schema discipline, effective immediately (affects Epics A and D, no new scope):** evidence records produced by ingestion and screening should be structured, source-cited, and self-contained from V1 onward — clean enough to hand directly to an LLM as retrieval context in Epic J without restructuring. This costs nothing extra now; it would cost real rework if evidence records were designed ad hoc in V1/V2 and only made LLM-ready when Epic J actually starts.
+
+**Bibliometric layer addition — DuckDB's vector-similarity-search (VSS) extension for Epic E.** Semantic matching over OpenAlex paper abstracts/titles, not just exact or fuzzy name matching, is a genuinely better fit for that specific dataset (unstructured text) than name-matching alone — and it's a real, defensible way to gain vector-search experience (named as a preferred skill twice across FinchAI's postings) without abandoning the embedded, no-server DuckDB architecture already chosen for everything else.
+
+**Deployment change — provision Lightsail via Terraform, ideally CDKTF (Python bindings).** FinchAI's Full Stack Developer posting names "CDKTF/terraform" directly. This doesn't change the hosting decision (Lightsail, $12/month, 6-month term — all still stand), only how the instance gets stood up: infrastructure-as-code instead of manual console setup, and CDKTF specifically keeps the whole project in Python rather than introducing HCL as a second language.
+
+**Testing/packaging made explicit, not just implicit (Epics H and I):** CI/CD (GitHub Actions running the pytest suite on push) and a Dockerfile for the API layer should be treated as acceptance criteria now rather than assumed later — both already worked well in `ed-colony-scout`'s CI setup, and both are named directly in FinchAI's Software Engineer posting.
+
+**Deliberately not adopted, so it reads as a decision rather than an oversight:**
+- **AWS GovCloud** — exists to handle classified/export-controlled workloads; pure cost and friction for an open-data hobby project with no payoff.
+- **Formal RMF/ATO accreditation** — a real DoD/IC compliance process named in the Software Architect posting, entirely irrelevant without an actual government customer.
+- **A full Vue.js frontend** — real engineering scope for uncertain benefit right now; the FastAPI layer above preserves the option without requiring it today.
+- **Stating the FinchAI connection in the public README.** Making good architecture decisions that happen to overlap with what was learned here is legitimate engineering judgment; writing "this mirrors FinchAI's job postings" into the repo itself would read as reverse-engineering the interview rather than genuine engineering interest. The "why" belongs in a cover letter or an interview conversation, not baked into the public artifact.
+
 ## 10. Non-Functional Requirements
 
 - **Explainability first:** every score must be traceable to underlying evidence records — no black-box outputs.
