@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from entity_screening import pipeline
 from entity_screening.common import storage
 from entity_screening.scoring.rubric import STOCK_RUBRIC, ScoringRubric
@@ -9,6 +11,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 NSF_FILE = FIXTURES_DIR / "sample_nsf_awards.json"
 OPENSANCTIONS_FILE = FIXTURES_DIR / "sample_opensanctions_targets.csv"
 DOD_1260H_FIXTURE_FILE = FIXTURES_DIR / "sample_dod_1260h.json"
+SECTION_117_FIXTURE_FILE = FIXTURES_DIR / "sample_section_117.xlsx"
 
 
 def _run(db_path):
@@ -156,3 +159,74 @@ def test_run_screening_checks_the_dod_1260h_list_too(tmp_path):
     hits = [h for s in scored_entities for h in s.screening_hits]
     dod_hits = [h for h in hits if h.list_name == "dod_section_1260h"]
     assert len(dod_hits) == 1
+
+
+def test_run_screening_with_section_117_file_produces_a_hit_via_existing_rubric_factors(tmp_path):
+    """End-to-end wiring check, same shape as the DoD 1260H one above: a
+    resolved entity whose disclosed Section 117 funder matches a concern-list
+    entry produces a hit tagged with the right list_name, and contributes to
+    the score via the *existing* screening_hit_weight/multiple_list_hit_bonus
+    rubric factors -- proving no scoring changes were actually needed."""
+    nsf_file = tmp_path / "nsf_awards.json"
+    nsf_file.write_text(
+        json.dumps(
+            {
+                "response": {
+                    "award": [
+                        {"id": "9000002", "awardeeName": "Fixture State University"}
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    opensanctions_file = tmp_path / "opensanctions.csv"
+    opensanctions_file.write_text(
+        "id,schema,name,aliases\n"
+        "os-fx1,Organization,Fixture Sovereign Wealth Fund,\n",
+        encoding="utf-8",
+    )
+
+    db_path = tmp_path / "test.duckdb"
+    manifest, scored_entities = pipeline.run_screening(
+        nsf_file=nsf_file,
+        nsf_date_start=None,
+        nsf_date_end=None,
+        opensanctions_file=opensanctions_file,
+        rubric=STOCK_RUBRIC,
+        threshold=0.80,
+        db_path=db_path,
+        section_117_file=SECTION_117_FIXTURE_FILE,
+    )
+
+    assert any(
+        s.source_dataset == "section_117_foreign_funding_disclosure"
+        for s in manifest.dataset_snapshots
+    )
+    hits = [h for s in scored_entities for h in s.screening_hits]
+    section_117_hits = [h for h in hits if h.list_name == "section_117_foreign_funding_disclosure"]
+    # The fixture has two separate disclosure rows naming the same funder for
+    # this school (a Restricted Contract row and a Foreign Source Owner Name
+    # row) -- both independently clear both thresholds, so two hits.
+    assert len(section_117_hits) == 2
+    assert all(c.confidence == 1.0 for c in section_117_hits)
+
+    scored = next(s for s in scored_entities if s.screening_hits)
+    assert scored.score.total == pytest.approx(
+        STOCK_RUBRIC.screening_hit_weight
+        * (1.0 * STOCK_RUBRIC.screening_hit_confidence_multiplier)
+    )
+
+
+def test_run_screening_without_section_117_file_is_unchanged(tmp_path):
+    """Confirms existing behavior is completely unaffected when the optional
+    section_117_file argument is simply omitted."""
+    db_path = tmp_path / "test.duckdb"
+    manifest, scored_entities = _run(db_path)
+
+    assert not any(
+        s.source_dataset == "section_117_foreign_funding_disclosure"
+        for s in manifest.dataset_snapshots
+    )
+    hits = [h for s in scored_entities for h in s.screening_hits]
+    assert not any(h.list_name == "section_117_foreign_funding_disclosure" for h in hits)

@@ -105,6 +105,11 @@ def create_run(request: RunRequest) -> RunSummary:
     extra_kwargs = {}
     if request.dod_1260h_file:
         extra_kwargs["dod_1260h_file"] = request.dod_1260h_file
+    if request.section_117_file:
+        extra_kwargs["section_117_file"] = request.section_117_file
+        extra_kwargs["section_117_institution_threshold"] = (
+            request.section_117_institution_threshold
+        )
     manifest, scored_entities = pipeline.run_screening(
         nsf_file=request.nsf_file,
         nsf_date_start=request.nsf_date_start,

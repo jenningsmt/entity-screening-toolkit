@@ -46,6 +46,9 @@ with st.sidebar:
         "OpenSanctions targets.simple.csv", value="tests/fixtures/sample_opensanctions_targets.csv"
     )
     threshold = st.slider("Screening match threshold", 0.0, 1.0, 0.80, 0.01)
+    section_117_file = st.text_input(
+        "Section 117 foreign funding disclosure .xlsx (optional)", value=""
+    )
     run_button = st.button("Run screening", type="primary")
 
     st.header("Ownership analysis (optional, Epic C)")
@@ -100,10 +103,14 @@ with st.sidebar:
 
 
 def _start_new_run() -> str:
-    summary = _api_post(
-        "/runs",
-        {"nsf_file": nsf_file, "opensanctions_file": opensanctions_file, "threshold": threshold},
-    ).json()
+    payload = {
+        "nsf_file": nsf_file,
+        "opensanctions_file": opensanctions_file,
+        "threshold": threshold,
+    }
+    if section_117_file:
+        payload["section_117_file"] = section_117_file
+    summary = _api_post("/runs", payload).json()
     st.session_state["run_id"] = summary["run_id"]
     return summary["run_id"]
 

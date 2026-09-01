@@ -18,6 +18,7 @@ from entity_screening.common.schema import MatchStatus
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.screening.lists import registered_lists
+from entity_screening.screening.section_117 import DEFAULT_INSTITUTION_THRESHOLD
 from entity_screening.scoring.rubric import STOCK_RUBRIC, rubric_from_dict
 
 
@@ -35,6 +36,8 @@ def run_pipeline(args: argparse.Namespace) -> RunManifest:
         threshold=args.threshold,
         db_path=args.db_file,
         dod_1260h_file=args.dod_1260h_file,
+        section_117_file=args.section_117_file,
+        section_117_institution_threshold=args.section_117_institution_threshold,
     )
 
     ownership_flags_count = None
@@ -157,6 +160,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_DOD_1260H_FILE,
         help="DoD Section 1260H curated list JSON (defaults to the bundled snapshot)",
+    )
+    run_parser.add_argument(
+        "--section-117-file",
+        type=Path,
+        default=None,
+        help="Section 117 foreign gift/contract disclosure bulk .xlsx file -- enables "
+        "the foreign-funding cross-check; omit to skip it (no bundled default, like GLEIF)",
+    )
+    run_parser.add_argument(
+        "--section-117-institution-threshold",
+        type=float,
+        default=DEFAULT_INSTITUTION_THRESHOLD,
+        help="Higher than --threshold by default: a loose institution-name match "
+        "would misfile disclosure evidence under the wrong entity entirely",
     )
     run_parser.add_argument(
         "--gleif-lei-file",
