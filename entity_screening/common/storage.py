@@ -486,8 +486,22 @@ def insert_paper_embeddings(
     conn: duckdb.DuckDBPyConnection,
     embeddings: Iterable[tuple[str, str, str, str, list[float]]],
     run_id: str,
+    entity_id: str,
 ) -> None:
-    """Each item is (openalex_work_id, entity_id, pi_name, work_title, embedding)."""
+    """Deletes any existing rows for this (run_id, entity_id) first -- same
+    re-runnable "current state" semantics as insert_lei_matches/
+    insert_openalex_author_matches, but scoped to entity as well as run:
+    embed_and_persist_papers is called once per entity_id inside
+    enrich_topic_similarity's per-entity loop, so a bare
+    `DELETE WHERE run_id = ?` would have entity N's insert wipe every entity
+    already processed earlier in that same run's loop (1..N-1).
+
+    Each item is (openalex_work_id, entity_id, pi_name, work_title, embedding).
+    """
+    conn.execute(
+        "DELETE FROM paper_embeddings WHERE run_id = ? AND entity_id = ?",
+        [run_id, entity_id],
+    )
     rows = [
         (openalex_work_id, run_id, entity_id, pi_name, work_title, embedding)
         for openalex_work_id, entity_id, pi_name, work_title, embedding in embeddings
