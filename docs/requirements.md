@@ -198,6 +198,30 @@ Reading FinchAI's own open technical postings (not just the Product Analyst one)
 - **A full Vue.js frontend** — real engineering scope for uncertain benefit right now; the FastAPI layer above preserves the option without requiring it today.
 - **Stating the FinchAI connection in the public README.** Making good architecture decisions that happen to overlap with what was learned here is legitimate engineering judgment; writing "this mirrors FinchAI's job postings" into the repo itself would read as reverse-engineering the interview rather than genuine engineering interest. The "why" belongs in a cover letter or an interview conversation, not baked into the public artifact.
 
+## 9b. Implementation Update (September 2026)
+
+Section 9 above was written before two real decisions were finalized:
+
+- **Domain registered:** `mikejennings.dev`.
+- **Project named:** Monops (the "working title" framing throughout this
+  document and the README is now stale as of this addendum).
+- **Path, not subdomain:** the demo lives at `mikejennings.dev/monops`
+  rather than the `entityscreen.<name>.dev`-style subdomain Section 9
+  originally suggested. Nothing else is hosted at the apex domain yet, which
+  is what makes this workable -- nginx on the one Lightsail instance serves
+  a placeholder at `/` and reverse-proxies `/monops` to the app, leaving
+  room to put a real portfolio site at the apex later without touching the
+  app's own routing.
+- **Infrastructure code lives in `infra/`, as plain Terraform (HCL), not
+  CDKTF.** Section 9a specified CDKTF (Python bindings); that was corrected
+  the same day after discovering HashiCorp archived CDKTF on December 10,
+  2025 (no further maintenance, official guidance to migrate to plain
+  Terraform/HCL) -- see `docs/plans/2026-09-02-lightsail-deployment.md`'s
+  correction note for the full story, and `docs/deployment-runbook.md` for
+  the actual step-by-step commands (`terraform init/plan/apply`, not
+  `cdktf deploy`). This addendum records the decisions; it doesn't restate
+  Section 9's reasoning, which still stands.
+
 ## 10. Non-Functional Requirements
 
 - **Explainability first:** every score must be traceable to underlying evidence records — no black-box outputs.
