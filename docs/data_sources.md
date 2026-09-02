@@ -38,14 +38,37 @@ each source's terms.
 
 ### OpenSanctions (consolidated `targets.simple.csv`)
 - **Provider:** OpenSanctions.
-- **License:** Free for non-commercial and journalistic use under OpenSanctions' own
-  terms; commercial use requires a separate data license. This project is a
-  non-commercial, public portfolio exercise. See
-  <https://www.opensanctions.org/licensing/> for current terms before any other use.
+- **License:** the bulk-download data (what this project uses) is **CC BY-NC 4.0**
+  (<https://creativecommons.org/licenses/by-nc/4.0/>) — confirmed directly against
+  OpenSanctions' own licensing page, not assumed: non-commercial use, including
+  sharing/redistributing a modified subset, is permitted with attribution and an
+  indication of changes made. Commercial use requires a separate data license. This
+  project is a non-commercial, public portfolio exercise. Two things worth not
+  conflating: OpenSanctions' separate free **API-key programme** (which the project
+  doesn't use) explicitly does not cover hobby projects, and is a different thing
+  from the CC BY-NC terms on the **bulk downloads**; and OpenSanctions' own gloss on
+  the license puts the paid-license trigger at "any use inside a for-profit
+  business... even for compliance screening that generates no revenue" — i.e. the
+  business context, not revenue, is the trigger, which is why a personal portfolio
+  project sits outside it. See <https://www.opensanctions.org/licensing/> for
+  current terms before any other use.
 - **Attribution:** "Data: OpenSanctions (opensanctions.org), consolidated targets
   export, retrieved on the date recorded in this run's manifest."
 - **Known limitation:** aggregation quality varies by upstream source; OpenSanctions
   does not itself claim to be authoritative or complete.
+- **Curated demo dataset:** `tests/fixtures/demo_opensanctions_targets.csv` (the
+  Streamlit UI's default `opensanctions_file`, replacing the 3-row unit-test fixture
+  `sample_opensanctions_targets.csv`, which stays as-is for the unit tests that
+  assert its exact shape) — 3,007 real rows curated from the real, full
+  `targets.simple.csv` (1,221,948 rows, ~455MB) downloaded live on 2026-09-02: a
+  deterministic pseudorandom sample of 3,000 rows, plus the 7 real "Seven Sons of
+  National Defence" university entries (already independently verified present —
+  see `tests/test_screening_seven_sons.py`) added back in if the random draw didn't
+  already include them. Every kept row carries every original column, verbatim —
+  built the same way `demo_nsf_awards.json` was, and licensed for exactly this kind
+  of redistribution per the CC BY-NC 4.0 terms above. See
+  `tests/fixtures/demo_opensanctions_targets.NOTICE.md` for the full "changes
+  indicated" record the license requires.
 
 ### DoD Section 1260H list (Chinese military companies)
 - **Provider:** U.S. Department of Defense, under Section 1260H of the William M.

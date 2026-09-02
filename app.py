@@ -44,7 +44,7 @@ with st.sidebar:
     st.header("Data sources")
     nsf_file = st.text_input("NSF awards JSON file", value="tests/fixtures/demo_nsf_awards.json")
     opensanctions_file = st.text_input(
-        "OpenSanctions targets.simple.csv", value="tests/fixtures/sample_opensanctions_targets.csv"
+        "OpenSanctions targets.simple.csv", value="tests/fixtures/demo_opensanctions_targets.csv"
     )
     threshold = st.slider("Screening match threshold", 0.0, 1.0, 0.80, 0.01)
     section_117_file = st.text_input(
