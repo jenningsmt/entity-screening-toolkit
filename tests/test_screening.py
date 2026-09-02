@@ -72,12 +72,20 @@ def test_screen_entity_never_produces_a_confirmed_status():
 
 
 def test_blocking_does_not_drop_a_true_match_outside_default_block():
-    concern_list = OpenSanctionsList([_source_record("os-1", "Acme Corp")])
-    entity = _entity("Acme Corporation")
+    """Regression for Finding 1: 'Acme Corp' vs 'Acme Corporation' normalize to
+    the *same* 3-char block ('acm...'), so the original version of this test
+    passed even with the acronym-blocking defect fully present -- it never
+    exercised the cross-block case its name promised. A genuine acronym pair
+    shares no name-prefix at all ('int...' vs 'ibm'), which is exactly the
+    case that was unreachable before this workstream's fix to
+    screening/lists.py's block index."""
+    concern_list = OpenSanctionsList([_source_record("os-1", "IBM")])
+    entity = _entity("International Business Machines Corporation")
 
     hits = list(screen_entity(entity, [concern_list]))
 
     assert len(hits) == 1
+    assert hits[0].evidence["match_basis"] == "acronym"
 
 
 def test_evidence_is_self_contained_without_a_further_join():

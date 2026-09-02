@@ -35,7 +35,7 @@ from entity_screening.resolution.normalize import (
     normalize_for_matching,
     strip_institutional_governance_affix,
 )
-from entity_screening.screening.lists import EntityOfConcernList
+from entity_screening.screening.lists import EntityOfConcernList, _acronym_key
 
 LIST_NAME = "section_117_foreign_funding_disclosure"
 DEFAULT_INSTITUTION_THRESHOLD = 0.90
@@ -70,15 +70,27 @@ def extract_named_foreign_entity(record: SourceRecord) -> str | None:
 def _block_index(
     records: Iterable[SourceRecord], block_size: int
 ) -> dict[str, list[SourceRecord]]:
+    """Indexes each record under its School Name's normalized-name key *and*
+    acronym key -- same two-key treatment as screening/lists.py's own
+    _block_index, and for the same reason (Finding 1 / Epic B): an
+    institution's acronym essentially never shares a name-prefix with its
+    expansion, so a name-key-only index would leave this institution match
+    with the exact defect this workstream removes from concern-list
+    matching."""
     index: dict[str, list[SourceRecord]] = defaultdict(list)
     for record in records:
         school_name = record.fields.get("School Name")
         if not school_name:
             continue
         stripped = strip_institutional_governance_affix(str(school_name))
-        key = normalize_for_matching(stripped)[:block_size]
-        if key:
-            index[key].append(record)
+        seen_keys: set[str] = set()
+        for key in (
+            normalize_for_matching(stripped)[:block_size],
+            _acronym_key(stripped, block_size),
+        ):
+            if key and key not in seen_keys:
+                seen_keys.add(key)
+                index[key].append(record)
     return dict(index)
 
 
@@ -92,11 +104,21 @@ def cross_check_section_117(
 ) -> Iterator[ScreeningHit]:
     concern_lists = list(concern_lists)
     index = _block_index(section_117_records, block_size)
-    entity_key = normalize_for_matching(
-        strip_institutional_governance_affix(entity.canonical_name)
-    )[:block_size]
+    stripped_entity_name = strip_institutional_governance_affix(entity.canonical_name)
+    entity_name_key = normalize_for_matching(stripped_entity_name)[:block_size]
+    entity_acronym_key = _acronym_key(stripped_entity_name, block_size)
 
-    for record in index.get(entity_key, []):
+    seen_record_ids: set[str] = set()
+    candidate_records: list[SourceRecord] = []
+    for key in (entity_name_key, entity_acronym_key):
+        if not key:
+            continue
+        for record in index.get(key, []):
+            if record.source_record_id not in seen_record_ids:
+                seen_record_ids.add(record.source_record_id)
+                candidate_records.append(record)
+
+    for record in candidate_records:
         school_name = str(record.fields["School Name"])
         institution_candidate = score_pair(
             strip_institutional_governance_affix(entity.canonical_name),

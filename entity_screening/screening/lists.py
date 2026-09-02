@@ -15,9 +15,29 @@ from dataclasses import dataclass
 from typing import Any
 
 from entity_screening.common.schema import SourceRecord
-from entity_screening.resolution.normalize import normalize_for_matching
+from entity_screening.resolution.normalize import (
+    acronym,
+    normalize_for_matching,
+    strip_corporate_suffix,
+    transliterate,
+)
 
 BLOCK_SIZE = 3
+
+
+def _acronym_key(name: str, block_size: int) -> str:
+    """The acronym-form blocking key for `name` -- lets an entity reach a
+    concern-list entry (or vice versa) even when neither shares a name-prefix
+    with the other at all, which is the normal case for an acronym and its
+    expansion (see candidates_for's docstring). Same acronym derivation and
+    the same `len(...) > 1` guard as matcher.py:score_pair's own acronym
+    branch, so a blocking key exists precisely when the scorer could actually
+    fire on it -- a wider block that can't reach a match the scorer would
+    reject anyway buys nothing."""
+    acro = acronym(strip_corporate_suffix(transliterate(name))).lower()
+    if len(acro) <= 1:
+        return ""
+    return acro[:block_size]
 
 
 @dataclass(frozen=True)
@@ -40,18 +60,48 @@ class EntityOfConcernList(ABC):
         raise NotImplementedError
 
     def candidates_for(self, name: str, block_size: int = BLOCK_SIZE) -> Iterable[ConcernListEntry]:
-        """Blocking step: entries sharing a normalized name-prefix with `name`.
+        """Blocking step: entries sharing a normalized name-prefix *or* an
+        acronym-prefix with `name`.
 
         Exhaustively comparing every resolved entity against every entry in a
         list the size of OpenSanctions' full target file (hundreds of
         thousands of rows) isn't tractable; this prefix block keeps screening
         proportional to entries that could plausibly match.
+
+        The acronym key is what makes acronym matching actually reachable
+        through this blocking step (Finding 1 / Epic B): an acronym almost
+        never shares a name-prefix with its expansion ("IBM" vs.
+        "International..."), so a name-key-only block index never returns a
+        candidate for `matcher.py:score_pair`'s acronym branch to even
+        consider, regardless of how well that scorer works in isolation.
+        Querying both key types and unioning the results is what makes it
+        work in both directions: the full name reaches the acronym entry via
+        the full name's own acronym-key hitting the entry's name-key, and the
+        acronym reaches the full-name entry via the acronym's own name-key
+        (itself, since a short acronym normalizes to itself) hitting the
+        entry's acronym-key.
+
+        Blocking is a *candidate* step only -- score_pair and the caller's
+        threshold still gate every result, so a wider block costs time, not
+        precision.
         """
         index = self._block_index(block_size)
-        key = normalize_for_matching(name)[:block_size]
-        return index.get(key, [])
+        name_key = normalize_for_matching(name)[:block_size]
+        acro_key = _acronym_key(name, block_size)
+        seen_ids: set[str] = set()
+        candidates: list[ConcernListEntry] = []
+        for key in (name_key, acro_key):
+            if not key:
+                continue
+            for entry in index.get(key, []):
+                if entry.entry_id not in seen_ids:
+                    seen_ids.add(entry.entry_id)
+                    candidates.append(entry)
+        return candidates
 
     def _block_index(self, block_size: int) -> dict[str, list[ConcernListEntry]]:
+        """Indexes every entry under both its name-key(s) and its acronym-key(s)
+        (see candidates_for's docstring for why both are needed)."""
         cache_attr = f"_block_index_cache_{block_size}"
         cached = getattr(self, cache_attr, None)
         if cached is None:
@@ -59,10 +109,13 @@ class EntityOfConcernList(ABC):
             for entry in self.entries():
                 seen_keys: set[str] = set()
                 for variant in entry.name_variants:
-                    key = normalize_for_matching(variant)[:block_size]
-                    if key and key not in seen_keys:
-                        seen_keys.add(key)
-                        index[key].append(entry)
+                    for key in (
+                        normalize_for_matching(variant)[:block_size],
+                        _acronym_key(variant, block_size),
+                    ):
+                        if key and key not in seen_keys:
+                            seen_keys.add(key)
+                            index[key].append(entry)
             cached = dict(index)
             setattr(self, cache_attr, cached)
         return cached
