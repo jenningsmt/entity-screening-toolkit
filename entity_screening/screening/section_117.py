@@ -29,6 +29,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 
+from entity_screening.common.attribution import attribution_for
 from entity_screening.common.schema import MatchStatus, ResolvedEntity, ScreeningHit, SourceRecord
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD, is_candidate_match, score_pair
 from entity_screening.resolution.normalize import (
@@ -167,6 +168,7 @@ def cross_check_section_117(
                             # extract_named_foreign_entity's docstring.
                             "government_name": record.fields.get(GOVERNMENT_NAME_FIELD),
                         },
+                        "source_attribution": attribution_for(concern_list.list_name),
                     },
                     status=MatchStatus.CANDIDATE_MATCH,
                     producer="section_117",

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 
+from entity_screening.common.attribution import attribution_for
 from entity_screening.common.schema import MatchStatus, ResolvedEntity, ScreeningHit
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD, is_candidate_match, score_pair
 from entity_screening.screening.lists import EntityOfConcernList
@@ -43,6 +44,7 @@ def screen_entity(
                     # to be self-contained enough to hand an LLM (Epic J) without a
                     # separate join back to the source list.
                     "matched_entry_fields": entry.source_fields,
+                    "source_attribution": attribution_for(concern_list.list_name),
                 },
                 status=MatchStatus.CANDIDATE_MATCH,
                 producer="direct_name",

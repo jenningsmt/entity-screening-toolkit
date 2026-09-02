@@ -16,9 +16,11 @@ from entity_screening.bibliometric.topic_similarity import CET_CORPUS_FILE, DOD_
 from entity_screening.common import storage
 from entity_screening.common.manifest import RunManifest
 from entity_screening.common.schema import MatchStatus
+from entity_screening.common.attribution import attribution_for
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.screening.lists import registered_lists
+from entity_screening.screening.section_117 import LIST_NAME as SECTION_117_LIST_NAME
 from entity_screening.screening.section_117 import DEFAULT_INSTITUTION_THRESHOLD
 from entity_screening.scoring.rubric import STOCK_RUBRIC, rubric_from_dict
 
@@ -146,6 +148,19 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
     if not DEFAULT_DOD_1260H_FILE.exists():
         problems.append(f"Missing bundled DoD 1260H curated list: {DEFAULT_DOD_1260H_FILE}")
+
+    # Finding 6: every source a hit can be tagged against needs an attribution
+    # entry (common/attribution.py) or its license/caveat silently doesn't
+    # reach the evidence trail -- this is what makes adding a new
+    # EntityOfConcernList (or Section 117's own list_name) without attribution
+    # a CI failure instead of a shipped gap.
+    attributable_sources = set(registered_lists().keys()) | {SECTION_117_LIST_NAME}
+    missing_attribution = {s for s in attributable_sources if not attribution_for(s)}
+    if missing_attribution:
+        problems.append(
+            "Missing entity_screening/common/attribution.py entry for source(s): "
+            f"{sorted(missing_attribution)}"
+        )
 
     if not DOD_CORPUS_FILE.exists():
         problems.append(f"Missing bundled DoD critical-technology-areas corpus: {DOD_CORPUS_FILE}")
