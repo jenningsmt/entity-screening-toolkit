@@ -21,3 +21,13 @@ data/processed/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Terraform (infra/) -- state and the local provider-plugin cache never
+# belong in git. infra/.terraform.lock.hcl (the dependency lock file) is
+# the one exception: that SHOULD be committed, so it's deliberately not
+# listed here. The SSH key used by infra/main.tf lives outside the repo
+# entirely (~/.ssh/monops_lightsail*) and is never written here at all.
+infra/.terraform/
+infra/terraform.tfstate*
+infra/terraform.tfvars
+infra/*.auto.tfvars

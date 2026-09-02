@@ -1,0 +1,51 @@
+# Production overrides for the Lightsail instance -- local dev keeps using
+# plain `docker compose up` against docker-compose.yml alone and is
+# untouched by any of this. On the instance, infra/user_data.sh /
+# monops.service always invoke compose with BOTH files:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What changes for production, and why:
+#   - Ports bind to 127.0.0.1 only. nginx (docs/deployment-runbook.md) is the
+#     one public entry point on 80/443; neither container should be directly
+#     reachable from the internet on 8000/8501.
+#   - restart: unless-stopped, on top of the wrapping monops.service systemd
+#     unit -- belt and suspenders so the stack comes back after a crash or a
+#     host reboot without manual intervention.
+#   - The streamlit service's command is overridden to add
+#     --server.baseUrlPath=monops, since it's reverse-proxied under that
+#     path. This is a CLI flag, not the STREAMLIT_SERVER_BASE_URL_PATH env
+#     var: there's an open upstream report that the env var doesn't take
+#     effect when set via `docker run -e`/compose `environment:`
+#     (streamlit/streamlit#11509), though Streamlit's own maintainers have
+#     so far been unable to reproduce it -- unconfirmed, not a settled bug.
+#     The CLI flag is used regardless since it's the more direct, unambiguous
+#     mechanism either way, not because the env var is confirmed broken.
+#
+#   - `ports:` uses the `!override` merge-type tag on both services.
+#     Compose's default merge behavior for list-valued keys like `ports` is
+#     to CONCATENATE values across -f files, not replace them (see
+#     https://docs.docker.com/reference/compose-file/merge/) -- entries are
+#     only deduplicated when they match exactly on {ip, target, published,
+#     protocol}. Since the base docker-compose.yml's "8000:8000" has no IP
+#     (binds 0.0.0.0) and this file's "127.0.0.1:8000:8000" does, they differ
+#     on `ip` and would NOT be deduplicated -- without !override, both
+#     bindings would coexist and the container would remain bound to
+#     0.0.0.0 despite this file's intent, silently defeating the "nginx is
+#     the only public entry point" design (mitigated today only because
+#     infra/main.tf's Lightsail firewall never opens 8000/8501 at all -- a
+#     compensating control this file's own ports: value shouldn't have to
+#     rely on). !override forces a real replace instead of a merge; it
+#     requires Compose v2.24.4+, which `docker-ce-cli` from Docker's own apt
+#     repo (infra/user_data.sh) is well past.
+services:
+  api:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  streamlit:
+    ports: !override
+      - "127.0.0.1:8501:8501"
+    restart: unless-stopped
+    command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.baseUrlPath=monops"]
