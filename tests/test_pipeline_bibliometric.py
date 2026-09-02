@@ -156,9 +156,15 @@ def test_enrich_bibliometric_writes_a_manifest_and_hits_score_via_existing_rubri
 
     rescored = pipeline.rescore_run(manifest.run_id, STOCK_RUBRIC, db_path=db_path)
     scored = next(s for s in rescored if s.entity_id == hits[0].entity_id)
-    assert scored.score.factors["screening_hit"] == (
-        STOCK_RUBRIC.screening_hit_weight
-        * (hits[0].confidence * STOCK_RUBRIC.screening_hit_confidence_multiplier)
+    # Workstream 5b: a bibliometric hit scores against its own
+    # bibliometric_hit_weight, not screening_hit_weight -- a co-author's
+    # institution matching a concern-list entry is a second-order signal
+    # compared to a direct name match, and Epic F needs its own adjustable
+    # weight to let an analyst express that distinction.
+    assert hits[0].producer == "bibliometric"
+    assert "screening_hit" not in scored.score.factors
+    assert scored.score.factors["bibliometric_hit"] == (
+        STOCK_RUBRIC.bibliometric_hit_weight * hits[0].confidence
     )
 
 
