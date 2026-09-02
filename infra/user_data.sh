@@ -4,6 +4,22 @@
 # step needs redoing), but not designed as a repeatable deploy mechanism --
 # see docs/deployment-runbook.md for how day-2 redeploys actually happen
 # (SSH in, git pull, `sudo systemctl restart monops`).
+#
+# Confirmed via a real deployment, not assumed: Lightsail always prepends its
+# own SSH-CA bootstrap snippet (its own "#!/bin/sh" shebang) ahead of whatever
+# user_data is supplied here, so this script actually starts execution under
+# /bin/sh (dash) regardless of the shebang above -- that shebang only takes
+# effect if this file is ever run standalone. Re-exec under bash immediately,
+# in POSIX sh-compatible syntax (this line has to run correctly under dash
+# first), so the bash-only syntax below (process substitution, `pipefail`)
+# actually works. Side effect, accepted as harmless: Lightsail's own prepended
+# preamble re-runs a second time under bash after this re-exec -- it only
+# overwrites a public-key file with the same content, appends one already-
+# duplicate-tolerant sshd_config line again, and restarts sshd again.
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euxo pipefail
 exec > >(tee -a /var/log/monops-bootstrap.log) 2>&1
 echo "Monops bootstrap starting: $(date -u)"
