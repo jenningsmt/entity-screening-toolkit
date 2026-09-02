@@ -252,6 +252,14 @@ class BibliometricSnapshotManifest:
     pi_count: int
     resolved_author_count: int
     openalex_api_base_url: str
+    # None means uncapped (every real work fetched). A non-None value means a
+    # capped run's bibliometric coverage is partial by design (Workstream 9c)
+    # -- a silently truncated works history would otherwise be a
+    # reproducibility claim this run can no longer make, the same reasoning
+    # ownership/graph.py:ParentChain.truncated already applies to a bounded
+    # ownership walk. Defaulted so .load() still works on a manifest file
+    # written before this field existed.
+    max_works_per_author: int | None = None
 
     @classmethod
     def create(
@@ -260,6 +268,7 @@ class BibliometricSnapshotManifest:
         pi_count: int,
         resolved_author_count: int,
         openalex_api_base_url: str,
+        max_works_per_author: int | None = None,
     ) -> "BibliometricSnapshotManifest":
         return cls(
             run_id=run_id,
@@ -267,6 +276,7 @@ class BibliometricSnapshotManifest:
             pi_count=pi_count,
             resolved_author_count=resolved_author_count,
             openalex_api_base_url=openalex_api_base_url,
+            max_works_per_author=max_works_per_author,
         )
 
     def bibliometric_dir(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:

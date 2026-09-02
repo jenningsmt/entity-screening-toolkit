@@ -12,10 +12,32 @@ Every function accepts an injectable `fetch` callable (url, params) -> parsed JS
 dict, mirroring `entity_screening/ingestion/nsf.py:NSFAwardIngester`'s `fetch_page`
 pattern -- tests never hit the live network.
 
-`_http_get` retries on 429 -- real, not hypothetical: scaling the demo NSF dataset
-from 2 entities to 53 real ones (2026-09-02) reliably triggered OpenAlex rate
-limiting, and with no retry logic a single 429 crashed the entire enrichment run
-(discarding every hit already found) rather than the request that hit it.
+`_http_get` retries on 429 plus 5xx plus a connection/timeout failure -- real,
+not hypothetical. Scaling the demo NSF dataset from 2 entities to 53 real ones
+(2026-09-02) reliably triggered OpenAlex rate limiting, and with no retry
+logic a single 429 crashed the entire enrichment run (discarding every hit
+already found) rather than the request that hit it -- fixed same-day with a
+429-only retry. The 2026-09-02 remediation pass then measured real call
+volume for the 53-entity dataset directly, with a call-counting fetch:
+
+    53 entities resolved
+                           1 candidate/PI    3 candidates/PI
+      institution_search        53                53
+      author_search              61                61
+      works walks                61               183
+      TOTAL                     175               297
+
+(`disambiguate_pi_to_openalex_author` deliberately returns every tied
+candidate rather than forcing a pick -- see
+docs/plans/2026-09-01-v3-openalex-bibliometric-affiliation-layer.md's
+Finding 3 -- so the works-walk multiplier is per resolved author *candidate*,
+not per PI; a real PI resolving to three candidates is the recorded case,
+not a hypothetical one.) At 175-297 sequential calls in one enrichment run, a
+transient 500/502/503 or `requests.ConnectionError`/`Timeout` anywhere in
+that sequence is a near-certainty, not an edge case -- and until this
+widening, any one of them still aborted the whole run and discarded every
+hit already found, exactly the failure mode the original 429-only retry was
+added to prevent, just reachable via a different failure.
 """
 from __future__ import annotations
 
@@ -31,6 +53,9 @@ WORKS_PAGE_SIZE = 200
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE_SECONDS = 1.0
 MAX_RETRY_DELAY_SECONDS = 30.0
+# 5xx codes worth retrying -- transient server-side failures, not 501 (Not
+# Implemented), which retrying can never fix.
+RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 FetchFn = Callable[[str, dict[str, Any]], dict[str, Any]]
 
@@ -38,8 +63,16 @@ FetchFn = Callable[[str, dict[str, Any]], dict[str, Any]]
 def _http_get(url: str, params: dict[str, Any]) -> dict[str, Any]:
     attempt = 0
     while True:
-        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
-        if response.status_code == 429 and attempt < MAX_RETRIES:
+        try:
+            response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt >= MAX_RETRIES:
+                raise
+            time.sleep(min(RETRY_BACKOFF_BASE_SECONDS * (2**attempt), MAX_RETRY_DELAY_SECONDS))
+            attempt += 1
+            continue
+
+        if response.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES:
             retry_after = response.headers.get("Retry-After")
             delay = (
                 float(retry_after)
@@ -102,10 +135,23 @@ def get_author_works(
     *,
     contact_email: str | None = None,
     fetch: FetchFn | None = None,
+    max_works: int | None = None,
 ) -> list[dict]:
-    """All works for one author -- each carries its own `authorships` array (the
-    co-authorship graph and per-paper institution affiliation history in one call
-    per page, no separate endpoint needed for either)."""
+    """All works for one author (or up to `max_works`, if given) -- each carries
+    its own `authorships` array (the co-authorship graph and per-paper
+    institution affiliation history in one call per page, no separate endpoint
+    needed for either).
+
+    With no cap, this pages with no limit and accumulates an author's entire
+    works corpus in memory -- 456 works for Rod A. Wing (the demo dataset's
+    deliberately-included prolific real PI, see docs/data_sources.md), three
+    sequential round-trips. `max_works` bounds both the network cost and the
+    memory footprint; a caller that sets it must record the value it used
+    (e.g. `BibliometricSnapshotManifest.max_works_per_author`) since a capped
+    run's coverage is a reproducibility fact, not an implementation detail --
+    the same treatment `ownership/graph.py:ParentChain.truncated` already
+    gives a bounded ownership walk.
+    """
     fetch = fetch or _http_get
     author_id = author_openalex_id.rsplit("/", 1)[-1]
     works: list[dict] = []
@@ -122,6 +168,8 @@ def get_author_works(
         )
         results = payload.get("results", [])
         works.extend(results)
+        if max_works is not None and len(works) >= max_works:
+            return works[:max_works]
         if len(results) < WORKS_PAGE_SIZE:
             return works
         page += 1

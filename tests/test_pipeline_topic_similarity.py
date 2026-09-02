@@ -31,7 +31,11 @@ def _nsf_file(tmp_path):
     return path
 
 
-def _run_and_enrich_bibliometric(tmp_path):
+def _run_and_enrich_bibliometric(tmp_path, works: list[dict] | None = None):
+    """`works` lets a caller inject what the /works endpoint returns during
+    enrich_bibliometric's own fetch -- since Workstream 9b, that's the only
+    place a work is ever fetched; enrich_topic_similarity reads it back from
+    raw_openalex_works rather than fetching again."""
     db_path = tmp_path / "test.duckdb"
     manifest, _ = pipeline.run_screening(
         nsf_file=_nsf_file(tmp_path), nsf_date_start=None, nsf_date_end=None,
@@ -44,6 +48,8 @@ def _run_and_enrich_bibliometric(tmp_path):
             return {"results": [{"id": "https://openalex.org/I1", "display_name": "Fixture University"}]}
         if url.endswith("/authors"):
             return {"results": [{"id": "https://openalex.org/A1", "orcid": None, "display_name": "Jane Doe"}]}
+        if url.endswith("/works"):
+            return {"results": works or []}
         return {"results": []}
 
     pipeline.enrich_bibliometric(manifest.run_id, db_path=db_path, fetch=fake_fetch)
@@ -70,11 +76,8 @@ def test_enrich_topic_similarity_never_touches_scored_entities_or_screening_hits
     hits_before = conn.execute("SELECT count(*) FROM screening_hits").fetchone()[0]
     conn.close()
 
-    def fake_fetch(url, params):
-        return {"results": []}
-
     pipeline.enrich_topic_similarity(
-        manifest.run_id, db_path=db_path, fetch=fake_fetch,
+        manifest.run_id, db_path=db_path,
         embed_query_fn=lambda t: _vec(0), embed_passage_fn=lambda t: _vec(0),
     )
 
@@ -90,11 +93,8 @@ def test_enrich_topic_similarity_never_touches_scored_entities_or_screening_hits
 def test_enrich_topic_similarity_writes_manifest_with_pinned_model_revision(tmp_path):
     manifest, db_path = _run_and_enrich_bibliometric(tmp_path)
 
-    def fake_fetch(url, params):
-        return {"results": []}
-
     topic_manifest, flags = pipeline.enrich_topic_similarity(
-        manifest.run_id, db_path=db_path, fetch=fake_fetch,
+        manifest.run_id, db_path=db_path,
         embed_query_fn=lambda t: _vec(0), embed_passage_fn=lambda t: _vec(0),
     )
 
@@ -111,8 +111,6 @@ def test_enrich_topic_similarity_reruns_do_not_silently_lose_flags(tmp_path):
     ranking's runner-up (an exact copy of the winner), collapsing margin to
     0.0 and silently filtering out every flag on the second call -- a correct
     non-empty result turning into an incorrect empty one, with no error."""
-    manifest, db_path = _run_and_enrich_bibliometric(tmp_path)
-
     # Target the real first bundled DoD corpus entry by its actual text, so
     # this doesn't depend on call order -- give it similarity 1.0, everything
     # else similarity 0.0, a clean margin regardless of how many entries the
@@ -124,9 +122,7 @@ def test_enrich_topic_similarity_reruns_do_not_silently_lose_flags(tmp_path):
         "title": "Fixture Paper",
         "abstract_inverted_index": {"word": [0]},
     }
-
-    def fake_fetch(url, params):
-        return {"results": [work]}
+    manifest, db_path = _run_and_enrich_bibliometric(tmp_path, works=[work])
 
     def fake_embed_passage(text):
         return _vec(0)
@@ -135,11 +131,11 @@ def test_enrich_topic_similarity_reruns_do_not_silently_lose_flags(tmp_path):
         return _vec(0) if text == target_text else _vec(1)
 
     _, flags_1 = pipeline.enrich_topic_similarity(
-        manifest.run_id, db_path=db_path, fetch=fake_fetch,
+        manifest.run_id, db_path=db_path,
         embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
     )
     _, flags_2 = pipeline.enrich_topic_similarity(
-        manifest.run_id, db_path=db_path, fetch=fake_fetch,
+        manifest.run_id, db_path=db_path,
         embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
     )
 

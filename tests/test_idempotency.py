@@ -150,17 +150,6 @@ def test_enrich_topic_similarity_is_idempotent_and_does_not_disturb_bibliometric
         db_path=db_path, runs_dir=tmp_path,
     )
 
-    def bib_fake_fetch(url, params):
-        if url.endswith("/institutions"):
-            return {"results": [{"id": "https://openalex.org/I1", "display_name": "Fixture University"}]}
-        if url.endswith("/authors"):
-            return {"results": [{"id": "https://openalex.org/A1", "orcid": None, "display_name": "Jane Doe"}]}
-        return {"results": []}
-
-    pipeline.enrich_bibliometric(manifest.run_id, db_path=db_path, fetch=bib_fake_fetch)
-    bibliometric_hits_before = _table_count(db_path, "screening_hits", manifest.run_id)
-    author_matches_before = _table_count(db_path, "openalex_author_matches", manifest.run_id)
-
     target_text = load_corpus(DOD_CORPUS_FILE)[0]["text"]
     work = {
         "id": "https://openalex.org/W1",
@@ -168,8 +157,21 @@ def test_enrich_topic_similarity_is_idempotent_and_does_not_disturb_bibliometric
         "abstract_inverted_index": {"word": [0]},
     }
 
-    def topic_fake_fetch(url, params):
-        return {"results": [work]}
+    def bib_fake_fetch(url, params):
+        if url.endswith("/institutions"):
+            return {"results": [{"id": "https://openalex.org/I1", "display_name": "Fixture University"}]}
+        if url.endswith("/authors"):
+            return {"results": [{"id": "https://openalex.org/A1", "orcid": None, "display_name": "Jane Doe"}]}
+        if url.endswith("/works"):
+            return {"results": [work]}
+        return {"results": []}
+
+    # Workstream 9b: enrich_bibliometric is the only place a work is ever
+    # fetched now -- enrich_topic_similarity reads the same persisted copy
+    # back from raw_openalex_works rather than fetching again.
+    pipeline.enrich_bibliometric(manifest.run_id, db_path=db_path, fetch=bib_fake_fetch)
+    bibliometric_hits_before = _table_count(db_path, "screening_hits", manifest.run_id)
+    author_matches_before = _table_count(db_path, "openalex_author_matches", manifest.run_id)
 
     def fake_embed_passage(text):
         return _vec(0)
@@ -178,14 +180,14 @@ def test_enrich_topic_similarity_is_idempotent_and_does_not_disturb_bibliometric
         return _vec(0) if text == target_text else _vec(1)
 
     _, flags_1 = pipeline.enrich_topic_similarity(
-        manifest.run_id, db_path=db_path, fetch=topic_fake_fetch,
+        manifest.run_id, db_path=db_path,
         embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
     )
     embeddings_1 = _table_count(db_path, "paper_embeddings", manifest.run_id)
     topic_flags_1 = _table_count(db_path, "topic_similarity_flags", manifest.run_id)
 
     _, flags_2 = pipeline.enrich_topic_similarity(
-        manifest.run_id, db_path=db_path, fetch=topic_fake_fetch,
+        manifest.run_id, db_path=db_path,
         embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
     )
     embeddings_2 = _table_count(db_path, "paper_embeddings", manifest.run_id)

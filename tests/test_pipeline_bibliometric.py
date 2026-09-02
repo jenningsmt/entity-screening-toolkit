@@ -234,3 +234,97 @@ def test_enrich_bibliometric_reruns_do_not_duplicate_hits_or_lose_direct_name_hi
     assert len(bibliometric_hits) == 1  # not duplicated to 2 across two enrich_bibliometric calls
     assert len(direct_name_hits) == 1  # survived the unrelated bibliometric rerun
     assert direct_name_hits[0].entity_id == direct_name_hits_before[0].entity_id
+
+
+def test_get_author_works_is_fetched_once_across_bibliometric_and_topic_similarity(tmp_path):
+    """Workstream 9b's direct regression: enrich_topic_similarity used to
+    fetch the same author's works a second time (embed_and_persist_papers
+    called get_author_works live), doubling OpenAlex traffic and wall-clock
+    for the combined path. enrich_topic_similarity no longer accepts a
+    `fetch` parameter at all -- structurally, it cannot re-fetch -- but this
+    test still proves the whole path actually works end to end using only
+    what enrich_bibliometric persisted, not just that the API was removed."""
+    from entity_screening.bibliometric.topic_similarity import DOD_CORPUS_FILE, load_corpus
+
+    db_path = tmp_path / "test.duckdb"
+    manifest, _ = _run(
+        tmp_path,
+        [{"id": "1", "awardeeName": "Montana State University", "piFirstName": "Andrew", "piLastName": "Felton"}],
+        db_path,
+    )
+
+    target_text = load_corpus(DOD_CORPUS_FILE)[0]["text"]
+    work_with_abstract = {
+        "id": "https://openalex.org/W1",
+        "title": "Fixture Paper",
+        "abstract_inverted_index": {"word": [0]},
+    }
+    call_log = []
+    fake_fetch = _fake_fetch_factory(
+        {"results": [MSU_INSTITUTION]}, {"results": [work_with_abstract]}, call_log
+    )
+
+    pipeline.enrich_bibliometric(manifest.run_id, db_path=db_path, fetch=fake_fetch)
+    works_calls_after_bibliometric = len([c for c in call_log if c[0].endswith("/works")])
+    assert works_calls_after_bibliometric == 1  # exactly once per resolved author (1 PI here)
+
+    def _vec(index):
+        v = [0.0] * 384
+        v[index] = 1.0
+        return v
+
+    _, flags = pipeline.enrich_topic_similarity(
+        manifest.run_id, db_path=db_path,
+        embed_query_fn=lambda t: _vec(0) if t == target_text else _vec(1),
+        embed_passage_fn=lambda t: _vec(0),
+    )
+
+    # No further /works calls -- enrich_topic_similarity has no fetch
+    # parameter to make one with -- and it still produced a real flag from
+    # the persisted works alone.
+    assert len([c for c in call_log if c[0].endswith("/works")]) == works_calls_after_bibliometric
+    assert flags
+
+
+def test_max_works_per_author_caps_the_fetch_and_is_recorded_in_the_manifest(tmp_path):
+    """Workstream 9c: a silently truncated works history is a reproducibility
+    claim the run can no longer make, so the cap must be recorded, not just
+    applied."""
+    db_path = tmp_path / "test.duckdb"
+    manifest, _ = _run(
+        tmp_path,
+        [{"id": "1", "awardeeName": "Montana State University", "piFirstName": "Andrew", "piLastName": "Felton"}],
+        db_path,
+    )
+
+    from entity_screening.bibliometric.openalex_client import WORKS_PAGE_SIZE
+
+    call_log = []
+
+    def fake_fetch(url, params):
+        call_log.append((url, params))
+        if url.endswith("/institutions"):
+            return {"results": [MSU_INSTITUTION]}
+        if url.endswith("/authors"):
+            return {"results": [{"id": "https://openalex.org/A1", "orcid": None, "display_name": "Andrew Felton"}]}
+        # A full page every time -- pagination would run forever without the cap.
+        page = params.get("page", 1)
+        return {
+            "results": [
+                {"id": f"https://openalex.org/W{page}-{i}", "title": "Fixture", "abstract_inverted_index": None}
+                for i in range(WORKS_PAGE_SIZE)
+            ]
+        }
+
+    bib_manifest, _ = pipeline.enrich_bibliometric(
+        manifest.run_id, db_path=db_path, fetch=fake_fetch, max_works_per_author=5,
+    )
+
+    assert bib_manifest.max_works_per_author == 5
+    conn = storage.connect(db_path)
+    persisted = storage.load_openalex_works(conn, manifest.run_id, "https://openalex.org/A1")
+    conn.close()
+    assert persisted is not None
+    assert len(persisted) == 5
+    works_calls = [c for c in call_log if c[0].endswith("/works")]
+    assert len(works_calls) == 1  # one page was enough to satisfy the cap, no further pagination

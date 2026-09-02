@@ -51,12 +51,10 @@ def test_co_author_institution_match_produces_a_hit_with_inlined_tie_context():
         },
     ])
 
-    def fake_fetch(url, params):
-        return {"results": [work]}
-
+    works_by_author_id = {resolved_author.openalex_author_id: [work]}
     concern_lists = [OpenSanctionsList([_os_record("os-1", "Fixture Sovereign Wealth Fund")])]
 
-    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, fetch=fake_fetch))
+    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, works_by_author_id))
 
     assert len(hits) == 1
     hit = hits[0]
@@ -83,12 +81,10 @@ def test_own_past_affiliation_match_produces_a_hit_tagged_differently_from_co_au
         }
     ])
 
-    def fake_fetch(url, params):
-        return {"results": [work]}
-
+    works_by_author_id = {resolved_author.openalex_author_id: [work]}
     concern_lists = [OpenSanctionsList([_os_record("os-1", "Fixture Sovereign Wealth Fund")])]
 
-    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, fetch=fake_fetch))
+    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, works_by_author_id))
 
     assert len(hits) == 1
     assert hits[0].matched_field == "bibliometric_past_affiliation"
@@ -114,12 +110,10 @@ def test_real_false_positive_from_live_verification_is_excluded_by_the_default_t
         "institutions": [{"id": "https://openalex.org/I_cas", "display_name": "Chinese Academy of Sciences"}],
     }])
 
-    def fake_fetch(url, params):
-        return {"results": [work]}
-
+    works_by_author_id = {resolved_author.openalex_author_id: [work]}
     concern_lists = [OpenSanctionsList([_os_record("dod-1260h-style", "Chinese Academy of Ordnance Science")])]
 
-    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, fetch=fake_fetch))
+    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, works_by_author_id))
 
     assert hits == []
 
@@ -137,12 +131,10 @@ def test_no_hit_when_nothing_matches_any_concern_list():
         },
     ])
 
-    def fake_fetch(url, params):
-        return {"results": [work]}
-
+    works_by_author_id = {resolved_author.openalex_author_id: [work]}
     concern_lists = [OpenSanctionsList([_os_record("os-1", "Fixture Sovereign Wealth Fund")])]
 
-    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, fetch=fake_fetch))
+    hits = list(cross_check_bibliometric("e1", [resolved_author], concern_lists, works_by_author_id))
 
     assert hits == []
 
@@ -167,15 +159,13 @@ def test_multiple_tied_resolved_authors_each_produce_hits_with_their_own_distinc
         "institutions": [{"id": "https://openalex.org/I3", "display_name": "Fixture Sovereign Wealth Fund"}],
     }])
 
-    def fake_fetch(url, params):
-        author_id = params["filter"].split("author.id:")[1]
-        if author_id == "A5067979033":
-            return {"results": [work_a]}
-        return {"results": [work_b]}
-
+    works_by_author_id = {
+        author_a.openalex_author_id: [work_a],
+        author_b.openalex_author_id: [work_b],
+    }
     concern_lists = [OpenSanctionsList([_os_record("os-1", "Fixture Sovereign Wealth Fund")])]
 
-    hits = list(cross_check_bibliometric("e1", [author_a, author_b], concern_lists, fetch=fake_fetch))
+    hits = list(cross_check_bibliometric("e1", [author_a, author_b], concern_lists, works_by_author_id))
 
     assert len(hits) == 2
     producing_ids = {h.evidence["author_resolution"]["openalex_author_id"] for h in hits}

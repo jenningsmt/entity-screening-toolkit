@@ -135,10 +135,16 @@ contract (see `docs/methodology.md` for the full rationale):
   persisted, rather than requiring the caller to re-supply file paths. Groups
   entities by their *resolved* OpenAlex institution ID (not `entity_id`) so a
   spelling-variant split from Epic B's exact-match grouping doesn't duplicate
-  OpenAlex calls or hits. Never touches `scored_entities`; writes
-  `openalex_author_matches`/new `ScreeningHit`s (tagged `producer="bibliometric"`,
-  replaced rather than duplicated on a re-run — see the storage paragraph below)
-  plus a durable, run-scoped `BibliometricSnapshotManifest`.
+  OpenAlex calls or hits. Fetches each resolved author's works exactly once
+  per run and persists them to `raw_openalex_works` keyed by
+  `openalex_author_id` (optionally capped via `max_works_per_author`, recorded
+  in the manifest below) — `enrich_topic_similarity` reads this same
+  persisted copy back rather than re-fetching, which used to double OpenAlex
+  traffic and wall-clock for the combined path. Never touches
+  `scored_entities`; writes `openalex_author_matches`/new `ScreeningHit`s
+  (tagged `producer="bibliometric"`, replaced rather than duplicated on a
+  re-run — see the storage paragraph below) plus a durable, run-scoped
+  `BibliometricSnapshotManifest`.
 - **`enrich_topic_similarity(run_id, ...)`** — a **separate, explicit step**
   requiring `enrich_bibliometric` to have already run for this `run_id` (reads
   `openalex_author_matches` to know which PIs/authors to walk; raises a clear error
@@ -148,8 +154,11 @@ contract (see `docs/methodology.md` for the full rationale):
   criteria). **Never touches `scored_entities` or `screening_hits`** —
   `TopicSimilarityFlag` carries no `MatchStatus` and is deliberately excluded from
   `scoring/score.py` entirely; a semantic-similarity signal can establish topical
-  resemblance, not application or risk. Writes `paper_embeddings`/
-  `topic_similarity_flags` plus a durable, run-scoped `TopicSimilarityManifest`.
+  resemblance, not application or risk. Reads each resolved author's works from
+  `raw_openalex_works` (persisted by the prior `enrich_bibliometric` call) rather
+  than fetching live — this step makes no OpenAlex calls at all. Writes
+  `paper_embeddings`/`topic_similarity_flags` plus a durable, run-scoped
+  `TopicSimilarityManifest`.
 - **`export_scored_entities(...)`** — writes a CSV or Excel file plus its own
   immutable `ExportManifest`, unconditionally, on every call. A downloaded file's
   score values are always traceable to the rubric that actually produced them, which
@@ -157,7 +166,10 @@ contract (see `docs/methodology.md` for the full rationale):
 
 `common/storage.py` persists raw records, resolved entities, screening hits, scored
 entities, and (if the corresponding `enrich_*` step has run) LEI matches, ownership
-flags, OpenAlex author matches, paper embeddings, and topic-similarity flags into a
+flags, OpenAlex author matches, each resolved author's raw OpenAlex works
+(`raw_openalex_works`, keyed `(run_id, openalex_author_id)` — written once by
+`enrich_bibliometric`, read back by `enrich_topic_similarity` rather than
+re-fetched), paper embeddings, and topic-similarity flags into a
 DuckDB file (DuckDB, not SQLite — see `docs/requirements.md` Section 7) for ad-hoc
 querying alongside the file exports.
 
