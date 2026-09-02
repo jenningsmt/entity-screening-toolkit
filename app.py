@@ -49,7 +49,7 @@ with st.sidebar:
     ).rstrip("/")
 
     st.header("Data sources")
-    nsf_file = st.text_input("NSF awards JSON file", value="tests/fixtures/sample_nsf_awards.json")
+    nsf_file = st.text_input("NSF awards JSON file", value="tests/fixtures/demo_nsf_awards.json")
     opensanctions_file = st.text_input(
         "OpenSanctions targets.simple.csv", value="tests/fixtures/sample_opensanctions_targets.csv"
     )

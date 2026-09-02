@@ -5,6 +5,13 @@ Streams page by page rather than pulling the full result set into memory.
 Also supports a pre-downloaded local JSON file (the same response shape),
 which is how the demo/test fixtures run fully offline and is also the
 "size-capped demo dataset" pattern docs/requirements.md Section 9 calls for.
+
+`API_URL` was previously `https://api.research.gov/common/webapi/awardapisearch-v1/
+awards.json`, a hostname that no longer resolves in DNS at all -- a pre-existing bug
+first flagged in docs/plans/2026-09-01-section-117-foreign-gift-disclosure-cross-check.md
+(surfaced there while verifying a different feature against real data, not actually
+fixed at the time). Confirmed directly (2026-09-02): the dead host fails DNS resolution;
+`api.nsf.gov` below is live and returns real award data.
 """
 from __future__ import annotations
 
@@ -19,7 +26,7 @@ import requests
 from entity_screening.common.schema import SourceRecord
 from entity_screening.ingestion.base import BaseIngester, IngestionError, IngestionErrorLog
 
-API_URL = "https://api.research.gov/common/webapi/awardapisearch-v1/awards.json"
+API_URL = "https://api.nsf.gov/services/v1/awards.json"
 DEFAULT_PAGE_SIZE = 25
 REQUIRED_FIELDS = ("id", "awardeeName")
 
