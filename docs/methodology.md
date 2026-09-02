@@ -137,6 +137,30 @@ and can be re-run later against a newer GLEIF download. So:
   characters** (e.g. a university's English name vs. an unrelated commonly-used
   short name in another language). That class of match is out of reach for string
   similarity alone and is a documented, not silently ignored, gap.
+- **"Transliteration" here means diacritic/accent folding only, not real script
+  transliteration.** `resolution/normalize.py:transliterate` folds Unicode
+  combining marks down to a plain-ASCII base form — enough to match "Société
+  Générale" against "Societe Generale", which is what the regression fixture
+  actually tests, and nothing a sanctions screener would call transliteration
+  in practice: no Cyrillic, no pinyin, no conversion between scripts at all.
+  `docs/requirements.md`'s Epic B acceptance criterion is narrowed to name
+  this limitation explicitly rather than claim more than the implementation
+  delivers. `unidecode`/`nomenklatura` are the named path for real
+  transliteration if it's ever taken up as a V4 feature — not attempted here
+  because a half-built transliteration layer would be worse than an honestly
+  absent one.
+- **OpenSanctions' streaming ingester gets fully un-streamed one call later.**
+  `ingestion/opensanctions.py:OpenSanctionsTargetsIngester.stream_records`
+  genuinely streams the real ~1.22M-row `targets.simple.csv` via DuckDB's
+  native CSV reader in `FETCH_BATCH_SIZE`-row batches, never materializing
+  the whole file at once at the ingestion layer. `pipeline.py:run_screening`
+  then immediately does `os_records = list(os_ingester.stream_records())` —
+  the entire streamed result becomes one in-memory Python list of
+  `SourceRecord` objects regardless. This is a genuine Section 10 streaming-
+  at-scale gap, confirmed directly in the code (not assumed), and a larger
+  fix than anything else in this remediation pass — it wants its own plan
+  (a per-batch resolve/screen pipeline, not a bigger `list()`), recorded
+  here rather than carried silently in the meantime.
 - **Scoring uses only the single highest-confidence hit per factor**, never a
   sum or a count — an entity with 1 hit at 0.95 confidence and an entity with
   40 hits at 0.95 confidence score identically. Deliberate, not an oversight

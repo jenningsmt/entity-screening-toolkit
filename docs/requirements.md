@@ -65,7 +65,7 @@ Written as epics with representative user stories and acceptance criteria — in
 
 *As an analyst, I want candidate name matches across datasets even when spelling, formatting, or transliteration differs, so that a real match isn't missed because of surface-level string differences.*
 
-- Acceptance: fuzzy name matching handles at minimum: abbreviation/acronym variants, transliteration variants, and common corporate-suffix normalization (Inc./LLC/Ltd., etc.).
+- Acceptance: fuzzy name matching handles at minimum: abbreviation/acronym variants, **diacritic/accent-folding variants** (e.g. "Société Générale" vs "Societe Generale"), and common corporate-suffix normalization (Inc./LLC/Ltd., etc.). Narrowed from "transliteration variants" as of the 2026-09-02 remediation pass: `resolution/normalize.py:transliterate` only folds Unicode combining marks, which covers the accent case above and nothing a sanctions screener would actually call transliteration (Cyrillic, pinyin, or any other real script conversion). Real transliteration is a real gap, honestly out of scope for the current build rather than half-implemented — `unidecode`/`nomenklatura` are the named V4 path if it's ever taken up (see `docs/methodology.md`'s known limitations).
 - Acceptance: every match returns a similarity/confidence score, never a bare boolean.
 - Acceptance: a documented test set of "known-difficult" name pairs (true positives that look different, true negatives that look similar) exists and is checked on every run — mirroring FinchAI's own QA language ("known-difficult entities").
 

@@ -1,6 +1,18 @@
 # Remediation Pass — Findings from the 2026-09-02 Codebase Evaluation
 
-**Status:** Plan, not yet built
+**Status:** Mostly built (2026-09-02). Workstreams 3, 4, 1, 6, 5a, 5b, 7, the
+cross-cutting test files, 9, 8a, and 8c landed, each as its own commit, in
+the order given below except where explicitly re-sequenced (8a/8c moved
+ahead of 2, matching the dependency note in Workstream 2's own section).
+**Workstream 8b (pre-computed demo run) and Workstream 2 (security
+lockdown, which depends on 8b) did not land** — OpenAlex rate-limited the
+build machine for the length of this session, and 8b requires a real live
+bibliometric enrichment run to bake in. Workstream 9's real CLI timing
+measurement (its own "before choosing a timeout value" section) was
+blocked for the same reason; the 600s enrichment timeout `app.py` ships
+with is a documented, reasoned placeholder, not a live-measured one. Pick
+up 8b, then 2, then re-measure and adjust the 9a timeout, once OpenAlex
+access is confirmed working again.
 **Source:** `docs/2026-09-02-codebase-evaluation.md` (9 findings, all reproduced against `40ca51b`)
 **Audience:** Claude Code, working this repo directly
 

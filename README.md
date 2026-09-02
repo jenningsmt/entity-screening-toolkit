@@ -1,5 +1,7 @@
 # Monops -- Entity & Research-Affiliation Screening Toolkit
 
+![Monops logo](docs/monops-logo.jpeg)
+
 **Status:** V1, V2, and V3 complete (see the Status section below); the project is now named **Monops**. It's publicly deployed on AWS Lightsail (`docs/requirements.md` Section 9) -- live demo at **[mikejennings.dev/monops](https://mikejennings.dev/monops)**.
 
 ## What this is not, first
