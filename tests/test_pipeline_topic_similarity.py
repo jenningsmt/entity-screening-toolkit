@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from entity_screening import pipeline
+from entity_screening.bibliometric.topic_similarity import DOD_CORPUS_FILE, load_corpus
 from entity_screening.common import storage
 from entity_screening.scoring.rubric import STOCK_RUBRIC
 
@@ -101,3 +102,46 @@ def test_enrich_topic_similarity_writes_manifest_with_pinned_model_revision(tmp_
     assert topic_manifest.embedding_model == "BAAI/bge-small-en-v1.5"
     assert topic_manifest.embedding_model_revision == "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
     assert topic_manifest.flags_count == len(flags)
+
+
+def test_enrich_topic_similarity_reruns_do_not_silently_lose_flags(tmp_path):
+    """Regression for Finding 3: insert_paper_embeddings used to append rather
+    than replace, so a second enrich_topic_similarity call on the same run_id
+    duplicated each paper's embedding. The duplicate then became its own
+    ranking's runner-up (an exact copy of the winner), collapsing margin to
+    0.0 and silently filtering out every flag on the second call -- a correct
+    non-empty result turning into an incorrect empty one, with no error."""
+    manifest, db_path = _run_and_enrich_bibliometric(tmp_path)
+
+    # Target the real first bundled DoD corpus entry by its actual text, so
+    # this doesn't depend on call order -- give it similarity 1.0, everything
+    # else similarity 0.0, a clean margin regardless of how many entries the
+    # real corpus file has.
+    target_text = load_corpus(DOD_CORPUS_FILE)[0]["text"]
+
+    work = {
+        "id": "https://openalex.org/W1",
+        "title": "Fixture Paper",
+        "abstract_inverted_index": {"word": [0]},
+    }
+
+    def fake_fetch(url, params):
+        return {"results": [work]}
+
+    def fake_embed_passage(text):
+        return _vec(0)
+
+    def fake_embed_query(text):
+        return _vec(0) if text == target_text else _vec(1)
+
+    _, flags_1 = pipeline.enrich_topic_similarity(
+        manifest.run_id, db_path=db_path, fetch=fake_fetch,
+        embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
+    )
+    _, flags_2 = pipeline.enrich_topic_similarity(
+        manifest.run_id, db_path=db_path, fetch=fake_fetch,
+        embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
+    )
+
+    assert flags_1
+    assert flags_1 == flags_2

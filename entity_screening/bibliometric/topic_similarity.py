@@ -113,7 +113,7 @@ def embed_and_persist_papers(
                     embedding,
                 )
             )
-    storage.insert_paper_embeddings(conn, rows, run_id)
+    storage.insert_paper_embeddings(conn, rows, run_id, entity_id)
     return len(rows)
 
 
