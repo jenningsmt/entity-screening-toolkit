@@ -33,6 +33,7 @@ RUBRIC_SLIDER_RANGES = {
     "screening_hit_confidence_multiplier": (0.0, 3.0),
     "multiple_list_hit_bonus": (0.0, 60.0),
     "foreign_control_weight": (0.0, 150.0),
+    "bibliometric_hit_weight": (0.0, 150.0),
 }
 
 with st.sidebar:

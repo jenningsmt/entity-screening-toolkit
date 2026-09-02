@@ -17,6 +17,16 @@ class ScoringRubric:
     screening_hit_confidence_multiplier: float = 1.0
     multiple_list_hit_bonus: float = 20.0
     foreign_control_weight: float = 30.0
+    # Half of screening_hit_weight by default -- a bibliometric hit (a
+    # co-author's institution, or a PI's past affiliation, matching a
+    # concern-list entry) is a second-order signal compared to a direct
+    # name match against the entity itself, and Epic F's "change the
+    # weighting if I disagree with it" needs its own adjustable weight to
+    # let an analyst express exactly that disagreement (scoring/score.py
+    # partitions hits by producer to apply this separately). 25.0 is a
+    # defensible starting point, not a claimed-correct value -- the point
+    # is that it's now adjustable at all.
+    bibliometric_hit_weight: float = 25.0
 
 
 STOCK_RUBRIC = ScoringRubric()

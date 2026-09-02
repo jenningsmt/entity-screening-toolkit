@@ -77,6 +77,7 @@ def rubric_overrides(
     screening_hit_confidence_multiplier: float | None = None,
     multiple_list_hit_bonus: float | None = None,
     foreign_control_weight: float | None = None,
+    bibliometric_hit_weight: float | None = None,
 ) -> dict[str, float]:
     """Shared query-param -> rubric-override dict, used by every endpoint that
     lets a caller re-score under a modified rubric (scores/export routes)."""
@@ -85,6 +86,7 @@ def rubric_overrides(
         "screening_hit_confidence_multiplier": screening_hit_confidence_multiplier,
         "multiple_list_hit_bonus": multiple_list_hit_bonus,
         "foreign_control_weight": foreign_control_weight,
+        "bibliometric_hit_weight": bibliometric_hit_weight,
     }
     return {k: v for k, v in candidates.items() if v is not None}
 

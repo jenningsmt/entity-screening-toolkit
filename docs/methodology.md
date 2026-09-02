@@ -137,6 +137,29 @@ and can be re-run later against a newer GLEIF download. So:
   characters** (e.g. a university's English name vs. an unrelated commonly-used
   short name in another language). That class of match is out of reach for string
   similarity alone and is a documented, not silently ignored, gap.
+- **Scoring uses only the single highest-confidence hit per factor**, never a
+  sum or a count — an entity with 1 hit at 0.95 confidence and an entity with
+  40 hits at 0.95 confidence score identically. Deliberate, not an oversight
+  (`scoring/score.py`'s module docstring): it stops the bibliometric layer's
+  volume-multiplication (every co-author's institution across every one of a
+  PI's papers gets checked, not one entity's own name once) from dominating
+  the ranked table, at the cost of the table not distinguishing "one strong
+  signal" from "a recurring pattern." A `hit_count` factor with a low default
+  weight would recover that distinction if it's ever wanted.
+- **Bibliometric hits score against their own `bibliometric_hit_weight`, not
+  `screening_hit_weight`, as of this remediation pass.** A co-author's
+  institution (or a PI's own past affiliation) matching a concern-list entry
+  is a second-order signal compared to a direct name match against the
+  entity itself; treating the two identically meant Epic F's "change the
+  weighting if I disagree with it" couldn't express the single disagreement
+  an analyst is most likely to have. `multiple_list_hit_bonus` correspondingly
+  now counts distinct lists among *direct* hits only — a direct OpenSanctions
+  hit plus a bibliometric co-author hit against DoD 1260H is one direct
+  finding and one second-order inference, not "two independent lists
+  corroborate." This is a real behavior change: a run's total score and
+  factor breakdown for any entity with a bibliometric hit differs from a
+  pre-remediation-pass run against the same data (see `ScoringRubric`'s
+  `bibliometric_hit_weight` docstring for the default's reasoning).
 - **This build covers all of V1, V2, and V3, plus the deferred VSS topic-similarity
   layer**: NSF Award Search, OpenSanctions, DoD's Section 1260H list, GLEIF
   ownership/foreign-control flagging (Epic C), the Section 117 foreign-funding
