@@ -54,9 +54,11 @@ class RunSummary(BaseModel):
 class ScreeningHitOut(BaseModel):
     list_name: str
     matched_variant: str
+    matched_field: str
     confidence: float
     evidence: dict[str, Any]
     status: str
+    producer: str
 
 
 class ForeignControlFlagOut(BaseModel):
@@ -186,9 +188,11 @@ def scored_entity_to_dto(scored: ScoredEntity) -> ScoredEntityOut:
             ScreeningHitOut(
                 list_name=hit.list_name,
                 matched_variant=hit.matched_variant,
+                matched_field=hit.matched_field,
                 confidence=hit.confidence,
                 evidence=hit.evidence,
                 status=hit.status.value,
+                producer=hit.producer,
             )
             for hit in scored.screening_hits
         ],
