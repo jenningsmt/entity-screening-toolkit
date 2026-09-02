@@ -45,4 +45,5 @@ def screen_entity(
                     "matched_entry_fields": entry.source_fields,
                 },
                 status=MatchStatus.CANDIDATE_MATCH,
+                producer="direct_name",
             )

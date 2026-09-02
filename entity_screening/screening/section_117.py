@@ -147,4 +147,5 @@ def cross_check_section_117(
                         },
                     },
                     status=MatchStatus.CANDIDATE_MATCH,
+                    producer="section_117",
                 )
