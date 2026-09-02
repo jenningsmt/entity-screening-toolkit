@@ -1,10 +1,27 @@
 import json
 from pathlib import Path
 
+import pytest
+import requests
+
 from entity_screening.bibliometric import openalex_client
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 RESPONSES = json.loads((FIXTURES_DIR / "sample_openalex_responses.json").read_text(encoding="utf-8"))
+
+
+class _FakeResponse:
+    def __init__(self, status_code, json_body=None, headers=None):
+        self.status_code = status_code
+        self._json_body = json_body
+        self.headers = headers or {}
+
+    def json(self):
+        return self._json_body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f"{self.status_code} error")
 
 
 def test_search_institutions_returns_real_shaped_results():
@@ -100,3 +117,64 @@ def test_get_author_works_real_shaped_authorships():
     co_author = authorships[0]["author"]
     assert co_author["display_name"] == "Michael Stemkovski"
     assert authorships[0]["institutions"][0]["display_name"] == "Utah State University"
+
+
+def test_http_get_retries_on_429_then_succeeds(monkeypatch):
+    """Real, not hypothetical: scaling the demo NSF dataset to 53 real entities
+    reliably triggered OpenAlex 429s, and with no retry logic that crashed the
+    whole enrichment run rather than just the one request that hit it."""
+    responses = [
+        _FakeResponse(429, headers={}),
+        _FakeResponse(200, json_body={"results": ["ok"]}),
+    ]
+    calls = []
+    sleeps = []
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params))
+        return responses[len(calls) - 1]
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: sleeps.append(s))
+
+    result = openalex_client._http_get("https://api.openalex.org/institutions", {"search": "X"})
+
+    assert result == {"results": ["ok"]}
+    assert len(calls) == 2
+    assert len(sleeps) == 1
+
+
+def test_http_get_honors_retry_after_header(monkeypatch):
+    responses = [
+        _FakeResponse(429, headers={"Retry-After": "7"}),
+        _FakeResponse(200, json_body={"results": []}),
+    ]
+    calls = []
+    sleeps = []
+
+    def fake_get(url, params, timeout):
+        calls.append(1)
+        return responses[len(calls) - 1]
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: sleeps.append(s))
+
+    openalex_client._http_get("https://api.openalex.org/institutions", {})
+
+    assert sleeps == [7.0]
+
+
+def test_http_get_gives_up_after_max_retries_and_raises(monkeypatch):
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append(1)
+        return _FakeResponse(429, headers={})
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: None)
+
+    with pytest.raises(requests.exceptions.HTTPError):
+        openalex_client._http_get("https://api.openalex.org/institutions", {})
+
+    assert len(calls) == openalex_client.MAX_RETRIES + 1

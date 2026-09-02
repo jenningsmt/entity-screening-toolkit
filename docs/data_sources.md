@@ -15,6 +15,26 @@ each source's terms.
 - **Attribution:** "Source: NSF Award Search (research.gov), retrieved on the date
   recorded in this run's manifest."
 - **Known limitation:** PI name variants; only publicly disclosed awards are included.
+- **Real, pre-existing bug, found and fixed (2026-09-02):** `ingestion/nsf.py`'s
+  live-fetch `API_URL` pointed at `api.research.gov`, a hostname that no longer
+  resolves in DNS at all — invisible until now because the app only ever exercised
+  the `local_file` path. First flagged (but not fixed) in
+  `docs/plans/2026-09-01-section-117-foreign-gift-disclosure-cross-check.md` while
+  verifying a different feature against real data. Fixed by pointing at
+  `api.nsf.gov/services/v1/awards.json`, confirmed live and returning real award
+  data.
+- **Curated demo dataset:** `tests/fixtures/demo_nsf_awards.json` (the Streamlit
+  UI's default `nsf_file`, replacing the 4-record unit-test fixture
+  `sample_nsf_awards.json`, which stays as-is for exact-count unit-test
+  assertions) — 70 real records pulled live from the corrected endpoint on
+  2026-09-02. Not a random sample: it deliberately includes 12 of Rod A. Wing's
+  (University of Arizona) real awards, because his real OpenAlex author profile
+  (`A5006286921`) has a verified, real co-authorship tie to **BGI Genomics** —
+  which is a real entry on the bundled DoD Section 1260H list — via two real
+  papers (rice and asparagus genome sequencing). Confirmed directly against both
+  APIs before inclusion, not assumed. Every other record in the file is an
+  unfiltered real pull, included for volume/realism rather than for any expected
+  match.
 
 ### OpenSanctions (consolidated `targets.simple.csv`)
 - **Provider:** OpenSanctions.
@@ -208,6 +228,16 @@ each source's terms.
   does **not** pass the sidebar's general screening-threshold slider into this
   call, for the same reason — the two thresholds now serve different risk
   profiles, not one shared value.
+- **Real robustness bug, found and fixed (2026-09-02):** `openalex_client.py`'s
+  `_http_get` had no retry/backoff at all — invisible against the original
+  2-entity demo fixture, but scaling the demo NSF dataset to 53 real entities
+  reliably triggered a real `429 Too Many Requests` from OpenAlex (reproduced
+  deterministically, even with `mailto` set for the polite pool and after a
+  cooldown), which crashed the entire `enrich_bibliometric` call with an
+  unhandled 500 — discarding every hit already found, not just the one request
+  that hit the limit. Fixed with a bounded retry loop (honors OpenAlex's
+  `Retry-After` header when sent, else exponential backoff, 3 attempts) —
+  see `tests/test_openalex_client.py`'s `test_http_get_*` cases.
 
 ### Seven Sons of National Defence
 
