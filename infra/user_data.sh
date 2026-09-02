@@ -50,8 +50,8 @@ git clone --depth 1 "$REPO_URL" "$APP_DIR"
 # --- Placeholder page at the apex, Monops itself lives at /monops ----------
 mkdir -p /var/www/monops-placeholder
 cp "$APP_DIR/infra/placeholder/index.html" /var/www/monops-placeholder/index.html
-if [ -f "$APP_DIR/Project Monops Logo.jpeg" ]; then
-    cp "$APP_DIR/Project Monops Logo.jpeg" /var/www/monops-placeholder/monops-logo.jpeg
+if [ -f "$APP_DIR/docs/monops-logo.jpeg" ]; then
+    cp "$APP_DIR/docs/monops-logo.jpeg" /var/www/monops-placeholder/monops-logo.jpeg
 fi
 
 # --- nginx -------------------------------------------------------------------
