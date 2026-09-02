@@ -117,12 +117,22 @@ and can be re-run later against a newer GLEIF download. So:
   alias that doesn't survive suffix-stripping/transliteration/acronym-expansion
   won't be grouped (see Epic B's normalization rules in `resolution/normalize.py`).
 - **Screening uses a blocking step.** `screening/lists.py` only compares a candidate
-  entity against entries sharing a 3-character normalized-name prefix, to keep
-  screening tractable against a large list (e.g. OpenSanctions' full target file).
-  A true match that differs in its first three characters (e.g. a name that starts
-  with a translated/reordered word) will not be found. This is a standard
-  entity-resolution trade-off, not a bug, but it is a real recall limit worth
-  stating explicitly per Section 10's "known limitations" requirement.
+  entity against entries sharing a 3-character normalized-name prefix *or* a
+  3-character acronym-form prefix, to keep screening tractable against a large
+  list (e.g. OpenSanctions' full target file). Both key types are indexed and
+  queried specifically so an acronym reaches its full-name expansion and vice
+  versa even when the two share no name-prefix at all — "IBM" and
+  "International Business Machines" share no characters in that sense, which
+  is the normal case for an acronym, not an edge case. (An earlier version of
+  this build indexed only the name-prefix key, which meant `matcher.py`'s
+  acronym scorer — one of Epic B's three named acceptance criteria — could
+  only ever fire when a concern-list entry happened to already carry both the
+  full name and the acronym as separate aliases; that gap is fixed as of this
+  remediation pass and no longer applies.) What the blocking step still
+  cannot reach: a genuine alias sharing neither a name-prefix nor an
+  acronym-prefix with the entity (see the next bullet) — that remains a real,
+  standard entity-resolution trade-off, not a bug, and is stated explicitly
+  per Section 10's "known limitations" requirement.
 - **Bare acronym/fuzzy matching can't catch a genuine alias with no shared
   characters** (e.g. a university's English name vs. an unrelated commonly-used
   short name in another language). That class of match is out of reach for string

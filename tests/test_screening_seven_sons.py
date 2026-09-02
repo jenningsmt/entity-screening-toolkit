@@ -71,8 +71,21 @@ def test_existing_opensanctions_list_finds_all_seven_sons_with_no_new_code(tmp_p
 
 def test_seven_sons_also_match_via_their_real_acronym_aliases():
     """NSF award data doesn't always use an institution's full common name --
-    confirms the acronym aliases found in the real OpenSanctions data also work,
-    reusing the existing alias-matching path (Epic B)."""
+    confirms the acronym aliases found in the real OpenSanctions data also work.
+
+    This passes because the real OpenSanctions entries happen to carry both
+    the full name *and* the acronym as separate name_variants on the same
+    entry, so the (pre-Finding-1-fix) name-key-only block index already
+    contained a key for the acronym string itself -- a property of
+    OpenSanctions' data quality for these specific entries, not proof that
+    acronym matching works in general. It does not exercise the general case
+    (an acronym matching a concern-list entry that carries *only* the full
+    name, with no acronym alias present) -- that's what
+    tests/test_matcher.py:test_known_difficult_pairs_through_screen_entity
+    and tests/test_screening.py:test_blocking_does_not_drop_a_true_match_outside_default_block
+    cover, and what screening/lists.py's acronym-key blocking (Finding 1) now
+    makes reachable regardless of whether a list entry happens to carry both
+    spellings."""
     error_log_path = "seven_sons_acronym_test_errors.jsonl"
     import tempfile
 
