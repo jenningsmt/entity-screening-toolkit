@@ -36,6 +36,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 
 from entity_screening.bibliometric.openalex_client import FetchFn, get_author_works
+from entity_screening.common.attribution import OPENALEX_PRECISION_CAVEAT, attribution_for
 from entity_screening.common.schema import MatchStatus, ResolvedAuthor, ScreeningHit
 from entity_screening.resolution.matcher import is_candidate_match, score_pair
 from entity_screening.screening.lists import EntityOfConcernList
@@ -114,6 +115,16 @@ def cross_check_bibliometric(
                                 "openalex_id": institution.get("id"),
                                 "display_name": institution_name,
                                 "country_code": institution.get("country_code"),
+                            },
+                            # A bibliometric hit inherits uncertainty from both
+                            # the matched concern-list entry AND OpenAlex's own
+                            # affiliation data (Finding 6 / Epic E's third
+                            # criterion) -- the caveat rides alongside the
+                            # concern list's own attribution/license, not as a
+                            # separate evidence key a consumer could miss.
+                            "source_attribution": {
+                                **attribution_for(concern_list.list_name),
+                                "caveat": OPENALEX_PRECISION_CAVEAT,
                             },
                         }
                         if not is_self:
