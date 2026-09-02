@@ -31,7 +31,7 @@ from entity_screening.bibliometric.cross_check import (
 from entity_screening.bibliometric.cross_check import cross_check_bibliometric
 from entity_screening.bibliometric.embeddings import EmbedFn
 from entity_screening.bibliometric.institution_match import resolve_entity_to_openalex_institution
-from entity_screening.bibliometric.openalex_client import FetchFn
+from entity_screening.bibliometric.openalex_client import FetchFn, get_author_works
 from entity_screening.bibliometric.topic_similarity import (
     CET_CORPUS_FILE,
     DEFAULT_MARGIN,
@@ -380,6 +380,7 @@ def enrich_bibliometric(
     institution_threshold: float = DEFAULT_THRESHOLD,
     author_threshold: float = DEFAULT_THRESHOLD,
     concern_threshold: float = DEFAULT_BIBLIOMETRIC_CONCERN_THRESHOLD,
+    max_works_per_author: int | None = None,
     db_path: Path | str = storage.DEFAULT_DB_PATH,
     runs_dir: Path | str = DEFAULT_RUNS_DIR,
     fetch: FetchFn | None = None,
@@ -388,6 +389,16 @@ def enrich_bibliometric(
     their co-authorship/affiliation history (Epic E) -- a separate, explicit step
     from `run_screening`, same posture as `enrich_ownership`. OpenAlex is a live
     external source, not a per-run ingestion source.
+
+    Fetches each resolved author's works exactly once per run (Workstream 9b)
+    and persists them to `raw_openalex_works`, keyed by `openalex_author_id`
+    -- not per institution group, since the same author can in principle
+    surface in more than one group. `enrich_topic_similarity` reads this same
+    persisted copy back instead of re-fetching, which used to double OpenAlex
+    traffic and wall-clock for the combined path. `max_works_per_author`
+    bounds each fetch (Workstream 9c) and is recorded in this call's
+    `BibliometricSnapshotManifest` -- a capped run's coverage is a
+    reproducibility fact, not an implementation detail.
 
     `resolved_entities` doesn't retain PI-level detail (see
     `load_resolved_entities`'s docstring), so PI names are re-derived from
@@ -455,10 +466,30 @@ def enrich_bibliometric(
                         author_threshold, contact_email, fetch,
                     )
                 )
+
+            # Fetch (and persist) each not-yet-seen author's works exactly
+            # once for the whole run, not once per institution group -- the
+            # same author could in principle surface via more than one group.
+            works_by_author_id: dict[str, list[dict]] = {}
+            for resolved_author in institution_resolved_authors:
+                author_id = resolved_author.openalex_author_id
+                if author_id in works_by_author_id:
+                    continue
+                existing = storage.load_openalex_works(conn, run_id, author_id)
+                if existing is not None:
+                    works_by_author_id[author_id] = existing
+                    continue
+                works = get_author_works(
+                    author_id, contact_email=contact_email, fetch=fetch,
+                    max_works=max_works_per_author,
+                )
+                storage.insert_openalex_works(conn, run_id, author_id, works)
+                works_by_author_id[author_id] = works
+
             institution_hits = list(
                 cross_check_bibliometric(
                     template_entity_id, institution_resolved_authors, concern_lists,
-                    threshold=concern_threshold, contact_email=contact_email, fetch=fetch,
+                    works_by_author_id, threshold=concern_threshold,
                 )
             )
 
@@ -478,6 +509,7 @@ def enrich_bibliometric(
         pi_count=pi_count,
         resolved_author_count=len(all_resolved_authors),
         openalex_api_base_url=openalex_client.API_BASE_URL,
+        max_works_per_author=max_works_per_author,
     )
     manifest.write(runs_dir)
     return manifest, all_hits
@@ -489,7 +521,6 @@ def enrich_topic_similarity(
     margin: float = DEFAULT_MARGIN,
     db_path: Path | str = storage.DEFAULT_DB_PATH,
     runs_dir: Path | str = DEFAULT_RUNS_DIR,
-    fetch: FetchFn | None = None,
     embed_query_fn: EmbedFn | None = None,
     embed_passage_fn: EmbedFn | None = None,
 ) -> tuple[TopicSimilarityManifest, list[TopicSimilarityFlag]]:
@@ -498,7 +529,12 @@ def enrich_topic_similarity(
     from both `run_screening` and `enrich_bibliometric`, requiring
     `enrich_bibliometric` to have already run for this `run_id` (reads
     `openalex_author_matches` to know which PIs/authors to walk; raises a clear
-    error otherwise rather than silently doing nothing).
+    error otherwise rather than silently doing nothing). No `fetch`/network
+    parameter here at all (as of Workstream 9b): every work this step needs
+    was already fetched and persisted to `raw_openalex_works` by that prior
+    `enrich_bibliometric` call, so this step runs against the database alone
+    -- a real robustness gain, not just a wall-clock one, given the egress
+    problems already documented elsewhere in this project.
 
     Deliberately advisory-only: never touches `scored_entities` or
     `screening_hits` -- `TopicSimilarityFlag` carries no `MatchStatus` and is
@@ -529,7 +565,7 @@ def enrich_topic_similarity(
             all_flags.extend(
                 compute_topic_similarity_flags(
                     conn, run_id, entity_id, resolved_authors, dod_corpus, cet_corpus,
-                    margin=margin, fetch=fetch,
+                    margin=margin,
                     embed_query_fn=embed_query_fn, embed_passage_fn=embed_passage_fn,
                 )
             )

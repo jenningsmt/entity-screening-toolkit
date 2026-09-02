@@ -35,7 +35,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 
-from entity_screening.bibliometric.openalex_client import FetchFn, get_author_works
 from entity_screening.common.attribution import OPENALEX_PRECISION_CAVEAT, attribution_for
 from entity_screening.common.schema import MatchStatus, ResolvedAuthor, ScreeningHit
 from entity_screening.resolution.matcher import is_candidate_match, score_pair
@@ -74,17 +73,23 @@ def cross_check_bibliometric(
     entity_id: str,
     resolved_authors: Iterable[ResolvedAuthor],
     concern_lists: Iterable[EntityOfConcernList],
+    works_by_author_id: dict[str, list[dict]],
     threshold: float = DEFAULT_CONCERN_THRESHOLD,
     block_size: int = 3,
-    contact_email: str | None = None,
-    fetch: FetchFn | None = None,
 ) -> Iterator[ScreeningHit]:
+    """`works_by_author_id` is pre-fetched by the caller (pipeline.py), not
+    fetched here -- Workstream 9b: enrich_bibliometric fetches (and persists)
+    each resolved author's works exactly once, and enrich_topic_similarity
+    reads the same persisted copy back rather than re-fetching, which used to
+    double OpenAlex traffic and wall-clock for the combined path. This
+    function stays a pure check against already-available data; a missing
+    author_id in the dict is treated the same as "no works," never an error
+    -- an author this cross-check has never seen still legitimately produces
+    zero hits."""
     concern_lists = list(concern_lists)
     for resolved_author in resolved_authors:
         author_evidence = _author_resolution_evidence(resolved_author)
-        works = get_author_works(
-            resolved_author.openalex_author_id, contact_email=contact_email, fetch=fetch
-        )
+        works = works_by_author_id.get(resolved_author.openalex_author_id, [])
         for work in works:
             work_evidence = {
                 "id": work.get("id"),

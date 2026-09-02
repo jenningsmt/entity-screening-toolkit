@@ -1,13 +1,17 @@
 """Semantic topic-similarity layer against real critical-technology reference
 corpora (deferred VSS work, docs/plans/2026-09-01-vss-topic-similarity-layer.md).
 
-For each of a run's resolved authors, fetches their OpenAlex works, reconstructs
-each paper's abstract (OpenAlex only provides `abstract_inverted_index`, a
-word-to-position map -- there is no plain `abstract` field at all; ~18% of real
-papers have neither), embeds it, and ranks it against two real reference corpora
-independently: the primary corpus (the War Department's 6 Critical Technology
-Areas, full-sentence descriptions) and the secondary corpus (the White House OSTP's
-18-category CET list, bare technical terms with no prose, concatenated per category
+For each of a run's resolved authors, reads their already-fetched OpenAlex
+works back from `raw_openalex_works` (`enrich_bibliometric` fetches and
+persists them earlier in the same run -- a prerequisite this layer enforces,
+and Workstream 9b's fix for what used to be a second live fetch of the same
+data), reconstructs each paper's abstract (OpenAlex only provides
+`abstract_inverted_index`, a word-to-position map -- there is no plain
+`abstract` field at all; ~18% of real papers have neither), embeds it, and
+ranks it against two real reference corpora independently: the primary
+corpus (the War Department's 6 Critical Technology Areas, full-sentence
+descriptions) and the secondary corpus (the White House OSTP's 18-category
+CET list, bare technical terms with no prose, concatenated per category
 into one passage).
 
 **The two corpora are ranked independently, never pooled into one comparison**
@@ -39,7 +43,6 @@ from pathlib import Path
 import duckdb
 
 from entity_screening.bibliometric.embeddings import EmbedFn, embed_passage, embed_query
-from entity_screening.bibliometric.openalex_client import FetchFn, get_author_works
 from entity_screening.common.schema import ResolvedAuthor, TopicSimilarityFlag
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -88,17 +91,25 @@ def embed_and_persist_papers(
     run_id: str,
     entity_id: str,
     resolved_authors: Iterable[ResolvedAuthor],
-    fetch: FetchFn | None = None,
     embed_passage_fn: EmbedFn = embed_passage,
 ) -> int:
-    """Fetches each resolved author's works, reconstructs abstracts, skips works
-    with none, embeds the rest, and persists them into paper_embeddings. Returns
-    the number of papers actually embedded."""
+    """Reconstructs abstracts from each resolved author's already-persisted
+    works, skips works with none, embeds the rest, and persists them into
+    paper_embeddings. Returns the number of papers actually embedded.
+
+    Reads works via `storage.load_openalex_works` rather than fetching live
+    (Workstream 9b) -- `enrich_bibliometric` already fetched and persisted
+    every resolved author's works to `raw_openalex_works` earlier in the same
+    run (a prerequisite `enrich_topic_similarity` already enforces), so
+    re-fetching here would double OpenAlex traffic and wall-clock for no
+    reason. A missing author_id (not persisted for this run) is treated as
+    zero works, not an error -- defensive, though it shouldn't happen given
+    the enforced ordering."""
     from entity_screening.common import storage
 
     rows = []
     for resolved_author in resolved_authors:
-        works = get_author_works(resolved_author.openalex_author_id, fetch=fetch)
+        works = storage.load_openalex_works(conn, run_id, resolved_author.openalex_author_id) or []
         for work in works:
             abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
             if abstract is None:
@@ -211,12 +222,11 @@ def compute_topic_similarity_flags(
     dod_corpus: list[dict],
     cet_corpus: list[dict],
     margin: float = DEFAULT_MARGIN,
-    fetch: FetchFn | None = None,
     embed_query_fn: EmbedFn = embed_query,
     embed_passage_fn: EmbedFn = embed_passage,
 ) -> list[TopicSimilarityFlag]:
     embed_and_persist_papers(
-        conn, run_id, entity_id, resolved_authors, fetch=fetch, embed_passage_fn=embed_passage_fn
+        conn, run_id, entity_id, resolved_authors, embed_passage_fn=embed_passage_fn
     )
     primary_flags = _rank_against_corpus(conn, run_id, entity_id, dod_corpus, margin, embed_query_fn)
     secondary_flags = _rank_against_corpus(conn, run_id, entity_id, cet_corpus, margin, embed_query_fn)

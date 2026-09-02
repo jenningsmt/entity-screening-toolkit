@@ -71,8 +71,7 @@ def test_compute_topic_similarity_flags_fires_when_margin_is_cleared(tmp_path):
         "abstract_inverted_index": {"word": [0]},
     }
 
-    def fake_fetch(url, params):
-        return {"results": [work]}
+    storage.insert_openalex_works(conn, "run-1", resolved_author.openalex_author_id, [work])
 
     # Paper embedding points mostly at dim 0; "Area A" points exactly at dim 0
     # (similarity 1.0), "Area B" points at dim 1 (similarity 0.0) -- a clean margin.
@@ -89,7 +88,7 @@ def test_compute_topic_similarity_flags_fires_when_margin_is_cleared(tmp_path):
 
     flags = compute_topic_similarity_flags(
         conn, "run-1", "e1", [resolved_author], dod_corpus, [],
-        margin=0.10, fetch=fake_fetch,
+        margin=0.10,
         embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
     )
     conn.close()
@@ -108,9 +107,7 @@ def test_compute_topic_similarity_flags_does_not_fire_when_margin_too_small(tmp_
     conn = storage.connect(tmp_path / "test.duckdb")
     resolved_author = _resolved_author()
     work = {"id": "https://openalex.org/W1", "title": "Fixture", "abstract_inverted_index": {"w": [0]}}
-
-    def fake_fetch(url, params):
-        return {"results": [work]}
+    storage.insert_openalex_works(conn, "run-1", resolved_author.openalex_author_id, [work])
 
     # Two near-identical corpus vectors -- top and runner-up are almost tied.
     dod_corpus = [
@@ -126,7 +123,7 @@ def test_compute_topic_similarity_flags_does_not_fire_when_margin_too_small(tmp_
 
     flags = compute_topic_similarity_flags(
         conn, "run-1", "e1", [resolved_author], dod_corpus, [],
-        margin=0.10, fetch=fake_fetch,
+        margin=0.10,
         embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
     )
     conn.close()
@@ -142,9 +139,7 @@ def test_corpora_are_ranked_independently_not_pooled(tmp_path):
     conn = storage.connect(tmp_path / "test.duckdb")
     resolved_author = _resolved_author()
     work = {"id": "https://openalex.org/W1", "title": "Fixture", "abstract_inverted_index": {"w": [0]}}
-
-    def fake_fetch(url, params):
-        return {"results": [work]}
+    storage.insert_openalex_works(conn, "run-1", resolved_author.openalex_author_id, [work])
 
     dod_corpus = [
         {"id": "dod_correct", "name": "DoD Correct Match", "text": "dod_correct", "tier": "primary"},
@@ -172,7 +167,7 @@ def test_corpora_are_ranked_independently_not_pooled(tmp_path):
 
     flags = compute_topic_similarity_flags(
         conn, "run-1", "e1", [resolved_author], dod_corpus, cet_corpus,
-        margin=0.10, fetch=fake_fetch,
+        margin=0.10,
         embed_query_fn=fake_embed_query, embed_passage_fn=fake_embed_passage,
     )
     conn.close()

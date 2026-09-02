@@ -142,6 +142,20 @@ CREATE TABLE IF NOT EXISTS openalex_author_matches (
     -- Finding 3) -- (entity_id, run_id) alone isn't unique here.
 );
 
+CREATE TABLE IF NOT EXISTS raw_openalex_works (
+    run_id VARCHAR,
+    openalex_author_id VARCHAR,
+    works JSON,
+    -- Workstream 9b: enrich_bibliometric used to fetch an author's works,
+    -- then enrich_topic_similarity fetched the SAME author's works again --
+    -- doubling OpenAlex traffic and wall-clock for the combined path.
+    -- enrich_bibliometric now persists each resolved author's works here
+    -- once; embed_and_persist_papers (topic_similarity.py) reads them back
+    -- instead of re-fetching. A side benefit: topic-similarity becomes
+    -- runnable with no network at all once bibliometric enrichment has run.
+    PRIMARY KEY (run_id, openalex_author_id)
+);
+
 CREATE TABLE IF NOT EXISTS paper_embeddings (
     openalex_work_id VARCHAR,
     run_id VARCHAR,
@@ -553,6 +567,38 @@ def load_openalex_author_matches(
             status,
         ) in rows
     ]
+
+
+def insert_openalex_works(
+    conn: duckdb.DuckDBPyConnection, run_id: str, openalex_author_id: str, works: list[dict]
+) -> None:
+    """Deletes any existing row for this (run_id, openalex_author_id) first --
+    same re-runnable "current state" semantics as insert_lei_matches. One row
+    per author (not per work) since a caller always wants "everything fetched
+    for this author," never a single work in isolation."""
+    conn.execute(
+        "DELETE FROM raw_openalex_works WHERE run_id = ? AND openalex_author_id = ?",
+        [run_id, openalex_author_id],
+    )
+    conn.execute(
+        "INSERT INTO raw_openalex_works VALUES (?, ?, ?)",
+        [run_id, openalex_author_id, json.dumps(works, default=str)],
+    )
+
+
+def load_openalex_works(
+    conn: duckdb.DuckDBPyConnection, run_id: str, openalex_author_id: str
+) -> list[dict] | None:
+    """Returns None if this author's works were never persisted for this run
+    (e.g. enrich_bibliometric hasn't run yet) -- distinct from an empty list,
+    which means the fetch happened and genuinely found zero works."""
+    row = conn.execute(
+        "SELECT works FROM raw_openalex_works WHERE run_id = ? AND openalex_author_id = ?",
+        [run_id, openalex_author_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return json.loads(row[0])
 
 
 def insert_paper_embeddings(

@@ -265,6 +265,20 @@ and can be re-run later against a newer GLEIF download. So:
   didn't exist in the data (an ordering artifact of the earlier flattened
   return shape). All three sources of uncertainty are surfaced in the flag's
   own `evidence`, not hidden behind a single confidence number.
+- **A bibliometric run's works coverage can be capped, and a capped run's
+  coverage is partial by design.** `bibliometric/openalex_client.py:get_author_works`
+  pages with no limit by default and accumulates an author's entire works
+  corpus in memory -- 456 works for Rod A. Wing (University of Arizona), the
+  demo dataset's deliberately-included prolific real PI, three sequential
+  round-trips. A caller (`enrich_bibliometric`) can pass `max_works_per_author`
+  to bound both the network cost and the memory footprint; when it does, the
+  bibliometric cross-check and the topic-similarity ranking that reads the
+  same persisted works both only ever see that capped slice, never the
+  author's full real history. The cap actually used is recorded in the run's
+  own `BibliometricSnapshotManifest.max_works_per_author` — a silently
+  truncated works history would otherwise be a reproducibility claim the run
+  could no longer make, the same reasoning `ownership/graph.py:ParentChain.truncated`
+  already applies to a bounded ownership walk.
 - **The DoD 1260H list is a static, hand-curated snapshot, not a live feed** (see
   `docs/data_sources.md`). It's bundled with the package
   (`entity_screening/screening/data/dod_1260h.json`) and needs periodic manual

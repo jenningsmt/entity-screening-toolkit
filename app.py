@@ -87,10 +87,29 @@ def _api_get(path: str, **params) -> requests.Response:
     return response
 
 
-def _api_post(path: str, payload: dict) -> requests.Response:
-    response = requests.post(f"{api_base_url}{path}", json=payload, timeout=120)
+def _api_post(path: str, payload: dict, timeout: int = 120) -> requests.Response:
+    response = requests.post(f"{api_base_url}{path}", json=payload, timeout=timeout)
     response.raise_for_status()
     return response
+
+
+# Bibliometric/topic-similarity enrichment can be 175-297 sequential OpenAlex
+# calls for a real 53-entity run (measured directly against the real demo
+# dataset -- see openalex_client.py's module docstring), any of which can add
+# up to 90s of retry-backoff sleep under rate limiting. 120s (kept as the
+# default above -- a reasonable guardrail for a synchronous screening run,
+# which makes no live external calls at all) is nowhere near enough for this.
+#
+# This value is a reasoned placeholder, not a live-measured one: OpenAlex was
+# rate-limited from the machine this was written on for this entire work
+# session, blocking the real CLI timing pass
+# docs/plans/2026-09-02-remediation-pass.md's Workstream 9 explicitly calls
+# for ("time python -m entity_screening.cli run --enrich-bibliometric ...").
+# Re-measure and adjust before trusting this number for anything beyond
+# "better than 120s." Streamlit will also drop the websocket on a long
+# synchronous POST regardless of this client-side timeout -- st.status below
+# is what actually keeps the page from looking frozen either way.
+ENRICHMENT_TIMEOUT_SECONDS = 600
 
 
 @st.cache_data(show_spinner="Fetching default rubric...")
@@ -178,34 +197,55 @@ if enrich_button:
         st.warning("Both GLEIF file paths are required to run ownership analysis.")
 
 if bibliometric_button:
-    try:
-        # Deliberately does NOT pass the sidebar's general screening threshold --
-        # bibliometric cross-checking has a volume-multiplication precision risk
-        # screen_entity() doesn't (every co-author's institution across every
-        # paper gets checked, not one entity's own name once; a real false
-        # positive at 0.80 confirmed this during V3's build, see
-        # docs/data_sources.md), so it keeps its own higher default unless a
-        # caller explicitly overrides it.
-        payload = {"contact_email": openalex_contact_email or None}
-        enrichment = _api_post(f"/runs/{run_id}/bibliometric", payload).json()
-        st.success(
-            f"Bibliometric enrichment complete: {enrichment['hits_count']} "
-            "candidate hit(s) found."
-        )
-    except requests.RequestException as exc:
-        st.error(f"Bibliometric enrichment failed: {exc}")
+    with st.status("Running bibliometric enrichment against live OpenAlex data...", expanded=True) as status:
+        try:
+            st.write(
+                "This can take several minutes against a real dataset -- each PI's "
+                "co-authorship history is walked one real paper at a time."
+            )
+            # Deliberately does NOT pass the sidebar's general screening threshold --
+            # bibliometric cross-checking has a volume-multiplication precision risk
+            # screen_entity() doesn't (every co-author's institution across every
+            # paper gets checked, not one entity's own name once; a real false
+            # positive at 0.80 confirmed this during V3's build, see
+            # docs/data_sources.md), so it keeps its own higher default unless a
+            # caller explicitly overrides it.
+            payload = {"contact_email": openalex_contact_email or None}
+            enrichment = _api_post(
+                f"/runs/{run_id}/bibliometric", payload, timeout=ENRICHMENT_TIMEOUT_SECONDS
+            ).json()
+            status.update(
+                label=f"Bibliometric enrichment complete: {enrichment['hits_count']} candidate hit(s) found.",
+                state="complete",
+            )
+        except requests.RequestException as exc:
+            status.update(label="Bibliometric enrichment failed.", state="error")
+            st.error(
+                f"Bibliometric enrichment failed: {exc}\n\n"
+                "If this was a timeout, the run may still have finished on the server -- "
+                "wait a moment and check the evidence trail below before retrying, since "
+                "retrying a run that actually succeeded duplicates nothing (re-running is "
+                "safe) but does re-do real work."
+            )
 
 if topic_similarity_button:
-    try:
-        result = _api_post(f"/runs/{run_id}/topic-similarity", {}).json()
-        st.session_state["topic_similarity_flags"] = result["flags"]
-        st.success(
-            f"Topic-similarity ranking complete: {len(result['flags'])} advisory "
-            "flag(s) -- not scored matches, see the section below."
-        )
-    except requests.RequestException as exc:
-        detail = exc.response.json().get("detail") if exc.response is not None else str(exc)
-        st.error(f"Topic-similarity ranking failed: {detail}")
+    with st.status("Ranking PIs' real papers against reference corpora...", expanded=True) as status:
+        try:
+            result = _api_post(
+                f"/runs/{run_id}/topic-similarity", {}, timeout=ENRICHMENT_TIMEOUT_SECONDS
+            ).json()
+            st.session_state["topic_similarity_flags"] = result["flags"]
+            status.update(
+                label=(
+                    f"Topic-similarity ranking complete: {len(result['flags'])} advisory "
+                    "flag(s) -- not scored matches, see the section below."
+                ),
+                state="complete",
+            )
+        except requests.RequestException as exc:
+            status.update(label="Topic-similarity ranking failed.", state="error")
+            detail = exc.response.json().get("detail") if exc.response is not None else str(exc)
+            st.error(f"Topic-similarity ranking failed: {detail}")
 
 try:
     scores = _api_get(f"/runs/{run_id}/scores", **rubric_overrides).json()

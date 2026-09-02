@@ -178,3 +178,105 @@ def test_http_get_gives_up_after_max_retries_and_raises(monkeypatch):
         openalex_client._http_get("https://api.openalex.org/institutions", {})
 
     assert len(calls) == openalex_client.MAX_RETRIES + 1
+
+
+def test_http_get_retries_on_500_then_succeeds(monkeypatch):
+    """Workstream 9d: widened past 429-only after measuring real call volume
+    (175-297 sequential calls per enrichment run) made a transient 5xx a
+    near-certainty rather than an edge case."""
+    responses = [
+        _FakeResponse(500, headers={}),
+        _FakeResponse(200, json_body={"results": ["ok"]}),
+    ]
+    calls = []
+    sleeps = []
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params))
+        return responses[len(calls) - 1]
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: sleeps.append(s))
+
+    result = openalex_client._http_get("https://api.openalex.org/institutions", {"search": "X"})
+
+    assert result == {"results": ["ok"]}
+    assert len(calls) == 2
+    assert len(sleeps) == 1
+
+
+def test_http_get_retries_on_connection_error_then_succeeds(monkeypatch):
+    calls = []
+    sleeps = []
+
+    def fake_get(url, params, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise requests.exceptions.ConnectionError("connection reset")
+        return _FakeResponse(200, json_body={"results": ["ok"]})
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: sleeps.append(s))
+
+    result = openalex_client._http_get("https://api.openalex.org/institutions", {})
+
+    assert result == {"results": ["ok"]}
+    assert len(calls) == 2
+    assert len(sleeps) == 1
+
+
+def test_http_get_retries_on_timeout_then_succeeds(monkeypatch):
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise requests.exceptions.Timeout("read timed out")
+        return _FakeResponse(200, json_body={"results": ["ok"]})
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: None)
+
+    result = openalex_client._http_get("https://api.openalex.org/institutions", {})
+
+    assert result == {"results": ["ok"]}
+    assert len(calls) == 2
+
+
+def test_http_get_gives_up_after_max_retries_on_connection_error_and_raises(monkeypatch):
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append(1)
+        raise requests.exceptions.ConnectionError("connection reset")
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: None)
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        openalex_client._http_get("https://api.openalex.org/institutions", {})
+
+    assert len(calls) == openalex_client.MAX_RETRIES + 1
+
+
+def test_http_get_total_retry_sleep_is_bounded(monkeypatch):
+    """A throttled call can add real wall-clock time via retry sleep -- this
+    is the fact Workstream 9a's timeout budgeting depends on, so pin the
+    actual bound: at most MAX_RETRIES sleeps, each capped at
+    MAX_RETRY_DELAY_SECONDS."""
+    calls = []
+    sleeps = []
+
+    def fake_get(url, params, timeout):
+        calls.append(1)
+        return _FakeResponse(503, headers={})
+
+    monkeypatch.setattr(openalex_client.requests, "get", fake_get)
+    monkeypatch.setattr(openalex_client.time, "sleep", lambda s: sleeps.append(s))
+
+    with pytest.raises(requests.exceptions.HTTPError):
+        openalex_client._http_get("https://api.openalex.org/institutions", {})
+
+    assert len(sleeps) == openalex_client.MAX_RETRIES
+    assert sum(sleeps) <= openalex_client.MAX_RETRIES * openalex_client.MAX_RETRY_DELAY_SECONDS
+    assert all(s <= openalex_client.MAX_RETRY_DELAY_SECONDS for s in sleeps)
