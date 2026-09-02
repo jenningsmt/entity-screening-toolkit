@@ -220,6 +220,7 @@ df = pd.DataFrame(
             "total_score": round(s["total_score"], 1),
             "factors": ", ".join(f"{k}={v:.1f}" for k, v in s["factors"].items()) or "—",
             "list_hits": ", ".join(sorted({h["list_name"] for h in s["screening_hits"]})) or "—",
+            "hit_kinds": ", ".join(sorted({h["producer"] for h in s["screening_hits"]})) or "—",
             "best_match_confidence": round(
                 max((h["confidence"] for h in s["screening_hits"]), default=0.0), 3
             ),
@@ -258,12 +259,10 @@ if selected_name:
     ownership_flags = scores_by_name[selected_name]["ownership_flags"]
 
     for hit in hits:
-        # Every bibliometric hit's evidence carries "author_resolution" (see
-        # bibliometric/cross_check.py) -- a reliable signal without needing
-        # matched_field exposed over the API's ScreeningHitOut DTO.
-        caveat = hit.get("evidence", {}).get("source_attribution", {}).get("caveat")
-        if caveat:
-            st.caption(f"⚠️ {caveat}")
+        if hit["producer"] == "bibliometric":
+            caveat = hit.get("evidence", {}).get("source_attribution", {}).get("caveat")
+            if caveat:
+                st.caption(f"⚠️ {caveat}")
         st.json(hit)
     if not hits:
         st.info("No screening hits for this entity.")

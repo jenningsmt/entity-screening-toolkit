@@ -26,9 +26,11 @@ def _serialize_row(scored: ScoredEntity, export_id: str) -> dict:
         {
             "list_name": hit.list_name,
             "matched_variant": hit.matched_variant,
+            "matched_field": hit.matched_field,
             "confidence": hit.confidence,
             "evidence": hit.evidence,
             "status": hit.status.value,
+            "producer": hit.producer,
         }
         for hit in scored.screening_hits
     ]
