@@ -176,6 +176,49 @@ aside.
 
 ## Status
 
-Code written and reviewed; **not yet applied**. `terraform apply` and
-everything after it in `docs/deployment-runbook.md` (DNS, TLS, the budget
-alert, the demo recording) is still Mike's to run.
+**Live.** `terraform apply` succeeded and Monops is running in production at
+`https://mikejennings.dev/monops` as of 2026-09-02, verified end-to-end in a
+real browser (TLS padlock, real Streamlit UI, screening/bibliometric/topic-
+similarity all rendering against a real run).
+
+Getting there surfaced five real bugs, none of which were anticipated by the
+plan above -- documenting the deviations here rather than quietly rewriting
+the plan to look like it was right the first time:
+
+1. **Lightsail always prepends its own `#!/bin/sh` bootstrap snippet ahead of
+   any `user_data` you supply**, so a script's own `#!/bin/bash` shebang is
+   inert -- the combined file runs under `dash`, which chokes on bash-only
+   syntax (`pipefail`, process substitution). This is real, confirmed
+   Lightsail behavior, not plain EC2 user-data handling. Fixed in
+   `infra/user_data.sh` by re-execing under bash as the first thing the
+   script's own content does, in POSIX-sh-safe syntax.
+2. **Replacing an `aws_lightsail_instance` in one `terraform apply` does not
+   automatically also recreate dependent resources that reference it by
+   name** (`aws_lightsail_static_ip_attachment`,
+   `aws_lightsail_instance_public_ports`) -- Terraform's refresh happens
+   before the destroy within the same apply, so it doesn't see the AWS-side
+   breakage until a *second* plan/apply. Confirmed by directly querying
+   `aws lightsail get-static-ip`/`get-instance` after the first replace and
+   seeing `isAttached: false`. Fix is just running plan/apply a second time,
+   but it's a real gotcha for any future instance replacement.
+3. **Docker Compose's `ports:` merge behavior concatenates across `-f`
+   files by default, it doesn't replace** -- `docker-compose.prod.yml`
+   needed the `!override` YAML tag to actually confine ports to
+   `127.0.0.1`. Verified on the live instance (`docker compose ps` shows
+   `127.0.0.1:8000->8000` / `127.0.0.1:8501->8501`, not `0.0.0.0`).
+4. **Streamlit's own "add trailing slash" redirect uses the protocol it
+   thinks it's running under (plain HTTP inside Docker), not the
+   client-facing protocol** -- behind TLS this downgraded
+   `https://.../monops` to an `http://` redirect target. Fixed with an
+   nginx-level exact-match `location = /monops` block that issues the
+   redirect itself using nginx's own (always-correct) `$scheme`, in
+   `infra/nginx/monops.conf`.
+5. **There is no AWS-managed IAM policy for full Lightsail access** (no
+   `AmazonLightsailFullAccess` -- that was an assumption from memory, and it
+   was wrong). Fixed with a small custom policy (`lightsail:*` on `*`),
+   documented in `docs/deployment-runbook.md`.
+
+Still outstanding, from Step 8 of `docs/deployment-runbook.md`: the AWS
+Budget alert (~$72 ceiling), a calendar reminder for the 6-month
+renew-or-retire decision (~mid-Feb 2027), and a demo recording for the top
+of the README.
