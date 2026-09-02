@@ -279,12 +279,36 @@ df = pd.DataFrame(
 # A foreign-control flag with no screening hit is still a genuine candidate
 # match (Epic C) -- status (from the API) already reflects that, so counting
 # by status here rather than by screening_hits alone avoids undercounting.
-st.subheader(
-    f"{len(df)} entities screened — "
-    f"{sum(1 for s in scores if s['status'] == 'candidate_match')} candidate matches"
-)
+_candidate_count = sum(1 for s in scores if s["status"] == "candidate_match")
+st.subheader(f"{len(df)} entities screened — {_candidate_count} candidate matches")
 
-show_hits_only = st.checkbox("Show only candidate matches", value=True)
+if _candidate_count == 0:
+    # Finding 8: with the shipped demo defaults this is the common case, not
+    # an error -- explain why rather than leave a visitor looking at what
+    # reads as a broken demo. Real, not hand-waved: awardeeCountryCode=CN
+    # against the live NSF Award Search API returns totalCount: 0 (confirmed
+    # directly, 2026-09-02) -- NSF only funds US-based recipient
+    # organizations, so a direct sanctions-list hit on an *awardee's own
+    # name* is structurally impossible with real NSF data, not just rare in
+    # this particular sample. A genuine tie to a flagged institution shows up
+    # instead through the bibliometric co-authorship layer below (a legal
+    # research collaboration, unlike direct funding) -- see the
+    # "Enrich with bibliometric data" button in the sidebar.
+    st.info(
+        "**Why zero candidate matches is the expected result here, not a broken "
+        "demo:** NSF only funds US-based recipient organizations, so a direct "
+        "sanctions-list hit on an awardee's own name is structurally "
+        "impossible with real NSF award data — confirmed directly by querying "
+        "the live NSF Award Search API for any non-US awardee "
+        "(`awardeeCountryCode=CN` returns `totalCount: 0`), not just absent "
+        "from this particular sample. The genuine finding this dataset was "
+        "built to demonstrate lives in the **bibliometric co-authorship "
+        "layer** instead (a real, legal research collaboration can create a "
+        "tie a direct name check never could) — see the evidence trail below "
+        "after running bibliometric enrichment from the sidebar."
+    )
+
+show_hits_only = st.checkbox("Show only candidate matches", value=False)
 display_df = df[df["status"] == "candidate_match"] if show_hits_only else df
 
 st.dataframe(display_df, width="stretch", hide_index=True)
