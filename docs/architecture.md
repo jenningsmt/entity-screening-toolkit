@@ -136,8 +136,9 @@ contract (see `docs/methodology.md` for the full rationale):
   entities by their *resolved* OpenAlex institution ID (not `entity_id`) so a
   spelling-variant split from Epic B's exact-match grouping doesn't duplicate
   OpenAlex calls or hits. Never touches `scored_entities`; writes
-  `openalex_author_matches`/new `ScreeningHit`s plus a durable, run-scoped
-  `BibliometricSnapshotManifest`.
+  `openalex_author_matches`/new `ScreeningHit`s (tagged `producer="bibliometric"`,
+  replaced rather than duplicated on a re-run — see the storage paragraph below)
+  plus a durable, run-scoped `BibliometricSnapshotManifest`.
 - **`enrich_topic_similarity(run_id, ...)`** — a **separate, explicit step**
   requiring `enrich_bibliometric` to have already run for this `run_id` (reads
   `openalex_author_matches` to know which PIs/authors to walk; raises a clear error
@@ -158,7 +159,18 @@ contract (see `docs/methodology.md` for the full rationale):
 entities, and (if the corresponding `enrich_*` step has run) LEI matches, ownership
 flags, OpenAlex author matches, paper embeddings, and topic-similarity flags into a
 DuckDB file (DuckDB, not SQLite — see `docs/requirements.md` Section 7) for ad-hoc
-querying alongside the file exports. Embeddings are stored as plain `FLOAT[384]`
+querying alongside the file exports.
+
+`screening_hits` is one table serving three producers with three different
+lifecycles — `run_screening`'s direct name matching (`producer="direct_name"`),
+its optional Section 117 cross-check (`"section_117"`), and `enrich_bibliometric`
+(`"bibliometric"`) — only one of which (direct name matching, as part of a fresh
+`run_screening` call) is genuinely append-once; the other two are independently
+re-runnable against an existing `run_id`. `insert_screening_hits` groups an
+incoming batch by the `producer` values actually present and deletes only
+`WHERE run_id = ? AND producer = ?` for each before inserting, so re-running
+`enrich_bibliometric` for a run replaces that run's bibliometric hits without
+touching its direct-name or Section 117 hits. Embeddings are stored as plain `FLOAT[384]`
 data, never via a persisted HNSW index — DuckDB's own docs flag on-disk HNSW
 persistence as experimental (WAL crash-recovery isn't implemented for custom
 indexes), so cosine similarity is computed directly via DuckDB's

@@ -160,3 +160,71 @@ def test_enrich_bibliometric_writes_a_manifest_and_hits_score_via_existing_rubri
         STOCK_RUBRIC.screening_hit_weight
         * (hits[0].confidence * STOCK_RUBRIC.screening_hit_confidence_multiplier)
     )
+
+
+def test_enrich_bibliometric_reruns_do_not_duplicate_hits_or_lose_direct_name_hits(tmp_path):
+    """Regression for Finding 4: insert_screening_hits used to be append-only,
+    so a second enrich_bibliometric call for the same run_id duplicated every
+    bibliometric hit (1 -> 2 -> 3 verified) even though the score itself was
+    unaffected (score_entity uses max confidence) -- the evidence trail a
+    reviewer reads triplicated instead. A naive `DELETE WHERE run_id = ?` fix
+    would also have deleted the run's own direct_name hits, since
+    screening_hits serves three producers with different lifecycles -- this
+    asserts both that reruns don't duplicate AND that the direct_name hit
+    from the original run_screening call survives an unrelated
+    enrich_bibliometric rerun."""
+    db_path = tmp_path / "test.duckdb"
+    manifest, _ = _run(
+        tmp_path,
+        [
+            {"id": "1", "awardeeName": "ZTE Corporation", "piFirstName": "Jane", "piLastName": "Doe"},
+            {
+                "id": "2",
+                "awardeeName": "Montana State University",
+                "piFirstName": "Andrew",
+                "piLastName": "Felton",
+            },
+        ],
+        db_path,
+    )
+
+    conn = storage.connect(db_path)
+    direct_name_hits_before = storage.load_screening_hits(conn, manifest.run_id)
+    conn.close()
+    assert len(direct_name_hits_before) == 1
+    assert direct_name_hits_before[0].producer == "direct_name"
+
+    expected_author_id = "https://openalex.org/A-Andrew_Felton"
+    concern_hit_work = {
+        "results": [
+            {
+                "id": "https://openalex.org/W1",
+                "title": "Fixture Paper",
+                "publication_date": "2026-01-01",
+                "authorships": [
+                    {
+                        "author": {"id": expected_author_id, "display_name": "Andrew J. Felton"},
+                        "institutions": [
+                            {"id": "https://openalex.org/I9", "display_name": "ZTE Corporation"}
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    call_log = []
+    fake_fetch = _fake_fetch_factory({"results": [MSU_INSTITUTION]}, concern_hit_work, call_log)
+
+    pipeline.enrich_bibliometric(manifest.run_id, db_path=db_path, fetch=fake_fetch)
+    pipeline.enrich_bibliometric(manifest.run_id, db_path=db_path, fetch=fake_fetch)
+
+    conn = storage.connect(db_path)
+    all_hits_after = storage.load_screening_hits(conn, manifest.run_id)
+    conn.close()
+
+    bibliometric_hits = [h for h in all_hits_after if h.producer == "bibliometric"]
+    direct_name_hits = [h for h in all_hits_after if h.producer == "direct_name"]
+
+    assert len(bibliometric_hits) == 1  # not duplicated to 2 across two enrich_bibliometric calls
+    assert len(direct_name_hits) == 1  # survived the unrelated bibliometric rerun
+    assert direct_name_hits[0].entity_id == direct_name_hits_before[0].entity_id

@@ -87,7 +87,13 @@ CREATE TABLE IF NOT EXISTS screening_hits (
     confidence DOUBLE,
     evidence JSON,
     status VARCHAR,
-    run_id VARCHAR
+    run_id VARCHAR,
+    -- Added after this table's first release -- CREATE TABLE IF NOT EXISTS
+    -- above does not add a column to an existing DuckDB file, so `connect()`
+    -- below runs an explicit ALTER TABLE + backfill for any file created
+    -- before this column existed. See insert_screening_hits' docstring for
+    -- why this column exists at all.
+    producer VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS scored_entities (
@@ -191,6 +197,14 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = duckdb.connect(str(path))
     conn.execute(SCHEMA_DDL)
+    # CREATE TABLE IF NOT EXISTS in SCHEMA_DDL above is a no-op against a
+    # DuckDB file created before this column existed -- it does not add a
+    # column to an existing table. ALTER ... ADD COLUMN IF NOT EXISTS is
+    # idempotent (safe to run on every connect()), and existing rows are
+    # backfilled to "direct_name" -- every row written before this migration
+    # existed came from screen_entity, the only producer that existed then.
+    conn.execute("ALTER TABLE screening_hits ADD COLUMN IF NOT EXISTS producer VARCHAR")
+    conn.execute("UPDATE screening_hits SET producer = 'direct_name' WHERE producer IS NULL")
     return conn
 
 
@@ -253,6 +267,24 @@ def insert_resolved_entities(
 def insert_screening_hits(
     conn: duckdb.DuckDBPyConnection, hits: Iterable[ScreeningHit], run_id: str
 ) -> None:
+    """Deletes each represented producer's existing rows for this run_id first,
+    then inserts -- screening_hits serves three producers (direct_name,
+    section_117, bibliometric) with three different lifecycles, so grouping
+    the delete by the `producer` actually present in `hits` lets each
+    pipeline stage replace only its own rows on a re-run without touching
+    another stage's hits for the same run_id.
+
+    An empty `hits` list deletes nothing, deliberately: passing no hits is
+    not the same claim as "this producer ran and found zero" -- e.g.
+    run_screening skips Section 117 entirely (never calls this for that
+    producer at all) when no Section 117 file is supplied, so an empty list
+    must not be read as "Section 117 found nothing this run"."""
+    hits = list(hits)
+    for producer in {h.producer for h in hits}:
+        conn.execute(
+            "DELETE FROM screening_hits WHERE run_id = ? AND producer = ?",
+            [run_id, producer],
+        )
     rows = [
         (
             h.entity_id,
@@ -263,12 +295,13 @@ def insert_screening_hits(
             json.dumps(h.evidence, default=str),
             h.status.value,
             run_id,
+            h.producer,
         )
         for h in hits
     ]
     if rows:
         conn.executemany(
-            "INSERT INTO screening_hits VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows
+            "INSERT INTO screening_hits VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
         )
 
 
@@ -593,7 +626,7 @@ def load_topic_similarity_flags(
 def load_screening_hits(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[ScreeningHit]:
     rows = conn.execute(
         "SELECT entity_id, list_name, matched_variant, matched_field, confidence, "
-        "evidence, status FROM screening_hits WHERE run_id = ?",
+        "evidence, status, producer FROM screening_hits WHERE run_id = ?",
         [run_id],
     ).fetchall()
     return [
@@ -605,6 +638,7 @@ def load_screening_hits(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[Sc
             confidence=confidence,
             evidence=json.loads(evidence),
             status=MatchStatus(status),
+            producer=producer,
         )
-        for entity_id, list_name, matched_variant, matched_field, confidence, evidence, status in rows
+        for entity_id, list_name, matched_variant, matched_field, confidence, evidence, status, producer in rows
     ]

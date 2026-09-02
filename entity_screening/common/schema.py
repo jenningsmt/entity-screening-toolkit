@@ -51,7 +51,17 @@ class MatchCandidate:
 
 @dataclass(frozen=True)
 class ScreeningHit:
-    """A resolved entity's candidate match against one entity-of-concern list."""
+    """A resolved entity's candidate match against one entity-of-concern list.
+
+    `producer` names which pipeline *stage* produced this hit
+    ("direct_name" / "section_117" / "bibliometric") -- distinct from
+    `matched_field`, which stays the finer-grained distinction within a stage
+    (e.g. a PI's own past affiliation vs. a co-author's institution, both
+    "bibliometric"). storage.insert_screening_hits groups by `producer` to
+    delete-and-replace only the calling stage's own rows on a re-run, since
+    screening_hits serves three producers with three different lifecycles and
+    a bare `DELETE WHERE run_id = ?` would also wipe the other two stages'
+    hits for that run."""
 
     entity_id: str
     list_name: str
@@ -60,6 +70,7 @@ class ScreeningHit:
     confidence: float
     evidence: dict[str, Any]
     status: MatchStatus = MatchStatus.CANDIDATE_MATCH
+    producer: str = "direct_name"
 
 
 @dataclass(frozen=True)

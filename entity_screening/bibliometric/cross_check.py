@@ -129,4 +129,5 @@ def cross_check_bibliometric(
                             confidence=best.confidence,
                             evidence=evidence,
                             status=MatchStatus.CANDIDATE_MATCH,
+                            producer="bibliometric",
                         )
