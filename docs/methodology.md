@@ -249,10 +249,22 @@ and can be re-run later against a newer GLEIF download. So:
   (`resolution/matcher.py`), not something specific to the GLEIF integration, but
   GLEIF's ~3.4M entities make them concretely observable in a way OpenSanctions and
   DoD 1260H's much smaller lists don't.
-- **A foreign-control flag inherits the uncertainty of two separate matches, not
-  one**: the name-to-LEI match, and (if the walk to the ultimate parent was
-  `truncated`) the fact that a deeper, undiscovered parent might exist. Both are
-  surfaced in the flag's own `evidence`, not hidden behind a single confidence number.
+- **A foreign-control flag inherits the uncertainty of three separate things, not
+  one**: the name-to-LEI match; (if the walk to the ultimate parent was
+  `truncated`) the fact that a deeper, undiscovered parent might exist beyond
+  where the walk stopped; and, as of this remediation pass, branch ambiguity —
+  a real GLEIF ownership graph can have more than one active
+  `IS_DIRECTLY_CONSOLIDATED_BY` edge from a given entity, so the walk can
+  genuinely produce more than one distinct chain to more than one distinct
+  foreign ultimate parent (`ownership/graph.py:ParentChain.chains` is plural
+  for exactly this reason). `pipeline.py:enrich_ownership` now emits one
+  `ForeignControlFlag` per distinct foreign ultimate parent rather than
+  picking one arbitrarily — a real ownership question can honestly have more
+  than one answer, and collapsing that into a single flag either
+  under-reported a genuine finding or attached a `relationship_path` that
+  didn't exist in the data (an ordering artifact of the earlier flattened
+  return shape). All three sources of uncertainty are surfaced in the flag's
+  own `evidence`, not hidden behind a single confidence number.
 - **The DoD 1260H list is a static, hand-curated snapshot, not a live feed** (see
   `docs/data_sources.md`). It's bundled with the package
   (`entity_screening/screening/data/dod_1260h.json`) and needs periodic manual

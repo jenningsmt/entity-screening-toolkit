@@ -171,7 +171,12 @@ class OwnershipEnrichmentSummary(BaseModel):
 
 
 class ParentChainOut(BaseModel):
-    chain: list[str]
+    # Plural, as of the branching-graph fix (Finding 7) -- a real ownership
+    # graph can have more than one distinct chain to a leaf, and the prior
+    # single-`chain` shape either picked one arbitrarily or fabricated a
+    # path that didn't exist in the data. Breaking change, deliberately not
+    # shimmed: this is a portfolio demo with no external consumers.
+    chains: list[list[str]]
     truncated: bool
 
 
@@ -264,7 +269,9 @@ def topic_similarity_flag_to_dto(flag: TopicSimilarityFlag) -> TopicSimilarityFl
 
 
 def parent_chain_to_dto(chain: ParentChain) -> ParentChainOut:
-    return ParentChainOut(chain=list(chain.chain), truncated=chain.truncated)
+    return ParentChainOut(
+        chains=[list(one_chain) for one_chain in chain.chains], truncated=chain.truncated
+    )
 
 
 def run_manifest_to_dto(manifest: RunManifest) -> RunManifestOut:

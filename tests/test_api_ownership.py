@@ -95,7 +95,7 @@ def test_ownership_chain_endpoint_returns_a_queryable_path(client, nsf_file):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["chain"] == ["LEI-DIRECT-PARENT", "LEI-ULTIMATE-DE"]
+    assert body["chains"] == [["LEI-DIRECT-PARENT", "LEI-ULTIMATE-DE"]]
     assert body["truncated"] is False
 
 

@@ -94,7 +94,18 @@ class ForeignControlFlag:
     registered in a different jurisdiction than the entity itself (Epic C). Everything
     here inherits the uncertainty of the underlying OwnershipMatch — including whether
     the parent chain was truncated before reaching a genuine top — so it's evidence
-    to review, never an assertion."""
+    to review, never an assertion.
+
+    One entity can legitimately produce more than one of these: a real GLEIF
+    ownership graph can branch (more than one active
+    `IS_DIRECTLY_CONSOLIDATED_BY` edge from a given entity), so
+    `ownership/flagging.py:flag_from_match` emits one flag per distinct
+    foreign ultimate parent rather than picking one arbitrarily —
+    `relationship_path` here is always one specific, real path that exists in
+    the data, never a flattened/ordering-artifact stand-in for "the" chain,
+    which is the adjacent honesty problem to `truncated` that an earlier
+    version of this type didn't anticipate (see
+    `ownership/graph.py:ParentChain`'s docstring)."""
 
     entity_id: str
     entity_lei: str

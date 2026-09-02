@@ -185,8 +185,16 @@ CREATE TABLE IF NOT EXISTS ownership_flags (
     relationship_path JSON,
     match_confidence DOUBLE,
     evidence JSON,
-    status VARCHAR,
-    PRIMARY KEY (entity_id, run_id)
+    status VARCHAR
+    -- No PRIMARY KEY (as of this remediation pass; earlier had
+    -- PRIMARY KEY (entity_id, run_id), migrated away below) -- same
+    -- reasoning as openalex_author_matches: a real ownership graph can
+    -- genuinely branch into more than one foreign ultimate parent
+    -- (ownership/graph.py:parent_chain's `chains` plural), so
+    -- flagging.py:flag_from_match now emits one row per distinct one
+    -- rather than being forced to pick. insert_ownership_flags already
+    -- deletes by run_id first, so removing the PK does not create a
+    -- duplication path.
 );
 """
 
@@ -205,7 +213,39 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     # existed came from screen_entity, the only producer that existed then.
     conn.execute("ALTER TABLE screening_hits ADD COLUMN IF NOT EXISTS producer VARCHAR")
     conn.execute("UPDATE screening_hits SET producer = 'direct_name' WHERE producer IS NULL")
+    _migrate_drop_ownership_flags_primary_key(conn)
     return conn
+
+
+def _migrate_drop_ownership_flags_primary_key(conn: duckdb.DuckDBPyConnection) -> None:
+    """One-time migration for a DuckDB file created before this remediation
+    pass: ownership_flags used to have PRIMARY KEY (entity_id, run_id),
+    which forbids more than one flag per entity -- exactly what a branching
+    ownership graph (Finding 7) now legitimately needs. DuckDB cannot ALTER
+    TABLE DROP a primary key in place, so this recreates the table without
+    it and copies the data over. Guarded to run once: SCHEMA_DDL's own
+    CREATE TABLE IF NOT EXISTS already gives a brand-new DB file the
+    no-PK shape directly, so this only ever fires against a pre-existing
+    file that still has the old constraint."""
+    has_pk = conn.execute(
+        "SELECT count(*) FROM duckdb_constraints() "
+        "WHERE table_name = 'ownership_flags' AND constraint_type = 'PRIMARY KEY'"
+    ).fetchone()[0] > 0
+    if not has_pk:
+        return
+    conn.execute("ALTER TABLE ownership_flags RENAME TO ownership_flags_pre_migration")
+    conn.execute(
+        """
+        CREATE TABLE ownership_flags (
+            entity_id VARCHAR, run_id VARCHAR, entity_lei VARCHAR, entity_jurisdiction VARCHAR,
+            ultimate_parent_lei VARCHAR, ultimate_parent_name VARCHAR,
+            ultimate_parent_jurisdiction VARCHAR, relationship_path JSON, match_confidence DOUBLE,
+            evidence JSON, status VARCHAR
+        )
+        """
+    )
+    conn.execute("INSERT INTO ownership_flags SELECT * FROM ownership_flags_pre_migration")
+    conn.execute("DROP TABLE ownership_flags_pre_migration")
 
 
 def insert_source_records(

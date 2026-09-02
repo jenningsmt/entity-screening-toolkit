@@ -352,9 +352,10 @@ def enrich_ownership(
             if match is None:
                 continue
             matches.append(match)
-            flag = flag_from_match(conn, match, max_depth=max_depth)
-            if flag is not None:
-                flags.append(flag)
+            # A branching ownership graph can genuinely have more than one
+            # foreign ultimate parent (Finding 7) -- flag_from_match returns
+            # one ForeignControlFlag per distinct one, not a single pick.
+            flags.extend(flag_from_match(conn, match, max_depth=max_depth))
 
         storage.insert_lei_matches(conn, matches, run_id)
         storage.insert_ownership_flags(conn, flags, run_id)
