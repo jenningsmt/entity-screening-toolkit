@@ -124,6 +124,7 @@ def run_screening(
     dod_1260h_file: Path | str = DEFAULT_DOD_1260H_FILE,
     section_117_file: Path | str | None = None,
     section_117_institution_threshold: float = DEFAULT_SECTION_117_INSTITUTION_THRESHOLD,
+    run_id: str | None = None,
 ) -> tuple[RunManifest, list[ScoredEntity]]:
     """Ingest -> resolve -> screen -> score -> persist.
 
@@ -141,9 +142,12 @@ def run_screening(
     each run; the override exists for tests. `section_117_file` is optional
     with no bundled fallback (same "optional, no bundled default" posture as
     GLEIF) — omitted entirely, ingestion/cross-checking is skipped and
-    behavior is identical to before Section 117 existed.
+    behavior is identical to before Section 117 existed. `run_id` left as
+    None generates a fresh UUID per `RunManifest.start`'s default -- the
+    override exists for a caller that wants a fixed, well-known ID, e.g.
+    the baked-in public-demo run.
     """
-    manifest = RunManifest.start()
+    manifest = RunManifest.start(run_id=run_id)
     run_dir = manifest.run_dir(runs_dir)
     error_log = IngestionErrorLog(run_dir / "ingestion_errors.jsonl")
 

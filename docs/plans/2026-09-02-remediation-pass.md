@@ -1,17 +1,34 @@
 # Remediation Pass — Findings from the 2026-09-02 Codebase Evaluation
 
-**Status:** Mostly built (2026-09-02). Workstreams 3, 4, 1, 6, 5a, 5b, 7, the
-cross-cutting test files, 9, 8a, and 8c landed, each as its own commit, in
-the order given below except where explicitly re-sequenced (8a/8c moved
-ahead of 2, matching the dependency note in Workstream 2's own section).
-**Workstream 8b (pre-computed demo run) and Workstream 2 (security
-lockdown, which depends on 8b) did not land** — OpenAlex rate-limited the
-build machine for the length of this session, and 8b requires a real live
-bibliometric enrichment run to bake in. Workstream 9's real CLI timing
-measurement (its own "before choosing a timeout value" section) was
-blocked for the same reason; the 600s enrichment timeout `app.py` ships
-with is a documented, reasoned placeholder, not a live-measured one. Pick
-up 8b, then 2, then re-measure and adjust the 9a timeout, once OpenAlex
+**Status:** Built, with one deliberate re-scoping (2026-09-02). Workstreams
+3, 4, 1, 6, 5a, 5b, 7, the cross-cutting test files, 9, 8a, and 8c landed
+first, each as its own commit, in the order given below except where
+explicitly re-sequenced (8a/8c moved ahead of 2, matching the dependency
+note in Workstream 2's own section).
+
+**Re-scoping, decided after the fact:** Workstream 8b as originally written
+called for a pre-computed run with bibliometric enrichment baked in, and
+Workstream 2 was gated on it landing first specifically to avoid gating
+run-creation before there was anything non-blank to show. OpenAlex
+rate-limited the build machine for the length of this session, blocking any
+enrichment-inclusive bake. Rather than leave both blocked, 8b was re-scoped
+to a **screening-only** self-healing demo run (`api/main.py:DEMO_RUN_ID` /
+`_ensure_demo_run_exists` — built lazily on first request rather than baked
+into the Docker image, sidestepping the image-vs-volume-mount shadowing
+problem a literal "bake into the image" approach would have hit given
+`docker-compose.yml`'s `./data:/app/data` bind mount). This is sufficient to
+satisfy Workstream 2's actual dependency: Workstream 8a already means a
+screening-only run shows a real, non-blank, explained table on load (53
+real entities, 0 direct hits, with the "why zero is expected" panel) — the
+specific failure mode ("blank page and a disabled button") the 8b-before-2
+gate existed to prevent. Adding bibliometric (and ownership) enrichment to
+this baked-in run is still worth doing once OpenAlex access is confirmed
+working again, but it is no longer a blocker for anything else in this plan.
+
+Workstream 9's real CLI timing measurement (its own "before choosing a
+timeout value" section) was also blocked by the same OpenAlex rate limit;
+the 600s enrichment timeout `app.py` ships with is a documented, reasoned
+placeholder, not a live-measured one. Re-measure and adjust once OpenAlex
 access is confirmed working again.
 **Source:** `docs/2026-09-02-codebase-evaluation.md` (9 findings, all reproduced against `40ca51b`)
 **Audience:** Claude Code, working this repo directly
