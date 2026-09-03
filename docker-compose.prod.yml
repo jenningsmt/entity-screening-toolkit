@@ -43,6 +43,24 @@ services:
     ports: !override
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
+    environment:
+      # Workstream 2a (docs/plans/2026-09-02-remediation-pass.md): unset
+      # means every action is unlocked -- the same trust boundary as local
+      # dev. Set MONOPS_ACTION_SECRET in the deploying shell's own
+      # environment before `docker compose up` (see
+      # docs/deployment-runbook.md); the actual value is never committed
+      # here, only this pass-through reference.
+      - MONOPS_ACTION_SECRET=${MONOPS_ACTION_SECRET:-}
+      # Workstream 2b: only these four bundled demo/sample fixtures are ever
+      # valid nsf_file/opensanctions_file values on the public deployment --
+      # matches app.py's BUNDLED_NSF_FILES/BUNDLED_OPENSANCTIONS_FILES
+      # selectbox options exactly, container-path-prefixed (WORKDIR /app,
+      # see Dockerfile.api). GLEIF/Section 117 files are deliberately NOT
+      # allowlisted (never bundled -- GLEIF alone is ~525MB), so those
+      # routes always 400 on this deployment, matching the sidebar's own
+      # "leave blank to skip" framing. `:` is Python's os.pathsep inside the
+      # Linux container regardless of the host OS running this compose file.
+      - MONOPS_DATA_FILE_ALLOWLIST=/app/tests/fixtures/demo_nsf_awards.json:/app/tests/fixtures/sample_nsf_awards.json:/app/tests/fixtures/demo_opensanctions_targets.csv:/app/tests/fixtures/sample_opensanctions_targets.csv
 
   streamlit:
     ports: !override

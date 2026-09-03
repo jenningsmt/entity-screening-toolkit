@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
 from entity_screening import pipeline
@@ -90,6 +90,19 @@ def _ensure_demo_run_exists() -> None:
     screening-only run still shows a real, non-blank, explained table on
     load, which is what actually unblocks gating run-creation behind the
     action secret (Workstream 2) -- see docs/plans/2026-09-02-remediation-pass.md.
+
+    Known, narrow race window, not fixed here: two requests arriving
+    concurrently on a completely fresh deployment (before this run exists at
+    all) could both see `manifest_path.exists()` as False and both call
+    `run_screening(run_id=DEMO_RUN_ID, ...)`. `resolved_entities` has
+    `PRIMARY KEY (entity_id, run_id)` with deterministic (not random)
+    `entity_id`s, so the second concurrent write would hit a real constraint
+    violation and that one request would 500 -- self-resolving (the file
+    exists for every request after), and only reachable in the seconds right
+    after a fresh deploy or data-volume wipe, but a real gap, not a
+    theoretical one. A proper fix would need a file lock or a
+    `INSERT ... ON CONFLICT DO NOTHING` per row; not worth the complexity for
+    how narrow and self-healing the window is.
     """
     manifest_path = _runs_dir() / DEMO_RUN_ID / "manifest.json"
     if manifest_path.exists():
@@ -116,6 +129,63 @@ def _load_manifest(run_id: str) -> RunManifest:
     return RunManifest.load(path)
 
 
+# --- Workstream 2a: gate mutating/expensive actions behind a shared secret --
+# The design decision (see docs/plans/2026-09-02-remediation-pass.md): gate
+# *actions*, not read access. Site-wide auth was deliberately rejected --
+# strategically, the audience (recruiters/hiring managers) is worse served
+# by a password prompt than by a cold start; mechanically, Streamlit is a
+# single-connection app, so nginx-level auth_basic would be all-or-nothing
+# and couldn't protect actions without also blocking read access. Viewing
+# the pre-computed demo run, its scored table, evidence trail, rubric
+# sliders, and exports all stay open; only starting a *new* run and the
+# three enrichment steps are gated.
+_ACTION_SECRET_ENV = "MONOPS_ACTION_SECRET"
+
+
+def _require_action_secret(x_monops_action_secret: str | None = Header(default=None)) -> None:
+    """When MONOPS_ACTION_SECRET is unset, every action is unlocked -- the
+    correct trust boundary for a single local user (dev, the CLI). When set,
+    a request whose X-Monops-Action-Secret header is missing or wrong is
+    refused with 403 before any work happens. app.py's disabled-button
+    treatment is UX; this is the actual control -- the UI is not the trust
+    boundary."""
+    required = os.environ.get(_ACTION_SECRET_ENV)
+    if not required:
+        return
+    if x_monops_action_secret != required:
+        raise HTTPException(status_code=403, detail="This action requires the correct action secret.")
+
+
+# --- Workstream 2b: server-side data-file allowlist (defence in depth) -----
+_DATA_FILE_ALLOWLIST_ENV = "MONOPS_DATA_FILE_ALLOWLIST"
+
+
+def _allowed_data_files() -> list[Path] | None:
+    """None means the env var is unset -- behavior is unchanged (arbitrary
+    paths allowed), the correct trust boundary for a single local user or
+    the CLI. A non-None list means every data-file path a caller supplies
+    must resolve to exactly one of these. `docker-compose.prod.yml` sets
+    this on the public deployment to the bundled demo fixtures only."""
+    raw = os.environ.get(_DATA_FILE_ALLOWLIST_ENV)
+    if not raw:
+        return None
+    return [Path(p).resolve() for p in raw.split(os.pathsep) if p]
+
+
+def _check_allowlisted(path_str: str | None, allowlist: list[Path] | None) -> None:
+    """Resolves *before* comparing so a `../`-traversal attempt can't slip
+    past a naive string comparison. No-ops when either side is absent: a
+    caller-omitted optional path (e.g. no Section 117 file) or an unset
+    allowlist both mean nothing to check here."""
+    if path_str is None or allowlist is None:
+        return
+    if Path(path_str).resolve() not in allowlist:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File path not permitted on this deployment: {path_str!r}",
+        )
+
+
 def rubric_overrides(
     screening_hit_weight: float | None = None,
     screening_hit_confidence_multiplier: float | None = None,
@@ -137,7 +207,12 @@ def rubric_overrides(
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    # Never the secret's value -- only whether one is configured, so app.py
+    # can decide whether to render the gated action buttons as disabled
+    # before the user has typed anything (Workstream 2a's "a reviewer should
+    # be able to see that ownership, bibliometric and topic-similarity
+    # enrichment exist" -- disabled-but-visible, not hidden).
+    return {"status": "ok", "action_gate_enabled": bool(os.environ.get(_ACTION_SECRET_ENV))}
 
 
 @app.get("/rubric/default")
@@ -146,11 +221,19 @@ def rubric_default() -> dict:
 
 
 @app.post("/runs", response_model=RunSummary)
-def create_run(request: RunRequest) -> RunSummary:
+def create_run(request: RunRequest, _secret: None = Depends(_require_action_secret)) -> RunSummary:
     """Ingest -> resolve -> screen -> score -> persist. Synchronous (`def`,
     not `async def`, so FastAPI runs it in its threadpool rather than
     blocking the event loop) — V1 stays batch, no job queue, per Section 10's
     batch-first NFR."""
+    allowlist = _allowed_data_files()
+    for path_str in (
+        request.nsf_file,
+        request.opensanctions_file,
+        request.section_117_file,
+        request.dod_1260h_file,
+    ):
+        _check_allowlisted(path_str, allowlist)
     rubric = rubric_from_dict(request.rubric or {})
     # dod_1260h_file is only forwarded when the caller actually supplied one —
     # passing None explicitly would override run_screening's own bundled-file
@@ -241,7 +324,7 @@ def export_xlsx_route(
 
 @app.post("/runs/{run_id}/ownership", response_model=OwnershipEnrichmentSummary)
 def enrich_ownership_route(
-    run_id: str, request: OwnershipEnrichmentRequest
+    run_id: str, request: OwnershipEnrichmentRequest, _secret: None = Depends(_require_action_secret)
 ) -> OwnershipEnrichmentSummary:
     """Resolves this run's entities against GLEIF and computes foreign-control
     flags (Epic C) — a separate call from POST /runs, matching
@@ -249,6 +332,9 @@ def enrich_ownership_route(
     touch scored_entities; call GET /runs/{run_id}/scores afterward (or the
     export routes) to see the flags reflected in scores."""
     _load_manifest(run_id)  # 404s cleanly on an unknown run_id
+    allowlist = _allowed_data_files()
+    _check_allowlisted(request.gleif_lei_file, allowlist)
+    _check_allowlisted(request.gleif_relationships_file, allowlist)
     gleif_manifest, flags = pipeline.enrich_ownership(
         run_id,
         request.gleif_lei_file,
@@ -266,7 +352,7 @@ def enrich_ownership_route(
 
 @app.post("/runs/{run_id}/bibliometric", response_model=BibliometricEnrichmentSummary)
 def enrich_bibliometric_route(
-    run_id: str, request: BibliometricEnrichmentRequest
+    run_id: str, request: BibliometricEnrichmentRequest, _secret: None = Depends(_require_action_secret)
 ) -> BibliometricEnrichmentSummary:
     """Resolves this run's PIs to OpenAlex authors and cross-checks their
     co-authorship/affiliation history (Epic E) -- a separate call from POST /runs,
@@ -289,7 +375,9 @@ def enrich_bibliometric_route(
 
 @app.post("/runs/{run_id}/topic-similarity", response_model=TopicSimilarityEnrichmentSummary)
 def enrich_topic_similarity_route(
-    run_id: str, request: TopicSimilarityEnrichmentRequest
+    run_id: str,
+    request: TopicSimilarityEnrichmentRequest,
+    _secret: None = Depends(_require_action_secret),
 ) -> TopicSimilarityEnrichmentSummary:
     """Ranks this run's PIs' real papers against the DoD/CET critical-technology
     reference corpora (deferred VSS work) -- a separate call from both POST /runs
