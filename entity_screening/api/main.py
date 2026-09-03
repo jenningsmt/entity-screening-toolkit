@@ -45,6 +45,7 @@ from entity_screening.common import storage
 from entity_screening.common import manifest as manifest_module
 from entity_screening.common.manifest import RunManifest
 from entity_screening.ownership.graph import parent_chain
+from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.scoring.rubric import STOCK_RUBRIC, rubric_from_dict, rubric_to_dict
 
 app = FastAPI(title="Entity Screening Toolkit API")
@@ -56,6 +57,14 @@ app = FastAPI(title="Entity Screening Toolkit API")
 _DB_PATH_ENV = "ENTITY_SCREENING_DB_PATH"
 _RUNS_DIR_ENV = "ENTITY_SCREENING_RUNS_DIR"
 
+# A fixed, well-known run_id (not a random UUID) so the public demo's
+# landing view can find the same run again after a restart -- see
+# _ensure_demo_run_exists.
+DEMO_RUN_ID = "demo"
+_FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
+DEMO_NSF_FILE = _FIXTURES_DIR / "demo_nsf_awards.json"
+DEMO_OPENSANCTIONS_FILE = _FIXTURES_DIR / "demo_opensanctions_targets.csv"
+
 
 def _db_path() -> Path:
     return Path(os.environ.get(_DB_PATH_ENV, str(storage.DEFAULT_DB_PATH)))
@@ -65,7 +74,42 @@ def _runs_dir() -> Path:
     return Path(os.environ.get(_RUNS_DIR_ENV, str(manifest_module.DEFAULT_RUNS_DIR)))
 
 
+def _ensure_demo_run_exists() -> None:
+    """Builds the baked-in, screening-only public-demo run on first access if
+    it doesn't exist yet -- e.g. a fresh deployment, or the persistent data
+    volume was never populated. Idempotent (checks the manifest file first)
+    and self-healing rather than relying on ASGI startup-event timing, which
+    a bare `TestClient(app)` (this project's existing test pattern) doesn't
+    reliably trigger anyway.
+
+    Deliberately screening-only, no bibliometric/ownership/topic-similarity
+    enrichment baked in -- those need a live OpenAlex/GLEIF call, and the
+    result of running them once at build time would just be a stale snapshot
+    frozen at that moment, unlike this step, which is 100% reproducible from
+    the two files bundled in the image. Workstream 8a already means a
+    screening-only run still shows a real, non-blank, explained table on
+    load, which is what actually unblocks gating run-creation behind the
+    action secret (Workstream 2) -- see docs/plans/2026-09-02-remediation-pass.md.
+    """
+    manifest_path = _runs_dir() / DEMO_RUN_ID / "manifest.json"
+    if manifest_path.exists():
+        return
+    pipeline.run_screening(
+        run_id=DEMO_RUN_ID,
+        nsf_file=DEMO_NSF_FILE,
+        nsf_date_start=None,
+        nsf_date_end=None,
+        opensanctions_file=DEMO_OPENSANCTIONS_FILE,
+        rubric=STOCK_RUBRIC,
+        threshold=DEFAULT_THRESHOLD,
+        db_path=_db_path(),
+        runs_dir=_runs_dir(),
+    )
+
+
 def _load_manifest(run_id: str) -> RunManifest:
+    if run_id == DEMO_RUN_ID:
+        _ensure_demo_run_exists()
     path = _runs_dir() / run_id / "manifest.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")

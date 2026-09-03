@@ -67,9 +67,15 @@ class RunManifest:
     ingestion_error_counts: dict[str, int] = field(default_factory=dict)
 
     @classmethod
-    def start(cls) -> "RunManifest":
+    def start(cls, run_id: str | None = None) -> "RunManifest":
+        """`run_id` is normally left to generate a fresh UUID -- every real
+        caller (the API route, the CLI) wants a new, unpredictable run each
+        time. The override exists for a caller that deliberately wants a
+        fixed, well-known run_id, e.g. the baked-in public-demo run (see
+        api/main.py:_ensure_demo_run_exists), which needs the same ID every
+        time so the app can find it again after a restart."""
         return cls(
-            run_id=str(uuid.uuid4()),
+            run_id=run_id or str(uuid.uuid4()),
             started_at=datetime.now(timezone.utc).isoformat(),
             git_commit=_git_commit(),
         )
