@@ -27,6 +27,7 @@ Built the same way as this author's other independent projects ([ed-sector-surve
 - [`docs/methodology.md`](docs/methodology.md) — how to read a run's manifest, and this version's known limitations.
 - [`docs/data_sources.md`](docs/data_sources.md) — per-source license and attribution terms.
 - [`docs/plans/`](docs/plans/) — the design/implementation plans reviewed and approved before each major piece was built, kept as a historical record.
+- [`docs/how-this-was-built.md`](docs/how-this-was-built.md) — a running record of *how the direction happened*: where an AI collaborator's first pass needed correcting, where domain knowledge changed a technical decision, and where this project got something wrong and had to reverse it. Not a changelog — `git log` covers what changed, this covers why. Kept unedited, including the parts that aren't flattering, since those are what make the rest of it credible.
 
 ## Quickstart
 
