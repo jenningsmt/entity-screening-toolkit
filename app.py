@@ -36,21 +36,68 @@ RUBRIC_SLIDER_RANGES = {
     "bibliometric_hit_weight": (0.0, 150.0),
 }
 
+# Workstream 2b: a small, fixed menu of bundled fixture files, not a free-text
+# path -- UX only, the server-side MONOPS_DATA_FILE_ALLOWLIST check is the
+# actual control (api/main.py:_check_allowlisted). Keep this list and
+# docker-compose.prod.yml's allowlist env var in the same order/content.
+BUNDLED_NSF_FILES = [
+    "tests/fixtures/demo_nsf_awards.json",
+    "tests/fixtures/sample_nsf_awards.json",
+]
+BUNDLED_OPENSANCTIONS_FILES = [
+    "tests/fixtures/demo_opensanctions_targets.csv",
+    "tests/fixtures/sample_opensanctions_targets.csv",
+]
+
 with st.sidebar:
     api_base_url = st.text_input(
         "API base URL", value=os.environ.get("API_BASE_URL", "http://localhost:8000")
     ).rstrip("/")
 
+    # Workstream 2a: whether the public demo has an action gate configured at
+    # all -- never the secret's value, just the fact one is required (see
+    # api/main.py's /health route). Fails open (gate treated as off) if the
+    # API isn't reachable yet here; the health/rubric check right after this
+    # sidebar block surfaces a real connectivity error to the user anyway,
+    # and the server remains the actual enforcement regardless of what this
+    # renders as.
+    try:
+        _action_gate_enabled = bool(
+            requests.get(f"{api_base_url}/health", timeout=10).json().get("action_gate_enabled")
+        )
+    except requests.RequestException:
+        _action_gate_enabled = False
+
     st.header("Data sources")
-    nsf_file = st.text_input("NSF awards JSON file", value="tests/fixtures/demo_nsf_awards.json")
-    opensanctions_file = st.text_input(
-        "OpenSanctions targets.simple.csv", value="tests/fixtures/demo_opensanctions_targets.csv"
+    nsf_file = st.selectbox("NSF awards JSON file", BUNDLED_NSF_FILES, index=0)
+    opensanctions_file = st.selectbox(
+        "OpenSanctions targets.simple.csv", BUNDLED_OPENSANCTIONS_FILES, index=0
     )
     threshold = st.slider("Screening match threshold", 0.0, 1.0, 0.80, 0.01)
     section_117_file = st.text_input(
         "Section 117 foreign funding disclosure .xlsx (optional)", value=""
     )
-    run_button = st.button("Run screening", type="primary")
+
+    st.header("Actions")
+    st.caption(
+        "Starting a new run and every enrichment step below are gated on the "
+        "public demo -- viewing the pre-computed demo run, its scored table, "
+        "evidence trail, rubric sliders, and exports all stay open regardless."
+    )
+    action_secret = st.text_input(
+        "Action secret (only needed on the public demo)", type="password", value=""
+    )
+    # Optimistic: enabled once *something* is entered, not only when it's
+    # correct -- the client has no way to verify correctness without a round
+    # trip, and the server 403s (with a clear error surfaced below) if it's
+    # wrong. When no gate is configured at all (local dev, the common case),
+    # everything stays enabled regardless of this field.
+    _actions_enabled = (not _action_gate_enabled) or bool(action_secret)
+    _action_secret_headers = {"X-Monops-Action-Secret": action_secret} if action_secret else {}
+
+    run_button = st.button("Run screening", type="primary", disabled=not _actions_enabled)
+    if _action_gate_enabled and not _actions_enabled:
+        st.caption("⚠️ Disabled on the public demo — enter the action secret above to enable.")
 
     st.header("Ownership analysis (optional, Epic C)")
     st.caption(
@@ -59,7 +106,7 @@ with st.sidebar:
     )
     gleif_lei_file = st.text_input("GLEIF Level 1 (LEI-CDF) CSV", value="")
     gleif_relationships_file = st.text_input("GLEIF Level 2 (RR-CDF) CSV", value="")
-    enrich_button = st.button("Enrich with ownership data")
+    enrich_button = st.button("Enrich with ownership data", disabled=not _actions_enabled)
 
     st.header("Bibliometric affiliation layer (optional, Epic E)")
     st.caption(
@@ -68,7 +115,7 @@ with st.sidebar:
         "file to supply."
     )
     openalex_contact_email = st.text_input("Contact email (OpenAlex 'polite pool', optional)", value="")
-    bibliometric_button = st.button("Enrich with bibliometric data")
+    bibliometric_button = st.button("Enrich with bibliometric data", disabled=not _actions_enabled)
 
     st.header("Topic-similarity flags (optional, advisory only)")
     st.caption(
@@ -78,7 +125,9 @@ with st.sidebar:
         "cannot establish application or risk, so results are recommendations to "
         "consult a subject-matter expert, shown separately from the scored table."
     )
-    topic_similarity_button = st.button("Compute topic-similarity flags")
+    topic_similarity_button = st.button(
+        "Compute topic-similarity flags", disabled=not _actions_enabled
+    )
 
 
 def _api_get(path: str, **params) -> requests.Response:
@@ -87,8 +136,10 @@ def _api_get(path: str, **params) -> requests.Response:
     return response
 
 
-def _api_post(path: str, payload: dict, timeout: int = 120) -> requests.Response:
-    response = requests.post(f"{api_base_url}{path}", json=payload, timeout=timeout)
+def _api_post(
+    path: str, payload: dict, timeout: int = 120, headers: dict | None = None
+) -> requests.Response:
+    response = requests.post(f"{api_base_url}{path}", json=payload, timeout=timeout, headers=headers)
     response.raise_for_status()
     return response
 
@@ -141,6 +192,9 @@ with st.sidebar:
         )
 
 
+DEMO_RUN_ID = "demo"
+
+
 def _start_new_run() -> str:
     payload = {
         "nsf_file": nsf_file,
@@ -149,7 +203,7 @@ def _start_new_run() -> str:
     }
     if section_117_file:
         payload["section_117_file"] = section_117_file
-    summary = _api_post("/runs", payload).json()
+    summary = _api_post("/runs", payload, headers=_action_secret_headers).json()
     st.session_state["run_id"] = summary["run_id"]
     return summary["run_id"]
 
@@ -161,16 +215,33 @@ if run_id and not run_button:
         manifest = _api_get(f"/runs/{run_id}/manifest").json()
     except requests.RequestException:
         # The API may have restarted (fresh, data-wiped) since this browser
-        # session last ran — a stale run_id 404s cleanly, so just start over
-        # rather than surfacing that as an error the user has to act on.
+        # session last ran — a stale run_id 404s cleanly, so fall through to
+        # the pre-computed demo run below rather than auto-starting a new,
+        # now-gated run on the visitor's behalf.
         run_id = None
 
-if run_id is None or run_button:
+if run_button:
+    # Workstream 2c: only start a new run on this explicit click, never on
+    # page load. The button itself is disabled client-side when the action
+    # gate isn't satisfied (see the sidebar); the server's 403 plus this
+    # same error handling is what actually enforces it either way.
     try:
         run_id = _start_new_run()
         manifest = _api_get(f"/runs/{run_id}/manifest").json()
     except requests.RequestException as exc:
         st.error(f"Run failed: {exc}")
+        st.stop()
+elif run_id is None:
+    # On load, with no session run_id and no explicit click, show the
+    # pre-computed public-demo run rather than auto-starting a new one --
+    # the API self-heals this run into existence on first request if it's
+    # missing (api/main.py:_ensure_demo_run_exists).
+    run_id = DEMO_RUN_ID
+    try:
+        manifest = _api_get(f"/runs/{run_id}/manifest").json()
+        st.session_state["run_id"] = run_id
+    except requests.RequestException as exc:
+        st.error(f"Couldn't load the demo run: {exc}")
         st.stop()
 
 with st.expander("Run provenance", expanded=False):
@@ -186,6 +257,7 @@ if enrich_button:
                     "gleif_relationships_file": gleif_relationships_file,
                     "threshold": threshold,
                 },
+                headers=_action_secret_headers,
             ).json()
             st.success(
                 f"Ownership analysis complete: {enrichment['flags_count']} "
@@ -212,7 +284,8 @@ if bibliometric_button:
             # caller explicitly overrides it.
             payload = {"contact_email": openalex_contact_email or None}
             enrichment = _api_post(
-                f"/runs/{run_id}/bibliometric", payload, timeout=ENRICHMENT_TIMEOUT_SECONDS
+                f"/runs/{run_id}/bibliometric", payload,
+                timeout=ENRICHMENT_TIMEOUT_SECONDS, headers=_action_secret_headers,
             ).json()
             status.update(
                 label=f"Bibliometric enrichment complete: {enrichment['hits_count']} candidate hit(s) found.",
@@ -232,7 +305,8 @@ if topic_similarity_button:
     with st.status("Ranking PIs' real papers against reference corpora...", expanded=True) as status:
         try:
             result = _api_post(
-                f"/runs/{run_id}/topic-similarity", {}, timeout=ENRICHMENT_TIMEOUT_SECONDS
+                f"/runs/{run_id}/topic-similarity", {},
+                timeout=ENRICHMENT_TIMEOUT_SECONDS, headers=_action_secret_headers,
             ).json()
             st.session_state["topic_similarity_flags"] = result["flags"]
             status.update(

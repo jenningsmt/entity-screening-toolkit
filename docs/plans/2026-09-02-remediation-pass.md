@@ -1,10 +1,9 @@
 # Remediation Pass — Findings from the 2026-09-02 Codebase Evaluation
 
-**Status:** Built, with one deliberate re-scoping (2026-09-02). Workstreams
-3, 4, 1, 6, 5a, 5b, 7, the cross-cutting test files, 9, 8a, and 8c landed
-first, each as its own commit, in the order given below except where
-explicitly re-sequenced (8a/8c moved ahead of 2, matching the dependency
-note in Workstream 2's own section).
+**Status:** Fully built (2026-09-02), with one deliberate re-scoping. All 13
+workstreams landed, each as its own commit, in the order given below except
+where explicitly re-sequenced (8a/8c/8b moved ahead of 2, matching the
+dependency note in Workstream 2's own section).
 
 **Re-scoping, decided after the fact:** Workstream 8b as originally written
 called for a pre-computed run with bibliometric enrichment baked in, and
@@ -30,6 +29,7 @@ timeout value" section) was also blocked by the same OpenAlex rate limit;
 the 600s enrichment timeout `app.py` ships with is a documented, reasoned
 placeholder, not a live-measured one. Re-measure and adjust once OpenAlex
 access is confirmed working again.
+
 **Source:** `docs/2026-09-02-codebase-evaluation.md` (9 findings, all reproduced against `40ca51b`)
 **Audience:** Claude Code, working this repo directly
 

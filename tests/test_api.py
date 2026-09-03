@@ -30,7 +30,7 @@ def _create_run(client) -> str:
 
 
 def test_health(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health").json() == {"status": "ok", "action_gate_enabled": False}
 
 
 def test_rubric_default(client):

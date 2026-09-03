@@ -53,6 +53,12 @@ cp "$APP_DIR/infra/placeholder/index.html" /var/www/monops-placeholder/index.htm
 if [ -f "$APP_DIR/docs/monops-logo.jpeg" ]; then
     cp "$APP_DIR/docs/monops-logo.jpeg" /var/www/monops-placeholder/monops-logo.jpeg
 fi
+# Workstream 2e: keep the demo out of search indexes and casual scrapers.
+# Host-wide by nature (one robots.txt per origin) -- revisit this, not add a
+# second one, if a real site ever lands at the apex. Hygiene only, not
+# access control; infra/nginx/monops.conf's rate limit is the actual defence
+# against volume.
+printf 'User-agent: *\nDisallow: /monops/\n' > /var/www/monops-placeholder/robots.txt
 
 # --- nginx -------------------------------------------------------------------
 # HTTP-only for now -- `sudo certbot --nginx -d mikejennings.dev` (a manual,
