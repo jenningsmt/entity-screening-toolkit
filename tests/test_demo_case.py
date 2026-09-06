@@ -63,3 +63,14 @@ def test_demo_case_never_asserts_a_confirmed_finding(client):
     blob = (json.dumps(worksheet) + json.dumps(export)).lower()
     assert "confirmed" not in blob
     assert "risk score" not in blob
+
+
+def test_demo_investigative_file_export_carries_the_synthetic_marker(client):
+    """The demo export names a real DoD 1260H company in a fabricated
+    ownership chain. Downloaded from a public URL, it must carry its own
+    provenance marker -- the Streamlit banner does not travel with the file."""
+    export = client.get("/cases/demo/investigative-file.json").json()
+    assert export["provenance"]["synthetic"] is True
+    notice = export["provenance"]["notice"].lower()
+    assert "synthetic" in notice
+    assert "not a real finding" in notice

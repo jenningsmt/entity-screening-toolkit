@@ -192,6 +192,22 @@ def test_investigative_file_export_contract(tmp_path):
 
     payload = json.loads(out_path.read_text())
 
+    # --- the synthetic marker survives to the export, in both formats ---
+    # (the file is the artifact that leaves the system; a downloaded JSON/XLSX
+    # naming a real 1260H company in a fabricated ownership chain must say so)
+    assert payload["provenance"]["synthetic"] is True
+    notice = payload["provenance"]["notice"].lower()
+    assert "synthetic" in notice and "fabricated" in notice
+    assert "not a real finding" in notice
+    import openpyxl
+
+    wb = openpyxl.load_workbook(xlsx_path)
+    assert "READ ME -- provenance" in wb.sheetnames
+    provenance_text = " ".join(
+        str(c.value) for row in wb["READ ME -- provenance"].iter_rows() for c in row
+    ).lower()
+    assert "synthetic" in provenance_text and "not a real finding" in provenance_text
+
     # --- every finding row carries the full contract ---
     assert payload["findings"]
     for finding in payload["findings"]:

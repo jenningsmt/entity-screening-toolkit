@@ -37,6 +37,24 @@ from entity_screening.common.manifest import DEFAULT_RUNS_DIR, InvestigativeFile
 
 REDACTION_MARKER = {"_redacted": True, "_reason": "field-level sensitive (use-case-01 Section 9)"}
 
+# The synthetic marker must survive to the export, not just the screen. The
+# investigative file is the artifact designed to leave the system -- a
+# downloaded JSON/XLSX that names a real concern-listed company in a
+# fabricated ownership chain, with no provenance marker, is the one output
+# here that could be mistaken for a real finding about a real company. The
+# Streamlit banner protects the screen; this protects the file.
+PROVENANCE_NOTICE = (
+    "SYNTHETIC DEMONSTRATION DATA -- NOT A REAL FINDING ABOUT ANY REAL PERSON "
+    "OR COMPANY. This build handles no real declaration data (use-case-01 "
+    "Section 9); the subject and their declaration are fabricated in full. "
+    "Named entities in the evidence may be real organisations whose concern-list "
+    "designations are real, but any corporate ownership chain shown here that "
+    "connects the fabricated subject to such an entity is itself a fabricated "
+    "fixture (LEIs prefixed 'SYNTH...'; see tests/fixtures/demo_case/"
+    "gleif.NOTICE.md). Do not treat this file, in whole or in part, as a "
+    "screening determination."
+)
+
 
 def _finding_to_dict(finding) -> dict:
     return {
@@ -68,6 +86,10 @@ def build_investigative_file(
     outcome = service.latest_outcome(conn, case_id)
 
     return {
+        "provenance": {
+            "synthetic": bool(case.synthetic and (subject.synthetic if subject else True)),
+            "notice": PROVENANCE_NOTICE,
+        },
         "case": {
             "case_id": case.case_id,
             "trigger": case.trigger,
@@ -186,6 +208,14 @@ def _write_xlsx(payload: dict, out_path: Path) -> None:
     import pandas as pd
 
     with pd.ExcelWriter(out_path) as writer:
+        # First sheet: the synthetic-data marker, so it is the first thing a
+        # reader of the file sees.
+        pd.DataFrame(
+            [
+                {"field": "synthetic", "value": str(payload["provenance"]["synthetic"])},
+                {"field": "notice", "value": payload["provenance"]["notice"]},
+            ]
+        ).to_excel(writer, sheet_name="READ ME -- provenance", index=False)
         pd.DataFrame([payload["case"]]).to_excel(writer, sheet_name="Case", index=False)
         pd.DataFrame(payload["declaration"]["affiliations"]).to_excel(
             writer, sheet_name="Declared affiliations", index=False
