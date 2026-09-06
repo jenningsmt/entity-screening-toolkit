@@ -33,6 +33,13 @@ DEMO_CASE_ID = "demo"
 
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "demo_case"
 
+# Fabricated three-node ownership chain -- see tests/fixtures/demo_case/gleif.NOTICE.md.
+# The ultimate parent's name is that of a real DoD Section 1260H entity, so
+# the concern-list match is against real reference data; only the GLEIF graph
+# is synthetic.
+DEMO_GLEIF_LEI_FILE = _FIXTURES_DIR / "gleif_lei.csv"
+DEMO_GLEIF_RELATIONSHIPS_FILE = _FIXTURES_DIR / "gleif_relationships.csv"
+
 
 def _load(name: str) -> dict:
     return json.loads((_FIXTURES_DIR / name).read_text(encoding="utf-8"))

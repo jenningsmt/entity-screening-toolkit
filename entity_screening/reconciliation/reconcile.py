@@ -66,11 +66,21 @@ def _overlaps_temporal_window(
         return False
 
 
+_OWNERSHIP_SOURCES = {"gleif_ownership"}
+
+
 def _source_covers(
     source: DeclarationSource, discovered: DiscoveredAffiliation
 ) -> bool:
     """Does this declaration source's stated scope admit the discovered item."""
     if not source.present:
+        return False
+    if discovered.source in _OWNERSHIP_SOURCES:
+        # An employer's ultimate parent is a fact about corporate structure,
+        # not an affiliation the subject had -- no HB 127 declaration source
+        # (DS-160, passport, CV, the institutional supplemental) asks for it.
+        # So its absence is never a gap in a document that asked; it is
+        # outside every source's scope by nature.
         return False
     if source.scope_kind == ScopeKind.FULL_HISTORY:
         return True
@@ -119,7 +129,49 @@ def _classify(
         return FactualBasis.PARTIAL_MATCH_BELOW_THRESHOLD
     if any_in_scope:
         return FactualBasis.ABSENT_FROM_IN_SCOPE_SOURCE
-    return FactualBasis.ABSENT_ONLY_OUTSIDE_SCOPE_WINDOWS
+    return FactualBasis.ABSENT_OUTSIDE_ALL_SOURCE_SCOPES
+
+
+def build_finding(
+    case_id: str,
+    run_id: str,
+    declaration: Declaration,
+    item: DiscoveredAffiliation,
+    *,
+    threshold: float = RECONCILIATION_THRESHOLD,
+    concern_list_evidence: tuple = (),
+    ownership_evidence: tuple = (),
+) -> Finding:
+    """Assembles one Finding for a discovered affiliation that has no
+    clearing declared match. Shared by both discovery paths so the
+    declaration-search trail and factual classification are computed
+    identically however the discrepancy was found."""
+    declared = list(declaration.affiliations)
+    best = best_declared_match(item.institution_name, declared, threshold)
+    trail, any_in_scope = _declaration_search_trail(declaration, item)
+    best_confidence = best.confidence if best is not None else 0.0
+    nearest = tuple(
+        NearestDeclared(
+            declared_affiliation_id=m.declared.affiliation_id,
+            institution_name=m.declared.institution_name,
+            best_confidence=m.confidence,
+            match_basis=m.match_basis,
+            cleared_name=m.cleared,
+            scope_compatible=True,  # scope is a source property; recorded in the trail
+        )
+        for m in ranked_declared_matches(item.institution_name, declared, threshold=threshold)
+    )
+    return Finding(
+        finding_id=str(uuid.uuid4()),
+        case_id=case_id,
+        run_id=run_id,
+        discovered=item,
+        declaration_search=tuple(trail),
+        factual_basis=_classify(any_in_scope, best_confidence),
+        nearest_declared=nearest,
+        concern_list_evidence=tuple(concern_list_evidence),
+        ownership_evidence=tuple(ownership_evidence),
+    )
 
 
 def reconcile(
@@ -140,29 +192,42 @@ def reconcile(
         best = best_declared_match(item.institution_name, declared, threshold)
         if best is not None and best.cleared:
             continue
+        findings.append(build_finding(case_id, run_id, declaration, item, threshold=threshold))
+    return findings
 
-        trail, any_in_scope = _declaration_search_trail(declaration, item)
-        best_confidence = best.confidence if best is not None else 0.0
-        nearest = tuple(
-            NearestDeclared(
-                declared_affiliation_id=m.declared.affiliation_id,
-                institution_name=m.declared.institution_name,
-                best_confidence=m.confidence,
-                match_basis=m.match_basis,
-                cleared_name=m.cleared,
-                scope_compatible=True,  # scope is a source property; recorded in the trail
-            )
-            for m in ranked_declared_matches(item.institution_name, declared, threshold=threshold)
+
+def reconcile_ownership(
+    case_id: str,
+    run_id: str,
+    declaration: Declaration,
+    ownership_discoveries,
+    threshold: float = RECONCILIATION_THRESHOLD,
+) -> list[Finding]:
+    """The ownership discovery path: each OwnershipDiscovery is an undisclosed
+    ultimate parent on a concern list. The parent entity itself is never
+    something a declaration form asks about, so its declaration-search trail
+    normally shows every source out of scope -- the finding's weight comes
+    from the concern-list and ownership evidence attached, not from the
+    factual basis (Section 4: the system states the fact, not its
+    importance)."""
+    findings: list[Finding] = []
+    for od in ownership_discoveries:
+        best = best_declared_match(
+            od.discovered.institution_name, list(declaration.affiliations), threshold
         )
+        if best is not None and best.cleared:
+            # The parent is itself declared somewhere -- still worth a finding
+            # if it is concern-listed, but not an omission; skip in this slice.
+            continue
         findings.append(
-            Finding(
-                finding_id=str(uuid.uuid4()),
-                case_id=case_id,
-                run_id=run_id,
-                discovered=item,
-                declaration_search=tuple(trail),
-                factual_basis=_classify(any_in_scope, best_confidence),
-                nearest_declared=nearest,
+            build_finding(
+                case_id,
+                run_id,
+                declaration,
+                od.discovered,
+                threshold=threshold,
+                concern_list_evidence=od.concern_hits,
+                ownership_evidence=od.ownership_flags,
             )
         )
     return findings

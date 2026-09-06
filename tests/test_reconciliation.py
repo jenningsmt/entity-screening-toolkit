@@ -131,7 +131,7 @@ def test_old_affiliation_outside_a_ds160_only_declaration_is_outside_scope():
         "c1", "r1", decl, [_discovered("Harbin Engineering University", "2012", "2013")]
     )
     assert len(findings) == 1
-    assert findings[0].factual_basis == FactualBasis.ABSENT_ONLY_OUTSIDE_SCOPE_WINDOWS
+    assert findings[0].factual_basis == FactualBasis.ABSENT_OUTSIDE_ALL_SOURCE_SCOPES
 
 
 def test_near_match_is_classified_as_partial_not_a_stark_omission():
@@ -198,6 +198,37 @@ def test_reconcile_case_end_to_end_against_the_demo_fixtures(tmp_path):
     assert store.load_case(conn, "demo").state == CaseState.WORKSHEET
     assert len(store.load_findings(conn, "demo")) == 2
     conn.close()
+
+
+def test_reconcile_case_ownership_path_produces_the_section_10_headline_finding(tmp_path):
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    demo.build_demo_case(conn)
+    conn.close()
+
+    _, findings = reconcile_case(
+        demo.DEMO_CASE_ID,
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+    ownership = [f for f in findings if f.discovered.source == "gleif_ownership"]
+    assert len(ownership) == 1
+    finding = ownership[0]
+    # The undisclosed ultimate parent, matched against the real 1260H list.
+    assert finding.discovered.institution_name == "Aviation Industry Corporation of China Ltd."
+    assert finding.factual_basis == FactualBasis.ABSENT_OUTSIDE_ALL_SOURCE_SCOPES
+    assert [h.list_name for h in finding.concern_list_evidence] == ["dod_section_1260h"]
+
+    hit = finding.concern_list_evidence[0]
+    # AC 14: attribution + licence reach the finding's evidence, for both the
+    # concern list and GLEIF.
+    assert hit.evidence["source_attribution"]["attribution"]
+    assert hit.evidence["source_attribution"]["license"]
+    assert hit.evidence["ownership_path"]["source_attribution"]["license"]
+    assert hit.evidence["ownership_path"]["declared_employer_name"] == "Nanjing Zhongke Robotics Co., Ltd."
 
 
 def test_reconcile_case_is_current_state_not_append(tmp_path):

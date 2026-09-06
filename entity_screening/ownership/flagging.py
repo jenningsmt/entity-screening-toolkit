@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import duckdb
 
+from entity_screening.common.attribution import attribution_for
 from entity_screening.common.schema import (
     ForeignControlFlag,
     MatchStatus,
@@ -108,6 +109,13 @@ def flag_from_match(
                     "lei_match_basis": match.match_basis,
                     "relationship_path": list(full_path),
                     "truncated": result.truncated,
+                    # Section 10's licence NFR: attribution reaches every
+                    # output, not just a README. A ForeignControlFlag is now
+                    # a first-class evidence payload on an HB 127 Finding
+                    # (use-case-01), exported in the investigative file --
+                    # GLEIF's attribution rides in the evidence the same way
+                    # a ScreeningHit's source_attribution does.
+                    "source_attribution": attribution_for("gleif_golden_copy"),
                 },
                 status=MatchStatus.CANDIDATE_MATCH,
             )

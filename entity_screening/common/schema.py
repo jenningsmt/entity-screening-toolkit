@@ -408,7 +408,7 @@ class FactualBasis(Enum):
     classification, never an evaluation (use-case doc Section 4)."""
 
     ABSENT_FROM_IN_SCOPE_SOURCE = "absent_from_in_scope_source"
-    ABSENT_ONLY_OUTSIDE_SCOPE_WINDOWS = "absent_only_outside_scope_windows"
+    ABSENT_OUTSIDE_ALL_SOURCE_SCOPES = "absent_outside_all_source_scopes"
     PARTIAL_MATCH_BELOW_THRESHOLD = "partial_match_below_threshold"
 
 

@@ -62,9 +62,15 @@ from entity_screening.common.schema import (
     SourceRecord,
     TopicSimilarityFlag,
 )
-from entity_screening.reconciliation.discover import discover_from_publications
+from entity_screening.reconciliation.discover import (
+    discover_from_ownership,
+    discover_from_publications,
+)
 from entity_screening.reconciliation.match import RECONCILIATION_THRESHOLD
-from entity_screening.reconciliation.reconcile import reconcile as reconcile_declaration
+from entity_screening.reconciliation.reconcile import (
+    reconcile as reconcile_declaration,
+)
+from entity_screening.reconciliation.reconcile import reconcile_ownership
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.ingestion.dod_1260h import DoD1260HIngester
@@ -650,6 +656,10 @@ def reconcile_case(
     contact_email: str | None = None,
     fetch=None,
     works_fixture: list[dict] | None = None,
+    gleif_lei_file: Path | str | None = None,
+    gleif_relationships_file: Path | str | None = None,
+    dod_1260h_file: Path | str = DEFAULT_DOD_1260H_FILE,
+    opensanctions_file: Path | str | None = None,
     threshold: float = RECONCILIATION_THRESHOLD,
 ) -> tuple[ReconciliationManifest, list[Finding]]:
     """Loads a case's subject + declaration, runs the discovery adapters,
@@ -687,10 +697,33 @@ def reconcile_case(
             fetch=fetch,
             works_fixture=works_fixture,
         )
-
         findings = reconcile_declaration(
             case_id, run_id, declaration, discovered, threshold=threshold
         )
+        discovery_sources = ["openalex"]
+
+        ownership_discoveries: list = []
+        if gleif_lei_file and gleif_relationships_file:
+            run_dir = Path(runs_dir) / "cases" / case_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            error_log = IngestionErrorLog(run_dir / "ingestion_errors.jsonl")
+            load_gleif_level1(conn, gleif_lei_file, date.today(), error_log)
+            load_gleif_level2(conn, gleif_relationships_file, date.today(), error_log)
+
+            concern_lists = _case_concern_lists(
+                error_log, dod_1260h_file, opensanctions_file
+            )
+            error_log.close()
+            ownership_discoveries = discover_from_ownership(
+                list(declaration.affiliations), conn, concern_lists
+            )
+            findings += reconcile_ownership(
+                case_id, run_id, declaration, ownership_discoveries, threshold=threshold
+            )
+            discovery_sources += ["gleif_ownership", "dod_section_1260h"]
+            if opensanctions_file:
+                discovery_sources.append("opensanctions")
+
         case_store.replace_findings(conn, case_id, findings)
 
         if case.state in (CaseState.INTAKE, CaseState.DECLARATION_ASSEMBLY, CaseState.DISCOVERY):
@@ -702,12 +735,35 @@ def reconcile_case(
         case_id=case_id,
         run_id=run_id,
         reconciliation_threshold=threshold,
-        discovery_sources=["openalex"],
-        discovered_count=len(discovered),
+        discovery_sources=discovery_sources,
+        discovered_count=len(discovered) + len(ownership_discoveries),
         finding_count=len(findings),
     )
     manifest.write(runs_dir)
     return manifest, findings
+
+
+def _case_concern_lists(error_log, dod_1260h_file, opensanctions_file):
+    """The concern lists an ownership-parent name is screened against. DoD
+    1260H is bundled (no file needed); OpenSanctions is optional -- omitted
+    for the demo, which needs no live download and no large file in the
+    image."""
+    lists = [
+        DoD1260HList(
+            list(DoD1260HIngester(error_log, data_file=dod_1260h_file).stream_records())
+        )
+    ]
+    if opensanctions_file:
+        lists.append(
+            OpenSanctionsList(
+                list(
+                    OpenSanctionsTargetsIngester(
+                        error_log, csv_path=opensanctions_file
+                    ).stream_records()
+                )
+            )
+        )
+    return lists
 
 
 def _hiring_institution_name(declaration) -> str:

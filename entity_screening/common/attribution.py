@@ -60,6 +60,18 @@ _ATTRIBUTIONS: dict[str, dict[str, str]] = {
             "States (17 U.S.C. § 105)."
         ),
     },
+    "gleif_golden_copy": {
+        "attribution": (
+            "Data: GLEIF (gleif.org) Golden Copy files, snapshot dated in this "
+            "run's ownership manifest "
+            "(data/processed/runs/<run_id>/ownership/manifest.json)."
+        ),
+        "license": (
+            "CC0 1.0 Universal (public domain) — no attribution legally "
+            "required, no commercial or redistribution restriction. Attributed "
+            "as good practice."
+        ),
+    },
     "section_117_foreign_funding_disclosure": {
         "attribution": (
             "Source: U.S. Department of Education, Section 117 foreign gift and "
