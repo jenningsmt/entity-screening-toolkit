@@ -30,7 +30,13 @@ This is explicitly a learning and portfolio exercise, not a production complianc
 
 ## 4. Users
 
-Primary user is Mike, running it against real public data as a hands-on exercise. Secondary audience is anyone evaluating it as a portfolio piece — a recruiter, hiring manager, or GitHub visitor — so usability, documentation, and a clean demo path matter even though there's no real end-user support burden.
+**Revised September 6, 2026 — see Section 9c for why, and `docs/how-this-was-built.md` Phase 5 for how the gap was found.**
+
+This section previously named "Mike, running it against real public data" as the primary user. That is an *audience*, not a user with a job to be done, and the distinction turned out to matter enormously: the epics in Section 6 were written from the dataset side and given "As an analyst, I want..." framing after the fact, with the analyst never characterized. The result was a technically sound tool aimed at a question no analyst asks.
+
+**Primary user: a research security analyst in a university research security office.** For the first fully-specified use case this is an analyst in the Division of Research at a Texas A&M System institution, operating screening required by Texas HB 127 (89th Legislature). That user, their working conditions, the decision they are making, and the case lifecycle they work within are defined in full in [`docs/use-case-01-hb127-researcher-screening.md`](use-case-01-hb127-researcher-screening.md). Additional use cases get sibling `use-case-NN-*.md` documents rather than expanding this section.
+
+**Secondary audience: anyone evaluating this as a portfolio piece** — a recruiter, hiring manager, or repository visitor. This remains true and still shapes documentation and the demo path. It is an audience to be served, not a user whose needs drive the functional requirements; conflating the two is the specific error this revision corrects.
 
 ## 5. Data Sources
 
@@ -221,6 +227,28 @@ Section 9 above was written before two real decisions were finalized:
   the actual step-by-step commands (`terraform init/plan/apply`, not
   `cdktf deploy`). This addendum records the decisions; it doesn't restate
   Section 9's reasoning, which still stands.
+
+## 9c. Scope Correction — From Corpus Screening to Case-Based Review (September 2026)
+
+Sections 1 through 9b describe a **corpus-in, ranked-list-out** system: ingest a body of NSF award records, screen every entity in it against concern lists, score and rank the results. V1 through V3 and the deferred VSS layer were all built to that shape, verified against it, and deployed.
+
+Real research security work is **subject-in, dossier-out**. The unit of work is a case — one person, one triggering event, one deadline, one file — not a batch. NSPM-33 places screening responsibility at the institution level, and its implementation guidance judges a program operational only where there is "evidence any of the four processes has actually been used by a real case." Texas HB 127 goes further and specifies the workflow: covered persons submit a passport and visa application, an institutional research security office reviews and verifies the submission, and the institution may not employ someone who **failed to disclose a substantial educational, employment, or research-related activity, publication, or presentation** absent a written departmental certification retained in the office's investigative file.
+
+**What that changes.** The statutory test is an *omission*, not a risk level — which makes this a declaration-versus-record reconciliation problem rather than a screening-and-scoring one.
+
+- **The entry point changes** from a dataset to a subject. Section 6's epics assume a corpus; the case model does not exist.
+- **The output changes** from a ranked table to a worked worksheet plus an adjudicated file.
+- **Epic F's scoring rubric does not survive as output.** There is no statutory concept of a risk score, and an analyst needs evidence per discrepancy rather than a number per person. The rubric machinery may serve queue-ordering or materiality configuration — properties of a worklist, not claims about a person.
+- **A new binding constraint replaces it:** the system states observable facts about a discrepancy and never evaluates them. Enforced structurally, as `MatchStatus` is — the `Finding` type carries no severity, risk, priority or score field, so an evaluative claim about a person is unrepresentable rather than merely discouraged. See the referenced use-case document, Section 4.
+
+**What survives.** Nearly all of the engine, and the reason is architectural: `pipeline.py` as shared orchestration, a real API boundary, and a Streamlit UI that is a thin HTTP client mean the entry point and output shape can change without touching the core. Entity resolution, the concern-list registry, the ownership graph, the bibliometric layer, the evidence trail, and the manifest family all transfer directly. Two of them improve:
+
+- **The bibliometric layer (Epic E) becomes the core** rather than the exotic late addition. "Publication, or presentation" is OpenAlex's exact domain, so the project's most speculative and technically difficult component is now the primary evidence source for the statutory test.
+- **The ownership graph (Epic C) finally earns its place.** A declared employer whose ultimate parent sits on a concern list is the finding shape this use case most needs, and it is unreachable by name-matching the declared name alone.
+
+**What it cost.** Roughly three of the thirteen remediation workstreams from `docs/plans/2026-09-02-remediation-pass.md` went into making a corpus-shaped demo presentable, plus the framing effort in this document. Everything else — idempotency, provenance, attribution, output contracts, the security lockdown — is orthogonal to the entry point and survives intact.
+
+Section 12's V1/V2/V3 roadmap describes what was built and stands as a historical record. The forward roadmap is the sequencing in the use-case document, Section 12.
 
 ## 10. Non-Functional Requirements
 
