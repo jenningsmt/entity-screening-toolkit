@@ -526,27 +526,41 @@ list (exercised by a test fixture -- see pushback C for why not the live demo) p
 
 ## 8. Spec changes — land before code, in their own commit
 
-Pushback A's verification (pull and quote §51B.151(b) from the enrolled text) is a
-prerequisite for the §1 and §7 edits. If a web-enabled step confirms the text, this commit
-proceeds; if it materially differs, the §7 mapping and the type's framing are revised
-first.
+*P2 landed 2026-09-06. The user supplied §51B.151(b) verbatim on review — both sentences.
+The **second** sentence ("The council may establish a risk-based framework … which may
+prescribe low-risk circumstances under which the screening may be waived") was not in the
+task prompt and added three items to this list below, marked `[from (b) sentence 2]`.*
 
-- **§1** — add §51B.151(b) as a fourth quoted provision; *"Three provisions"* → *"Four"*.
+- **§1** — add §51B.151(b) as a fourth quoted provision (both sentences); *"Three
+  provisions"* → *"Four"*; note the bill has no standalone definition of "research data" /
+  "sensitive data".
 - **§1.1** — a fifth consequence: §51B.151(b) is a *separate* test from the §51B.153
-  omission bar; the two produce two artifacts.
+  omission bar; the two produce two row types on one worksheet.
 - **§4** — the "ownership relationship" and "name match against a concern list" bullets no
   longer say "(existing Epic C/D machinery, unchanged)"; they feed a **concern-tie
-  observation**, a distinct artifact. Add to "may not assert, ever": *that a tie would or
+  observation**, a distinct row type. Add to "may not assert, ever": *that a tie would or
   would not prevent the person from maintaining the security or integrity of the research*
-  (§51B.151(b)'s "would prevent" clause is the analyst's).
-- **§5** — Discovery leaves when reconciliation has produced *findings and concern ties*;
-  the closure rule covers *every finding and every tie*.
-- **§7** — a column or note mapping each discovery source to the statutory limb it serves:
+  (§51B.151(b)'s "would prevent" clause is the analyst's). `[from (b) sentence 2]` a
+  paragraph that the statute contemplating a risk-based framework does **not** conflict
+  with this system refusing to score risk — council sets the framework, institution
+  applies it, tool supplies facts, three jobs, and §4's boundary is the same division of
+  labour the statute draws.
+- **§5** — Discovery leaves when reconciliation has produced *discrepancies and concern
+  ties*; the closure rule covers *every row of either type*. `[from (b) sentence 2]` a
+  note that "covered under §51B.151(a) but screening waived under the council's framework"
+  is a case outcome the model has no room for — neither cleared nor not-covered — recorded
+  as a known gap (cross-ref §11), nothing to build until the council publishes.
+- **§7** — a column mapping each discovery source to the statutory limb it serves:
   OpenAlex → §51B.153 (omission) and, on a concern match, §51B.151(b) (tie); GLEIF
   ownership → §51B.151(b) only (never an omission); concern lists → §51B.151(b).
-- **§8** — "one row per finding" → "one row per finding *or concern tie*"; two worksheet
-  sections, two vocabularies, one closure rule over both; bulk action load-bearing for
-  findings, a convenience for ties.
+- **§8** — "one row per finding" → "one row per observation"; two worksheet sections
+  (discrepancy / concern tie), two vocabularies, one closure rule over both; bulk action
+  load-bearing for discrepancies, a convenience for ties.
+- **§11** `[from (b) sentence 2]` — the council dependency now covers three things, not
+  one: §51B.152(2) supplemental-declaration content, the §51B.151(b) risk-based framework,
+  and the §51B.151(b) waiver criteria (which create the outcome gap above).
+- **§12** — a dated "outcome of that test" note: the "two discovery paths through one
+  `Finding`" experiment reshaped exactly as predicted and early; recorded, not buried.
 - **§10** — the demo narrative: the AVIC observation is a **concern tie**, not a finding;
   the demo produces 2 findings (undisclosed BIT, Zhejiang) + exactly 1 concern tie (AVIC
   ultimate parent). The both-at-once case (an affiliation both undisclosed and

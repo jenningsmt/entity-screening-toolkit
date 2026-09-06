@@ -12,11 +12,17 @@
 
 ## 1. Statutory basis
 
-Three provisions do the work. Quoted from the enrolled text.
+Four provisions do the work. Quoted from the enrolled text.
 
 **Who is covered — §51B.151(a).** Screening is required *before* an offer or an access grant:
 
 > "Before offering a person employment for a research or research-related support position at the institution or granting a person access to research data or activities or other sensitive data of the institution, an institution of higher education must screen the person as provided by this subchapter if the person: (1) is a citizen of a foreign country and is not a permanent resident of the United States; or (2) is affiliated with an institution or program, or has at least one year of employment or training, in a foreign adversary, other than employment or training by an agency of the United States."
+
+**What the screening must include — §51B.151(b):**
+
+> "(b) A screening under this section must include a background check to determine if the person has any ties to a foreign adversary that would prevent the person from being able to maintain the security or integrity of the institution of higher education and research data or activities or other sensitive data of the institution. The council may establish a risk-based framework for the screening of a person under this subchapter, which may prescribe low-risk circumstances under which the screening may be waived."
+
+The bill provides no standalone definition of "research data" or "sensitive data".
 
 **What is collected — §51B.152:**
 
@@ -30,12 +36,13 @@ Three provisions do the work. Quoted from the enrolled text.
 
 **Foreign adversary — §51B.001:** a country identified by the DNI as posing a national security risk in at least one of the three most recent Annual Threat Assessments, or designated by the governor after consulting the DPS director.
 
-### 1.1 Four consequences that shape everything below
+### 1.1 Five consequences that shape everything below
 
 1. **The disqualifying condition is an omission, not a risk.** The employment bar triggers on failure to disclose a substantial activity — not on nationality, not on affiliation, not on a concern-list hit. This is a **declaration-versus-record reconciliation** problem.
 2. **"Substantial" is undefined**, the statute is months old, and no settled institutional practice exists. See §4.
 3. **A covered person may have no DS-160.** §51B.151(a)(2) catches anyone — U.S. citizens included — with a foreign-adversary institutional affiliation or ≥1 year of employment/training there, but §51B.152(1) requires passport and visa application only "if the person is a citizen of a foreign country." A DS-160-first data model is wrong on day one.
 4. **The statute names the output artifact:** the "investigative file," and mandates one document within it — the department head's written certification when a non-disclosure is disregarded.
+5. **There are two tests, not one, and they produce two kinds of observation.** §51B.153's employment bar is the *omission* test above. §51B.151(b) is a separate requirement: the screening "must include a background check to determine if the person has any ties to a foreign adversary that would prevent" them maintaining the security or integrity of the institution's research. A tie to a concern-listed entity is not a non-disclosure; forcing it through the omission frame mislabels it (see the first real export in `docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md`). The reconciliation worksheet therefore carries **two** row types: a *discrepancy* (a `Finding`, the omission test) and a *concern tie* (the §51B.151(b) test), each with its own dismissal reasoning and both subject to the closure rule.
 
 ---
 
@@ -81,16 +88,19 @@ This is the central design commitment of this use case and it is binding, not as
 - whether the item falls **inside** a declaration source's scope window (its absence is a gap in a document that asked for it) or **outside** it (its absence may be an artifact of the form's scope)
 - measurable attributes: number of supporting records, first and last observed dates, authorship position, publication venue
 - the country of an affiliation, and whether that country is on the foreign-adversary list — **with the list version and derivation cited**
-- a name match against a concern list, with confidence, matched variant, matched field, and the matched entry's own record inlined (existing Epic D machinery, unchanged)
-- an ownership relationship from a declared employer to a parent entity, with the traversal path and its truncation/branching status (existing Epic C machinery, unchanged)
+- a name match against a concern list, with confidence, matched variant, matched field, and the matched entry's own record inlined — surfaced as a **concern-tie observation** (§1.1 consequence 5), a distinct row type from a `Finding`, not folded into the declaration diff
+- an ownership relationship from a declared employer to a parent entity, with the traversal path and its truncation/branching status — likewise a concern-tie observation; the fact that a declared employer's ultimate parent is concern-listed is a §51B.151(b) matter, never an omission
 
 **Assertions the system may not make, ever:**
 
 - that an omission is or is not *substantial*
 - that a person is or is not a risk
+- that a concern tie would or would not *prevent the person from maintaining the security or integrity* of the institution's research — §51B.151(b)'s "would prevent" clause is the analyst's judgment, recorded on a disposition, never a field the tie can hold
 - any aggregate number presented as a risk score for a person
 - any ranking of subjects against one another
 - any recommended disposition
+
+**The statute contemplating a risk-based framework does not put it in tension with this boundary.** §51B.151(b) says "the council may establish a risk-based framework … which may prescribe low-risk circumstances under which the screening may be waived." That is three jobs: the **council** sets the framework, the **institution** applies it (deciding whether a given case is low-risk enough to waive, or how to weigh a tie), and this **tool** supplies the facts each of those decisions rests on. The tool scoring risk itself would collapse the second job into the third. The boundary §4 draws is the same one the statute's own division of labour draws.
 
 **Enforcement, not convention.** `MatchStatus` has exactly one member so that "confirmed" is unrepresentable in code rather than merely discouraged in documentation (`docs/architecture.md`, "Why no 'confirmed' status is possible"). The same mechanism applies here: the `Finding` type carries **no severity, risk, priority or score field at all**. An evaluative claim about a person is not a thing the schema can hold. `cli.py validate` asserts this, so CI fails if anyone adds one.
 
@@ -110,17 +120,19 @@ The unit of work is a **case**: one subject, one triggering event, one deadline,
 |---|---|---|
 | **Intake** | A covered hire or access request is raised | Subject, **recorded coverage basis** (§51B.151(a)(1) foreign national without permanent residency, or (a)(2) foreign-adversary affiliation/employment — stated by whoever opens the case, never inferred by the system; see §12), requested access scope and statutory deadline are recorded |
 | **Declaration assembly** | Intake complete | All available declaration sources are attached, each tagged with its own scope (see §6) |
-| **Discovery** | Declaration assembled | Reconciliation has run against all discovery sources (§7) |
-| **Worksheet** | Discovery complete | **Every row has an analyst action.** No exceptions — this is the closure rule |
+| **Discovery** | Declaration assembled | Reconciliation has run against all discovery sources (§7), producing discrepancies (`Finding`s) and concern ties |
+| **Worksheet** | Discovery complete | **Every discrepancy row and every concern-tie row has an analyst action.** No exceptions — this is the closure rule |
 | **Adjudication** | Worksheet complete | Analyst records an assessment and recommendation, attributed and timestamped |
 | **Outcome** | Adjudication recorded | Institutional outcome recorded: cleared / cleared with §51B.153 certification / not cleared / withdrawn |
 | **Closed** | Outcome recorded | — file is exportable as the investigative file |
 
 **Statutory constraint on the lifecycle:** the case must reach Closed *before* the offer is made or access is granted. The deadline is captured at Intake and is a first-class field, not a note.
 
+**An outcome the model has no room for yet.** §51B.151(b) lets the council "prescribe low-risk circumstances under which the screening may be waived." "Covered under §51B.151(a), but screening waived under the council's framework" is neither *cleared* (screening happened and found nothing disqualifying) nor *not covered* (the person was outside §51B.151(a) entirely). There is nothing to build until the council publishes the framework — recorded here and in §11 as a known gap so it is a planned addition, not a surprise.
+
 **Re-opening.** A closed case re-opens on new information (a later disclosure, an updated adversary list, a new publication). Re-opening creates a new adjudication rather than editing the prior one — the earlier assessment stays intact and readable, because it was correct given what was known then. This mirrors the `ExportManifest` discipline already in the codebase.
 
-**Detection is not manual.** Something has to notice. A periodic sweep of the closed-case population against updated reference data — a new DoD 1260H release, an OpenSanctions update, a country entering the rolling three-ATA adversary window and retroactively bringing people under §51B.151(a)(2), newly indexed publications — must surface which closed cases now carry findings. That re-screening pass is a first-class requirement of this use case rather than a later convenience, and it is also a recognisable NSPM-33 periodic-review function. Architecturally it is the existing batch orchestration (`pipeline.run_screening`) pointed at the case population instead of an award corpus. It sequences after step 3 of §12, once cases exist to re-screen.
+**Detection is not manual.** Something has to notice. A periodic sweep of the closed-case population against updated reference data — a new DoD 1260H release, an OpenSanctions update, a country entering the rolling three-ATA adversary window and retroactively bringing people under §51B.151(a)(2), newly indexed publications — must surface which closed cases now carry a new discrepancy or concern tie. That re-screening pass is a first-class requirement of this use case rather than a later convenience, and it is also a recognisable NSPM-33 periodic-review function. Architecturally it is the existing batch orchestration (`pipeline.run_screening`) pointed at the case population instead of an award corpus. It sequences after step 3 of §12, once cases exist to re-screen.
 
 ---
 
@@ -147,20 +159,20 @@ The unit of work is a **case**: one subject, one triggering event, one deadline,
 
 Reference data the declaration is reconciled against. All public; all already in the codebase except the last.
 
-| Source | Answers | Status |
-|---|---|---|
-| OpenAlex | Publications, presentations, co-authorship, institutional affiliation history — i.e. the statute's "research-related activity, publication, or presentation" verbatim | Built (Epic E) |
-| GLEIF Level 1 + 2 | Declared employer → ultimate parent, and cross-jurisdiction control | Built (Epic C) |
-| OpenSanctions | Restricted-party and PEP matching; also carries all seven "Seven Sons" universities | Built (Epic D) |
-| DoD Section 1260H | Chinese military companies | Built (Epic D) |
-| NSF Award Search | Prior U.S. federal funding by PI name — **repurposed from input corpus to discovery source** | Built, needs repointing |
-| Foreign adversary list | §51B.001 country determination | **New** — derived from the three most recent DNI Annual Threat Assessments plus gubernatorial designations |
+| Source | Answers | Which statutory test | Status |
+|---|---|---|---|
+| OpenAlex | Publications, presentations, co-authorship, institutional affiliation history — i.e. the statute's "research-related activity, publication, or presentation" verbatim | §51B.153 (omission); and, where an affiliation matches a concern list, §51B.151(b) (tie) | Built (Epic E) |
+| GLEIF Level 1 + 2 | Declared employer → ultimate parent, and cross-jurisdiction control | §51B.151(b) (tie) only — a corporate parent is never an omission | Built (Epic C) |
+| OpenSanctions | Restricted-party and PEP matching; also carries all seven "Seven Sons" universities | §51B.151(b) (tie) | Built (Epic D) |
+| DoD Section 1260H | Chinese military companies | §51B.151(b) (tie) | Built (Epic D) |
+| NSF Award Search | Prior U.S. federal funding by PI name — **repurposed from input corpus to discovery source** | §51B.153 (omission) | Built, needs repointing |
+| Foreign adversary list | §51B.001 country determination — one attribute on a tie, cited to the list version | §51B.151(b) | **New** — derived from the three most recent DNI Annual Threat Assessments plus gubernatorial designations |
 
 **Two notes on the discovery sources.**
 
 *The bibliometric layer becomes the core.* Epic E was the project's most speculative and technically difficult component, sequenced last as the highest-risk piece. Under this use case it is the primary evidence source for the statutory test, because "publication, or presentation" is precisely what OpenAlex holds. Its existing precision caveats and author-disambiguation tie-handling become more important, not less.
 
-*The ownership graph finally earns its place.* Epic C previously had the weakest justification — a corporate parent/subsidiary chain is not obviously relevant to screening NSF awardees. Under this use case it produces the single most valuable finding shape available: **a declared employer whose ultimate parent is on a concern list**, which no amount of name matching against the declared name alone would surface.
+*The ownership graph finally earns its place.* Epic C previously had the weakest justification — a corporate parent/subsidiary chain is not obviously relevant to screening NSF awardees. Under this use case it produces the single most valuable **concern-tie** shape available: **a declared employer whose ultimate parent is on a concern list**, which no amount of name matching against the declared name alone would surface. This is a §51B.151(b) observation, not a §51B.153 omission — the first real export mislabelled it as the latter, which is what prompted `docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md`.
 
 **The adversary list is versioned and moves.** A rolling three-ATA window means the list in 2026 differs from 2028. A determination made under one version must remain traceable to it. This is the `GleifSnapshotManifest` problem exactly, and the existing manifest machinery handles it.
 
@@ -168,24 +180,29 @@ Reference data the declaration is reconciled against. All public; all already in
 
 ## 8. The worksheet
 
-The analyst's working surface is a worksheet of discrepancies, **one row per finding, not one per subject**.
+The analyst's working surface is a worksheet, **one row per observation, not one per subject** — and there are two observation types (§1.1 consequence 5), shown as two sections.
 
-**Row contents:**
+**Discrepancy rows (`Finding`, the §51B.153 omission test) carry:**
 
 - the discovered fact (with its source and evidence links)
 - the declaration sources searched, and the stated scope of each
 - **why it surfaced** — the factual basis, per §4
-- measurable attributes (record count, date range, authorship position, country, list version)
-- concern-list or ownership evidence where applicable, with confidence and matched-entry record inlined
-- the analyst action
-- the stated reason for that action
-- actor and timestamp
+- measurable attributes (record count, date range, authorship position, country)
+- the analyst action, its stated reason, actor and timestamp
 
-**Analyst actions:** dismiss (reason required) · request clarification from the subject · escalate for further review · flag as requiring §51B.153 department-head certification.
+**Concern-tie rows (the §51B.151(b) background-check test) carry:**
 
-**Closure rule:** a case cannot leave the worksheet state while any row is unactioned. This is what makes the exported file defensible — not that the case was reviewed, but that every item was dispositioned by a named person on a stated basis.
+- how the subject connects to the concern-listed entity (a declared employer, a declared affiliation, the subject's own affiliation history) and, where the tie runs through an ownership chain, the traversal path and its truncation status
+- the concern list, the matched entry's own record inlined, and the match confidence
+- country, and whether that country is on the foreign-adversary list — with the list version, once that list exists
+- a cross-reference to a discrepancy row when the *same* affiliation is also undisclosed (a stored link, not a name match)
+- the analyst action, its stated reason, actor and timestamp
 
-**Bulk action is a requirement, not a convenience.** An analyst must be able to dismiss an entire class in one action with one reason — e.g. all items falling outside the DS-160's five-year window. Without it the volume defeats the worksheet, and §4's fact-based classification exists precisely to make such classes selectable.
+**Analyst actions** (both types): dismiss (reason required) · request clarification from the subject · escalate for further review · flag as requiring §51B.153 department-head certification. The **reason vocabularies differ** — `outside_declaration_scope` is meaningful for a discrepancy and meaningless for a tie, whose dismissal turns on things like a divested relationship, a designation post-dating the employment, or immateriality to the requested access scope.
+
+**Closure rule:** a case cannot leave the worksheet state while **any row of either type** is unactioned. This is what makes the exported file defensible — not that the case was reviewed, but that every item was dispositioned by a named person on a stated basis.
+
+**Bulk action is a requirement for discrepancy rows, a convenience for concern-tie rows.** A mid-career researcher generates dozens of discrepancies (the §6 trap); an analyst must be able to dismiss an entire class in one action with one reason, and §4's fact-based classification exists to make such classes selectable. Concern-tie rows are few — a tie to a concern-listed entity is rare — so per-tie disposition is the norm there.
 
 **The worked worksheet plus its adjudication is the investigative file.** Export produces that file, not a table of matches.
 
@@ -211,17 +228,22 @@ DS-160 content is among the more sensitive personal data an institution holds: d
 - **Synthetic:** the subject and their declaration, fabricated entirely; the demo's publication record (a clearly-labelled fixture); and — as built — the demo's GLEIF ownership chain (see below).
 - **Never:** a real author's publication record attached to a fictional name. Anyone who looks up the papers finds the real person, and the result is a screening dossier on them with deniability attached — worse than either honest alternative.
 
-**The primary demo finding requires no publication record at all:**
+**The primary demo observation is a concern tie, not a discrepancy, and needs no publication record at all:**
 
-> *Declared employer: [synthetic Chinese subsidiary]. Not disclosed: that entity's ultimate parent, per GLEIF Level 2 relationship data, appears on the DoD Section 1260H list.*
+> *Declared employer: [synthetic Chinese subsidiary]. That entity's ultimate parent, per GLEIF Level 2 relationship data, appears on the DoD Section 1260H list — a §51B.151(b) tie. The employer was declared; this is not a non-disclosure.*
 
-**As built, the 1260H designation is real and the ownership chain is a fixture.** The chain's ultimate parent is named for a real 1260H-listed entity — so the designation the finding turns on is real reference data — but the GLEIF LEIs and the `IS_DIRECTLY_CONSOLIDATED_BY` / `IS_ULTIMATELY_CONSOLIDATED_BY` edges connecting the synthetic employer to it are fabricated and labelled (`tests/fixtures/demo_case/gleif.NOTICE.md`; the LEIs carry a `SYNTH…` prefix). Replacing this with a real extracted chain — a real GLEIF subsidiary whose real ultimate parent is 1260H-listed — is a binding real-data check in `docs/plans/2026-09-06-use-case-01-implementation.md`, pending a live GLEIF download. Every exported investigative file carries a top-level provenance marker saying so. No fabricated publications, no real person, and it still gives Epic C the demonstration it has never had. A second finding driven by a clearly-labelled bibliometric fixture exercises Epic E without attributing real work to a fictional author.
+The demo case produces **two discrepancy rows** (undisclosed affiliations to Beijing Institute of Technology and Zhejiang University, from the labelled publication fixture) and **one concern-tie row** (the ultimate-parent tie above). The *both-at-once* case — one affiliation that is simultaneously an undisclosed discrepancy and a concern tie — is exercised by a test fixture, not the live demo: the Seven Sons universities live in OpenSanctions, which the demo omits, not the bundled DoD 1260H list.
+
+**As built, the 1260H designation is real and the ownership chain is a fixture.** The chain's ultimate parent is named for a real 1260H-listed entity — so the designation the tie turns on is real reference data — but the GLEIF LEIs and the `IS_DIRECTLY_CONSOLIDATED_BY` / `IS_ULTIMATELY_CONSOLIDATED_BY` edges connecting the synthetic employer to it are fabricated and labelled (`tests/fixtures/demo_case/gleif.NOTICE.md`; the LEIs carry a `SYNTH…` prefix). Replacing this with a real extracted chain — a real GLEIF subsidiary whose real ultimate parent is 1260H-listed — is a binding real-data check in `docs/plans/2026-09-06-use-case-01-implementation.md`, pending a live GLEIF download. Every exported investigative file carries a top-level provenance marker saying so. No fabricated publications, no real person, and it still gives Epic C the demonstration it has never had. The discrepancy rows are driven by a clearly-labelled bibliometric fixture that exercises Epic E without attributing real work to a fictional author.
 
 ---
 
 ## 11. Open questions and external dependencies
 
-- **What the council determines** under §51B.152(2). The supplemental declaration's content is set partly by a state body, not the institution. Until it publishes, the institutional-disclosure source in §6 is a shape rather than a specification.
+- **What the council determines** — three things, none yet published:
+  - §51B.152(2): the supplemental declaration's content. Until it publishes, the institutional-disclosure source in §6 is a shape rather than a specification.
+  - §51B.151(b): a **risk-based framework** for the screening. How a tie is weighed against the requested access scope is the institution's call, but a published framework would structure it.
+  - §51B.151(b): **waiver criteria** — the "low-risk circumstances under which the screening may be waived." This creates a case outcome the model has no room for (see §5): *covered, but waived*, which is neither cleared nor not-covered. Nothing to build until the framework exists; a planned addition, not a surprise.
 - **How "substantial" settles in practice.** Tracked deliberately as §4.1 rather than resolved.
 - **Where the research security office sits in a system.** §51B.153 places the duty on "the chief administrative officer of an institution of higher education." The A&M System comprises eleven universities and eight state agencies; whether that means nineteen offices, a shared service, or something between is a real architectural question (single-tenant vs. multi-tenant) and is currently unknown.
 - **Turnaround expectations.** A&M's published visiting-scholar process states no timeline. The statutory deadline is an event ("before offering... or granting"), not a duration, so the operative constraint is the host's hiring date.
@@ -240,7 +262,9 @@ Bundling with export control and COI review is the eventual goal; sequencing kee
 5. Export-control and restricted-party screening bundled into the same review (A&M performs these together today)
 6. COI and NSPM-33 disclosure reuse
 
-**Why two discovery paths in step 2, not one.** Not primarily for the demo. A `Finding` designed against a single kind of evidence will need reshaping when the second kind arrives, and by then the worksheet, adjudication and export are built on top of it. Two structurally different discovery paths flowing through one `Finding` into one worksheet is the architectural test worth running inside the slice, while reshaping is still cheap. It also lets the slice carry §10's primary demo finding, which rests on real GLEIF and 1260H reference data rather than on fixtures.
+**Why two discovery paths in step 2, not one.** Not primarily for the demo. A `Finding` designed against a single kind of evidence will need reshaping when the second kind arrives, and by then the worksheet, adjudication and export are built on top of it. Two structurally different discovery paths flowing through one `Finding` into one worksheet is the architectural test worth running inside the slice, while reshaping is still cheap. It also lets the slice carry §10's primary demo observation.
+
+**Outcome of that test (recorded 2026-09-06):** it reshaped, exactly as predicted, and early. The first real export showed the ownership observation classified as a bulk-dismissable declaration-scope gap — because it was forced through the omission frame — and it was dismissed. `Finding` and concern tie are now two types (§1.1 consequence 5; `docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md`). The reshape cost one focused pass because the worksheet/adjudication/export sat on a shared `pipeline`/`store`/API spine; had the two paths not been run through one type inside the slice, the same discovery would have come later, against more code.
 
 **Coverage is an intake input, not a derived conclusion.** Deferring the adversary list to step 4 means the slice cannot determine automatically whether a subject falls under §51B.151. That is correct rather than a gap: whether a person is subject to screening is a legal determination, not an observable fact, and §4's principle says the system does not make those. The triggering basis — foreign national without permanent residency, or declared foreign-adversary affiliation or employment — is recorded at intake by the person opening the case, who already knows it. Step 4 adds the ability to *corroborate* a recorded basis and to flag a country as adversary-listed with the list version cited; it never converts that into a coverage determination of its own.
 
