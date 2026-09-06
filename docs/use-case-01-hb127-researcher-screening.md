@@ -108,7 +108,7 @@ The unit of work is a **case**: one subject, one triggering event, one deadline,
 
 | State | Enters when | Leaves when |
 |---|---|---|
-| **Intake** | A covered hire or access request is raised | Subject, trigger, requested access scope and statutory deadline are recorded |
+| **Intake** | A covered hire or access request is raised | Subject, **recorded coverage basis** (§51B.151(a)(1) foreign national without permanent residency, or (a)(2) foreign-adversary affiliation/employment — stated by whoever opens the case, never inferred by the system; see §12), requested access scope and statutory deadline are recorded |
 | **Declaration assembly** | Intake complete | All available declaration sources are attached, each tagged with its own scope (see §6) |
 | **Discovery** | Declaration assembled | Reconciliation has run against all discovery sources (§7) |
 | **Worksheet** | Discovery complete | **Every row has an analyst action.** No exceptions — this is the closure rule |
@@ -119,6 +119,8 @@ The unit of work is a **case**: one subject, one triggering event, one deadline,
 **Statutory constraint on the lifecycle:** the case must reach Closed *before* the offer is made or access is granted. The deadline is captured at Intake and is a first-class field, not a note.
 
 **Re-opening.** A closed case re-opens on new information (a later disclosure, an updated adversary list, a new publication). Re-opening creates a new adjudication rather than editing the prior one — the earlier assessment stays intact and readable, because it was correct given what was known then. This mirrors the `ExportManifest` discipline already in the codebase.
+
+**Detection is not manual.** Something has to notice. A periodic sweep of the closed-case population against updated reference data — a new DoD 1260H release, an OpenSanctions update, a country entering the rolling three-ATA adversary window and retroactively bringing people under §51B.151(a)(2), newly indexed publications — must surface which closed cases now carry findings. That re-screening pass is a first-class requirement of this use case rather than a later convenience, and it is also a recognisable NSPM-33 periodic-review function. Architecturally it is the existing batch orchestration (`pipeline.run_screening`) pointed at the case population instead of an award corpus. It sequences after step 3 of §12, once cases exist to re-screen.
 
 ---
 
@@ -232,10 +234,14 @@ This runs on a synthetic declaration plus wholly real GLEIF and 1260H reference 
 Bundling with export control and COI review is the eventual goal; sequencing keeps it manageable. The vertical slice that is genuinely useful and demoable is **one subject, one declaration, a worked reconciliation worksheet, an exportable file** — everything after step 3 is breadth on that spine.
 
 1. `Subject`, `Declaration`, `DeclaredAffiliation`, and the case shell
-2. Reconciliation engine and the worksheet
+2. Reconciliation engine and the worksheet, across **two** discovery paths: declared affiliation vs. publication record, and declared employer vs. ownership chain / concern lists. Epics C and D are already built — this is wiring, not new matching logic
 3. Adjudication, §51B.153 certification, investigative-file export
-4. Foreign-adversary list ingester and the concern-list / ownership layer — cheap; the machinery exists
+4. Foreign-adversary list ingester — genuinely new work (acquisition and verification against three DNI Annual Threat Assessments); see the coverage note below
 5. Export-control and restricted-party screening bundled into the same review (A&M performs these together today)
 6. COI and NSPM-33 disclosure reuse
+
+**Why two discovery paths in step 2, not one.** Not primarily for the demo. A `Finding` designed against a single kind of evidence will need reshaping when the second kind arrives, and by then the worksheet, adjudication and export are built on top of it. Two structurally different discovery paths flowing through one `Finding` into one worksheet is the architectural test worth running inside the slice, while reshaping is still cheap. It also lets the slice carry §10's primary demo finding, which rests on real GLEIF and 1260H reference data rather than on fixtures.
+
+**Coverage is an intake input, not a derived conclusion.** Deferring the adversary list to step 4 means the slice cannot determine automatically whether a subject falls under §51B.151. That is correct rather than a gap: whether a person is subject to screening is a legal determination, not an observable fact, and §4's principle says the system does not make those. The triggering basis — foreign national without permanent residency, or declared foreign-adversary affiliation or employment — is recorded at intake by the person opening the case, who already knows it. Step 4 adds the ability to *corroborate* a recorded basis and to flag a country as adversary-listed with the list version cited; it never converts that into a coverage determination of its own.
 
 **Step 6 is nearly free and worth stating now:** an annual conflict-of-interest disclosure is structurally identical to a §51B.152 declaration — a self-reported affiliation set to be reconciled against the record. The same engine serves NSPM-33 disclosure verification with no new matching logic. That is the argument for bundling, and it is why the reconciliation engine should be built against a general `Declaration`, not against a DS-160.
