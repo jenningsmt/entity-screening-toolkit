@@ -1,0 +1,71 @@
+{
+  "_note": "SYNTHETIC declaration for the fabricated subject 'Wei Chen'. Modeled as a structured affiliation list, not a DS-160 replica (use-case-01 Section 9). Nanjing Zhongke Robotics Co., Ltd. is a fabricated Chinese subsidiary whose GLEIF ownership chain, in the demo fixtures, reaches a real DoD Section 1260H-listed ultimate parent -- the Section 10 headline finding, added on the ownership discovery path in C3.",
+  "declaration_id": "demo-declaration",
+  "subject_id": "demo-subject",
+  "synthetic": true,
+  "sources": [
+    {
+      "source_id": "demo-ds160",
+      "kind": "ds160",
+      "present": true,
+      "scope_kind": "temporal_window",
+      "scope_descriptor": {"window_years": 5, "anchor": "2026-01-15", "category": "employment"}
+    },
+    {
+      "source_id": "demo-passport",
+      "kind": "passport",
+      "present": true,
+      "scope_kind": "type_enumeration",
+      "scope_descriptor": {"types": ["identity", "nationality", "travel"]}
+    },
+    {
+      "source_id": "demo-cv",
+      "kind": "cv",
+      "present": true,
+      "scope_kind": "full_history",
+      "scope_descriptor": {}
+    }
+  ],
+  "affiliations": [
+    {
+      "affiliation_id": "demo-aff-tamu",
+      "source_id": "demo-cv",
+      "institution_name": "Texas A&M University",
+      "country": "US",
+      "role": "associate professor",
+      "start_date": "2026-02-01",
+      "end_date": null,
+      "activity_kind": "hiring"
+    },
+    {
+      "affiliation_id": "demo-aff-utaustin",
+      "source_id": "demo-ds160",
+      "institution_name": "University of Texas at Austin",
+      "country": "US",
+      "role": "postdoctoral researcher",
+      "start_date": "2019-09-01",
+      "end_date": "2025-12-31",
+      "activity_kind": "employment"
+    },
+    {
+      "affiliation_id": "demo-aff-nanjing-u",
+      "source_id": "demo-cv",
+      "institution_name": "Nanjing University",
+      "country": "CN",
+      "role": "PhD student",
+      "start_date": "2011-09-01",
+      "end_date": "2016-06-30",
+      "activity_kind": "education"
+    },
+    {
+      "affiliation_id": "demo-aff-subsidiary",
+      "source_id": "demo-cv",
+      "institution_name": "Nanjing Zhongke Robotics Co., Ltd.",
+      "country": "CN",
+      "role": "research engineer",
+      "start_date": "2016-07-01",
+      "end_date": "2019-01-31",
+      "activity_kind": "employment"
+    }
+  ]
+}

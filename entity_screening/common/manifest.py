@@ -307,6 +307,77 @@ class BibliometricSnapshotManifest:
 
 
 @dataclass
+class ReconciliationManifest:
+    """Provenance for one reconciliation run of one case (Use Case 01).
+
+    Same "current state, run-scoped, overwritten-on-re-run" pattern as
+    GleifSnapshotManifest -- re-running reconciliation for a case overwrites
+    this. The immutable per-adjudication record is the exported investigative
+    file, not this.
+
+    Records `case_id` (an opaque identifier) and NOTHING that identifies the
+    subject -- no name, no date of birth, no passport number. Personal data
+    never reaches a manifest or a log (use-case-01 Section 9); `case_id` is
+    the only join key back to the subject, which lives in the `subjects`
+    table with field-level sensitivity classification.
+    """
+
+    case_id: str
+    run_id: str
+    reconciled_at: str
+    reconciliation_threshold: float
+    discovery_sources: list[str] = field(default_factory=list)
+    discovered_count: int = 0
+    finding_count: int = 0
+    # None until the foreign-adversary-country list exists (Section 12 step 4).
+    adversary_list_version: str | None = None
+    git_commit: str | None = None
+
+    @classmethod
+    def create(
+        cls,
+        case_id: str,
+        run_id: str,
+        reconciliation_threshold: float,
+        discovery_sources: list[str],
+        discovered_count: int,
+        finding_count: int,
+        adversary_list_version: str | None = None,
+    ) -> "ReconciliationManifest":
+        return cls(
+            case_id=case_id,
+            run_id=run_id,
+            reconciled_at=datetime.now(timezone.utc).isoformat(),
+            reconciliation_threshold=reconciliation_threshold,
+            discovery_sources=list(discovery_sources),
+            discovered_count=discovered_count,
+            finding_count=finding_count,
+            adversary_list_version=adversary_list_version,
+            git_commit=_git_commit(),
+        )
+
+    def case_dir(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        path = Path(base) / "cases" / self.case_id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def write(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        out_path = self.case_dir(base) / "reconciliation.json"
+        out_path.write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
+        return out_path
+
+    @classmethod
+    def load(cls, path: Path | str) -> "ReconciliationManifest":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(**data)
+
+
+@dataclass
 class TopicSimilarityManifest:
     """Describes exactly which embedding model and reference-corpus files produced
     a run's topic-similarity flags (deferred VSS work).

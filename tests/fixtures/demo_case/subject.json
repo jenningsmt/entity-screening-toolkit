@@ -1,0 +1,13 @@
+{
+  "_note": "SYNTHETIC. Wei Chen is a fabricated person. No real individual is described here, and no real publication record is attached to this name (see docs/use-case-01-hb127-researcher-screening.md Section 10). classified_fields holds the field-level-sensitive declaration attributes that are redacted by default on export.",
+  "subject_id": "demo-subject",
+  "display_name": "Wei Chen",
+  "coverage_basis": "151a2",
+  "synthetic": true,
+  "classified_fields": {
+    "date_of_birth": "1984-06-02",
+    "passport_number": "SYNTH-000000",
+    "home_address": "000 Synthetic Ave, College Station, TX",
+    "nationality": "CN"
+  }
+}

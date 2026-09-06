@@ -86,6 +86,45 @@ _TRAILING_BOARD_OF_TRUSTEES = re.compile(r"\s*,?\s*board of trustees\s*$", re.IG
 _TRAILING_THE_PAREN = re.compile(r"\s*\(the\)\s*$", re.IGNORECASE)
 
 
+_INSTITUTION_ABBREVIATIONS = {
+    "univ": "university",
+    "inst": "institute",
+    "tech": "technology",
+    "natl": "national",
+    "sci": "science",
+    "acad": "academy",
+    "dept": "department",
+    "lab": "laboratory",
+    "labs": "laboratories",
+    "intl": "international",
+    "assoc": "association",
+}
+_PARENTHETICAL = re.compile(r"\([^)]*\)")
+
+
+def expand_institution_abbreviations(name: str) -> str:
+    """Expands the handful of institution-name abbreviations that otherwise
+    sink a fuzzy match ('Zhejiang Univ' vs 'Zhejiang University' scores 0.81
+    on token_sort; expanded, 1.0). Same domain-specific-normalization spirit
+    as strip_institutional_governance_affix -- kept out of
+    normalize_for_matching (used by every source) because it is only wanted
+    where two independently-authored institution names are being compared."""
+    parts = re.split(r"(\W+)", name)
+    return "".join(_INSTITUTION_ABBREVIATIONS.get(p.lower(), p) for p in parts)
+
+
+def normalize_institution_name(name: str) -> str:
+    """Institution-name preparation for the HB 127 reconciliation matcher
+    (entity_screening/reconciliation/match.py): drop a governing-board affix,
+    drop a parenthetical campus qualifier ('... (Shenzhen)'), expand common
+    abbreviations. Verified against real declared-vs-discovered name pairs --
+    see docs/data_sources.md's reconciliation-threshold entry."""
+    name = strip_institutional_governance_affix(name)
+    name = _PARENTHETICAL.sub("", name)
+    name = expand_institution_abbreviations(name)
+    return " ".join(name.split())
+
+
 def strip_institutional_governance_affix(name: str) -> str:
     """Strips higher-ed governing-board naming conventions.
 

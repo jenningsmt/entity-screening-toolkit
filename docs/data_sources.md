@@ -364,6 +364,50 @@ each source's terms.
   feature in this project, including the rest of Epic E's bibliometric layer, runs
   without these installed at all.
 
+## Reconciliation threshold calibration (Use Case 01)
+
+`entity_screening/reconciliation/match.py:RECONCILIATION_THRESHOLD` (currently
+**0.90**) decides whether a discovered institution name is "the same
+affiliation" as a declared one. The failure economics are asymmetric: a false
+negative on the match generates a spurious omission finding an analyst
+dismisses in one click; a false positive silently suppresses a real omission —
+the statutory test itself. So the threshold sits **above the highest observed
+score for a genuinely distinct pair**, not at a midpoint.
+
+Calibrated against real institution-name pairs obtainable without any real
+subject data — an institution's own `display_name` vs its
+`display_name_alternatives` / `display_name_acronyms` (OpenAlex), and its
+legal name vs common name (GLEIF-style). All scored through
+`resolution/matcher.py:score_pair` after
+`resolution/normalize.py:normalize_institution_name` (governing-board affix
+stripped, parenthetical campus qualifier dropped, common abbreviations
+expanded):
+
+| Pair | Same institution? | score |
+|---|---|---|
+| Massachusetts Institute of Technology / Massachusetts Inst. of Technology | yes | 1.00 |
+| The Regents of the University of California / University of California | yes | 1.00 |
+| Zhejiang University / Zhejiang Univ | yes | 1.00 |
+| Harbin Institute of Technology / Harbin Institute of Technology (Shenzhen) | yes* | 1.00 |
+| Tsinghua University / Qinghua University (transliteration variant) | yes | 0.92 |
+| Massachusetts Institute of Technology / MIT | yes | 0.90 (acronym) |
+| **University of Science and Technology of China / University of Science and Technology Beijing** | **no** | **0.876** |
+| Chinese Academy of Sciences / Chinese Academy of Ordnance Science | no | 0.839 |
+| Beijing Institute of Technology / Beijing Normal University | no | 0.464 |
+
+`*` a branch campus — treating it as the same institution is the tolerable
+direction here (a spurious finding, dismissed once), not the dangerous one.
+
+0.90 clears every genuine same-institution pair except two that are
+genuinely hard — "UC Berkeley" as a bare acronym-in-context (0.46) and
+"Stanford University" vs the legal "Leland Stanford Junior University"
+(0.73) — both of which surface as `PARTIAL_MATCH_BELOW_THRESHOLD` findings
+(floor 0.70) with the near-match shown in `nearest_declared`, not as a
+stark omission. It sits above USTC-vs-USTB (0.876), the highest-scoring
+distinct pair found, so a real omission at a concern-adjacent university is
+not absorbed. Provisional pending a larger pass against live OpenAlex once
+that access is available; re-measure and adjust the constant if it moves.
+
 ## Sources reserved for V3
 
 None remaining — Epic E (OpenAlex), the Seven Sons item, and the deferred VSS

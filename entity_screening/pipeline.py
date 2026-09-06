@@ -39,6 +39,7 @@ from entity_screening.bibliometric.topic_similarity import (
     compute_topic_similarity_flags,
     load_corpus,
 )
+from entity_screening.case import store as case_store
 from entity_screening.common import storage
 from entity_screening.common.manifest import (
     DEFAULT_RUNS_DIR,
@@ -46,10 +47,13 @@ from entity_screening.common.manifest import (
     DatasetSnapshot,
     ExportManifest,
     GleifSnapshotManifest,
+    ReconciliationManifest,
     RunManifest,
     TopicSimilarityManifest,
 )
 from entity_screening.common.schema import (
+    CaseState,
+    Finding,
     ForeignControlFlag,
     ResolvedAuthor,
     ResolvedEntity,
@@ -58,6 +62,9 @@ from entity_screening.common.schema import (
     SourceRecord,
     TopicSimilarityFlag,
 )
+from entity_screening.reconciliation.discover import discover_from_publications
+from entity_screening.reconciliation.match import RECONCILIATION_THRESHOLD
+from entity_screening.reconciliation.reconcile import reconcile as reconcile_declaration
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.ingestion.dod_1260h import DoD1260HIngester
@@ -619,3 +626,101 @@ def export_scored_entities(
         export_csv(scored_entities, out_path, export_manifest.export_id)
     export_manifest.write(runs_dir)
     return out_path, export_manifest
+
+
+# ---------------------------------------------------------------------------
+# Case-based reconciliation (Use Case 01 -- HB 127 researcher screening).
+#
+# Same "separate, explicit step" posture as enrich_ownership /
+# enrich_bibliometric: reconcile_case runs against a case that already
+# exists (subject + declaration recorded at intake). It never touches
+# scored_entities or the batch tables -- concern-list and ownership matching
+# are *called*, but their results are persisted only inside `findings` rows
+# as inline evidence (see docs/plans/2026-09-06-use-case-01-implementation.md
+# Section 4.3). The engine is advisory throughout: it states observable
+# facts about each discrepancy and never evaluates them.
+# ---------------------------------------------------------------------------
+
+
+def reconcile_case(
+    case_id: str,
+    *,
+    db_path: Path | str = storage.DEFAULT_DB_PATH,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
+    contact_email: str | None = None,
+    fetch=None,
+    works_fixture: list[dict] | None = None,
+    threshold: float = RECONCILIATION_THRESHOLD,
+) -> tuple[ReconciliationManifest, list[Finding]]:
+    """Loads a case's subject + declaration, runs the discovery adapters,
+    diffs the declared set against what public records show, and persists one
+    Finding per unreconciled discrepancy. Current-state per case: re-running
+    replaces the finding set (adjudications and exported files hold the
+    history). Advances the case from DISCOVERY to WORKSHEET.
+
+    C2 wires the publication-record discovery path. The ownership path
+    (declared employer -> GLEIF ultimate parent -> concern lists) is added
+    in C3. `works_fixture` short-circuits the live OpenAlex path entirely --
+    the demo subject is synthetic, so its publication record is a fixture,
+    never a real author's works on a fictional name (use-case-01 Section 10).
+    """
+    run_id = str(uuid.uuid4())
+
+    conn = storage.connect(db_path)
+    try:
+        case = case_store.load_case(conn, case_id)
+        if case is None:
+            raise ValueError(f"Unknown case_id: {case_id!r}")
+        subject = case_store.load_subject(conn, case.subject_id)
+        declaration = case_store.load_declaration_for_subject(conn, case.subject_id)
+        if subject is None or declaration is None:
+            raise ValueError(
+                f"Case {case_id!r} has no subject/declaration recorded -- intake is incomplete."
+            )
+
+        hiring_institution = _hiring_institution_name(declaration)
+        discovered = discover_from_publications(
+            subject.display_name,
+            hiring_institution,
+            list(declaration.affiliations),
+            contact_email=contact_email,
+            fetch=fetch,
+            works_fixture=works_fixture,
+        )
+
+        findings = reconcile_declaration(
+            case_id, run_id, declaration, discovered, threshold=threshold
+        )
+        case_store.replace_findings(conn, case_id, findings)
+
+        if case.state in (CaseState.INTAKE, CaseState.DECLARATION_ASSEMBLY, CaseState.DISCOVERY):
+            case_store.save_case(conn, replace(case, state=CaseState.WORKSHEET))
+    finally:
+        conn.close()
+
+    manifest = ReconciliationManifest.create(
+        case_id=case_id,
+        run_id=run_id,
+        reconciliation_threshold=threshold,
+        discovery_sources=["openalex"],
+        discovered_count=len(discovered),
+        finding_count=len(findings),
+    )
+    manifest.write(runs_dir)
+    return manifest, findings
+
+
+def _hiring_institution_name(declaration) -> str:
+    """The institution the subject is being brought into -- used to narrow
+    OpenAlex author disambiguation. Falls back to the most recent declared
+    affiliation when an intake didn't record it explicitly (the demo
+    declaration marks it with activity_kind='hiring')."""
+    for affiliation in declaration.affiliations:
+        if (affiliation.activity_kind or "").lower() == "hiring":
+            return affiliation.institution_name
+    dated = [a for a in declaration.affiliations if a.end_date]
+    if dated:
+        return max(dated, key=lambda a: a.end_date).institution_name
+    if declaration.affiliations:
+        return declaration.affiliations[0].institution_name
+    return ""

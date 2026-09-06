@@ -1,0 +1,95 @@
+{
+  "_note": "CLEARLY-LABELLED SYNTHETIC bibliometric fixture. These are NOT real OpenAlex works and 'Wei Chen' is NOT a real author -- no real publication record is attached to a fictional name (use-case-01 Section 10). The shape mirrors OpenAlex's /works response so discover_from_publications processes it exactly as it would a live pull. `is_subject: true` marks the fabricated subject's own authorship line. The fixture shows two affiliations that match the declaration (UT Austin, Nanjing University) and two that do not (Beijing Institute of Technology, Zhejiang University) -- the latter two become omission findings.",
+  "works": [
+    {
+      "id": "https://openalex.org/SYNTH-W1",
+      "title": "Synthetic paper 1 (fixture)",
+      "publication_date": "2022-03-01",
+      "authorships": [
+        {
+          "is_subject": true,
+          "author_position": "first",
+          "author": {"id": "https://openalex.org/SYNTH-A1", "display_name": "Wei Chen"},
+          "institutions": [
+            {"id": "https://openalex.org/SYNTH-I-UTA", "display_name": "University of Texas at Austin", "country_code": "US"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/SYNTH-W2",
+      "title": "Synthetic paper 2 (fixture)",
+      "publication_date": "2023-09-01",
+      "authorships": [
+        {
+          "is_subject": true,
+          "author_position": "middle",
+          "author": {"id": "https://openalex.org/SYNTH-A1", "display_name": "Wei Chen"},
+          "institutions": [
+            {"id": "https://openalex.org/SYNTH-I-UTA", "display_name": "University of Texas at Austin", "country_code": "US"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/SYNTH-W3",
+      "title": "Synthetic paper 3 (fixture)",
+      "publication_date": "2015-05-01",
+      "authorships": [
+        {
+          "is_subject": true,
+          "author_position": "first",
+          "author": {"id": "https://openalex.org/SYNTH-A1", "display_name": "Wei Chen"},
+          "institutions": [
+            {"id": "https://openalex.org/SYNTH-I-NJU", "display_name": "Nanjing University", "country_code": "CN"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/SYNTH-W4",
+      "title": "Synthetic paper 4 (fixture)",
+      "publication_date": "2016-11-01",
+      "authorships": [
+        {
+          "is_subject": true,
+          "author_position": "first",
+          "author": {"id": "https://openalex.org/SYNTH-A1", "display_name": "Wei Chen"},
+          "institutions": [
+            {"id": "https://openalex.org/SYNTH-I-BIT", "display_name": "Beijing Institute of Technology", "country_code": "CN"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/SYNTH-W5",
+      "title": "Synthetic paper 5 (fixture)",
+      "publication_date": "2017-07-01",
+      "authorships": [
+        {
+          "is_subject": true,
+          "author_position": "middle",
+          "author": {"id": "https://openalex.org/SYNTH-A1", "display_name": "Wei Chen"},
+          "institutions": [
+            {"id": "https://openalex.org/SYNTH-I-BIT", "display_name": "Beijing Institute of Technology", "country_code": "CN"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "https://openalex.org/SYNTH-W6",
+      "title": "Synthetic paper 6 (fixture)",
+      "publication_date": "2014-02-01",
+      "authorships": [
+        {
+          "is_subject": true,
+          "author_position": "first",
+          "author": {"id": "https://openalex.org/SYNTH-A1", "display_name": "Wei Chen"},
+          "institutions": [
+            {"id": "https://openalex.org/SYNTH-I-ZJU", "display_name": "Zhejiang University", "country_code": "CN"}
+          ]
+        }
+      ]
+    }
+  ]
+}

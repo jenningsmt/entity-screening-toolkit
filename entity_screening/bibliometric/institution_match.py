@@ -27,6 +27,44 @@ class InstitutionMatch:
     candidate: MatchCandidate
 
 
+def resolve_openalex_institution_by_name(
+    name: str,
+    threshold: float = DEFAULT_THRESHOLD,
+    contact_email: str | None = None,
+    fetch: FetchFn | None = None,
+) -> InstitutionMatch | None:
+    """Name-string core of resolve_entity_to_openalex_institution -- the
+    batch path passes a ResolvedEntity, the case path (reconciliation) only
+    has a declared employer / hiring institution name."""
+    results = search_institutions(name, contact_email=contact_email, fetch=fetch)
+
+    best_match: InstitutionMatch | None = None
+    for result in results:
+        variants = [result.get("display_name", "")]
+        variants.extend(result.get("display_name_acronyms") or [])
+        variants.extend(result.get("display_name_alternatives") or [])
+        best_candidate = None
+        for variant in variants:
+            if not variant:
+                continue
+            candidate = score_pair(name, variant)
+            if best_candidate is None or candidate.confidence > best_candidate.confidence:
+                best_candidate = candidate
+        if best_candidate is None:
+            continue
+        if best_match is None or best_candidate.confidence > best_match.candidate.confidence:
+            best_match = InstitutionMatch(
+                openalex_institution_id=result["id"],
+                display_name=result.get("display_name", ""),
+                country_code=result.get("country_code"),
+                candidate=best_candidate,
+            )
+
+    if best_match is None or not is_candidate_match(best_match.candidate, threshold):
+        return None
+    return best_match
+
+
 def resolve_entity_to_openalex_institution(
     entity: ResolvedEntity,
     threshold: float = DEFAULT_THRESHOLD,
