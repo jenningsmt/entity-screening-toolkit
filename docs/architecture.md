@@ -203,7 +203,53 @@ indexes), so cosine similarity is computed directly via DuckDB's
 | `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `enrich_ownership`, `enrich_bibliometric`, `enrich_topic_similarity`, `export_scored_entities` — called by both the CLI and the API |
 | `entity_screening/cli.py` | `run` (full pipeline, calls `pipeline.py` in-process) and `validate` (structural sanity checks) |
 | `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (routes) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) |
-| `app.py` | Streamlit review UI: thin HTTP client of the API — scored/filterable table, rubric sliders, evidence-trail inspector, export buttons |
+| `entity_screening/case/` | Use Case 01 (HB 127 researcher screening): the case model (`store.py`), worksheet/adjudication/lifecycle operations (`service.py`), the controlled reason-code vocabulary (`vocab.py`), the investigative-file export (`export.py`), and the self-healing demo case (`demo.py`) |
+| `entity_screening/reconciliation/` | The declaration-versus-record diff: discovery adapters (`discover.py` — OpenAlex publications; declared-employer → GLEIF ultimate parent → concern lists), institution-name matching (`match.py`), and the diff itself producing `Finding`s (`reconcile.py`) |
+| `app.py` | Streamlit review UI: thin HTTP client of the API. The **HB 127 case worksheet** is the only visitor-facing view (one row per finding, single + bulk disposition, adjudication, investigative-file export) |
+
+## Use Case 01 — HB 127 researcher screening (the case path)
+
+`docs/requirements.md` Section 9c moved the project's primary shape from
+corpus-in/ranked-list-out to **subject-in / worked-worksheet-and-investigative-file-out**.
+The statutory test (Texas HB 127 §51B.153) is a *failure to disclose*, so this is a
+declaration-versus-record reconciliation problem. `docs/use-case-01-hb127-researcher-screening.md`
+is the specification; `docs/plans/2026-09-06-use-case-01-implementation.md` the plan.
+
+```
+  POST /cases (synthetic subject + declaration + coverage basis, recorded at intake)
+        │
+        ▼
+  pipeline.reconcile_case ──▶ reconciliation/discover.py   (OpenAlex publications;
+        │                     reconciliation/reconcile.py    GLEIF ownership → concern lists)
+        │                            │ Finding (per discrepancy)
+        ▼                            ▼
+  case/store.py (findings, current-state per case)   +   ReconciliationManifest (case_id only)
+        │
+        ▼
+  GET /cases/{id}/worksheet ──▶ analyst actions (single + bulk), closure rule
+        │
+        ▼
+  POST /cases/{id}/adjudication  (append-only)  +  /certifications  (§51B.153)
+        │
+        ▼
+  GET /cases/{id}/investigative-file.json|.xlsx  (redacted by default) + InvestigativeFileManifest
+```
+
+**The fact/judgment boundary** (use-case doc Section 4) is enforced the same way the
+`MatchStatus` rule is: `common/schema.py`'s `Finding` and every type in its graph
+(`DiscoveredAffiliation`, `DeclarationSearch`, `NearestDeclared`) carry **no** severity,
+risk, priority, score, materiality, tier, weight or disposition field.
+`_FINDING_GRAPH_ALLOWED_FIELDS` is the frozen per-type allowlist; `cli.py validate`
+fails CI if any of these types grows a field not on it. The analyst's decision lives on
+a separate `WorksheetAction` / `Adjudication` record. `Subject` and `Declaration` reject
+`synthetic=False` in `__post_init__` — this build handles no real declaration data.
+
+**The batch path is repositioned, not retired.** `pipeline.run_screening` and the
+`/runs/*` routes stay callable for **population re-screening** against updated reference
+data (use-case doc Section 5's periodic-sweep requirement); they are just no longer the
+visitor-facing path. The identifier rename and the retirement of
+`resolve_entities_from_nsf` are deferred to the point where the case path can produce a
+closed, exported investigative file (Section 9c's stated trigger).
 
 ## Why no "confirmed" status is possible
 

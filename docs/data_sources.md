@@ -416,6 +416,29 @@ band only sets a row's headline classification; `nearest_declared` is
 populated regardless, so the analyst sees a weak declared match either way.
 Also provisional.
 
+## Use Case 01 demo case — synthetic data
+
+The HB 127 demo case (`case_id="demo"`, self-healed by the API from bundled
+fixtures) uses **real reference data and a wholly synthetic person**
+(use-case-01 Section 10):
+
+- **Synthetic:** `tests/fixtures/demo_case/subject.json` (the fabricated
+  subject "Wei Chen"), `declaration.json` (a structured affiliation list,
+  not a DS-160 replica), `works_fixture.json` (a clearly-labelled fabricated
+  OpenAlex-shaped works list — no real author's publication record is
+  attached to the fictional name), and the three-node GLEIF ownership chain
+  in `gleif_lei.csv` / `gleif_relationships.csv` (see
+  `tests/fixtures/demo_case/gleif.NOTICE.md`).
+- **Real:** the DoD Section 1260H list the demo's headline finding matches
+  against (`entity_screening/screening/data/dod_1260h.json`) — the synthetic
+  ownership chain's ultimate parent is named for a real 1260H entity, so the
+  designation the finding rests on is real.
+
+Replacing the fabricated GLEIF chain with a real extracted one (a real GLEIF
+subsidiary whose real ultimate parent is 1260H-listed) is a binding
+real-data check in `docs/plans/2026-09-06-use-case-01-implementation.md`,
+pending a live GLEIF download.
+
 ## Sources reserved for V3
 
 None remaining — Epic E (OpenAlex), the Seven Sons item, and the deferred VSS

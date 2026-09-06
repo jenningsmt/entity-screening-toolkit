@@ -11,7 +11,10 @@ If bibliometric enrichment (Epic E) has been run, a fourth
 `data/processed/runs/<run_id>/bibliometric/manifest.json`. If topic-similarity
 ranking (the deferred VSS layer) has been run, a fifth `TopicSimilarityManifest`
 lands at `data/processed/runs/<run_id>/topic_similarity/manifest.json`.
-**These are five different manifests answering five different questions**, and the
+The HB 127 case path (Use Case 01) adds two more: a `ReconciliationManifest` per case
+reconciliation and an `InvestigativeFileManifest` per investigative-file export (both
+described below).
+**These are seven different manifests answering seven different questions**, and the
 distinction matters (see "Manifests, not one" below): none of these files — not
 this document — are a substitute for shipping the actual manifest(s) alongside any
 published result.
@@ -55,6 +58,21 @@ and can be re-run later against a newer GLEIF download. So:
   HuggingFace model revision used (not just the model name — a bare name without a
   pinned revision is exactly the place this project's own reproducibility
   discipline could quietly slip), alongside both reference-corpus files' provenance.
+- **`ReconciliationManifest`** (Use Case 01, HB 127) records one case
+  reconciliation: `case_id` (opaque), `run_id`, the discovery sources consulted, the
+  reconciliation threshold, and finding counts. It contains **nothing that identifies
+  the subject** — no name, no date of birth, no passport number. `case_id` is the only
+  join key back to the subject, which lives in the `subjects` table with field-level
+  sensitivity classification. Same "current state, overwritten on re-run" pattern as
+  `GleifSnapshotManifest` — a re-open reconciles again and overwrites it. Written to
+  `data/processed/runs/cases/<case_id>/reconciliation.json`.
+- **`InvestigativeFileManifest`** describes one investigative-file export (§51B.153's
+  named output artifact): `export_id`, `case_id`, `exported_at`, the redaction profile
+  (`default` — classified subject fields removed — or `unredacted`), and the
+  adjudication `seq` the file captured. Per-call immutable, like `ExportManifest`: the
+  same case re-exported at a later adjudication gets its own file. The immutable case
+  history is the set of these files plus the append-only `adjudications` table, not the
+  `findings` table (which is current-state per case).
 
 ## What `RunManifest` records
 

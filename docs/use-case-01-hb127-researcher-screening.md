@@ -1,6 +1,6 @@
 # Use Case 01 — HB 127 Foreign Researcher Screening
 
-**Status:** User and workflow definition. Approved in principle; no schema or interface work has started against it.
+**Status:** User and workflow definition. The vertical slice from Section 12 (subject, declaration, reconciliation worksheet, adjudication, investigative-file export, across the publication and ownership discovery paths) is **built** — see `docs/plans/2026-09-06-use-case-01-implementation.md` and `docs/architecture.md`. Step 4 (the foreign-adversary-country list ingester) and steps 5–6 are not yet built.
 **Date:** September 5, 2026
 **Scope:** Texas HB 127 (89th Legislature) screening of researchers and research-support personnel, as it would be operated by a research security office in a large public university system — Texas A&M System institutions used as the concrete reference throughout.
 

@@ -254,7 +254,7 @@ This arrangement is resolved — the batch path formally renamed, re-documented 
 
 **What it cost.** Roughly three of the thirteen remediation workstreams from `docs/plans/2026-09-02-remediation-pass.md` went into making a corpus-shaped demo presentable, plus the framing effort in this document. Everything else — idempotency, provenance, attribution, output contracts, the security lockdown — is orthogonal to the entry point and survives intact.
 
-Section 12's V1/V2/V3 roadmap describes what was built and stands as a historical record. The forward roadmap is the sequencing in the use-case document, Section 12.
+Section 12's V1/V2/V3 roadmap describes what was built and stands as a historical record. The forward roadmap is the sequencing in the use-case document, Section 12. The first vertical slice of that sequencing is now built — see `docs/plans/2026-09-06-use-case-01-implementation.md`, `docs/architecture.md`'s "Use Case 01" section, and `entity_screening/case/` + `entity_screening/reconciliation/`.
 
 ## 10. Non-Functional Requirements
 

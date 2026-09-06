@@ -2,7 +2,7 @@
 
 ![Monops logo](docs/monops-logo.jpeg)
 
-**Status:** V1, V2, and V3 complete (see the Status section below); the project is now named **Monops**. It's publicly deployed on AWS Lightsail (`docs/requirements.md` Section 9) -- live demo at **[mikejennings.dev/monops](https://mikejennings.dev/monops)**.
+**Status:** V1–V3 built; the project then moved from corpus screening to **case-based review** (`docs/requirements.md` Section 9c). The first vertical slice of **Use Case 01 — Texas HB 127 researcher screening** is built: a subject-in / worked-worksheet-and-investigative-file-out workflow that reconciles a declared affiliation set against public records (`docs/use-case-01-hb127-researcher-screening.md`, `docs/plans/2026-09-06-use-case-01-implementation.md`). The HB 127 case worksheet is the visitor-facing view; the batch pipeline stays for population re-screening. The project is named **Monops**; publicly deployed on AWS Lightsail — **[mikejennings.dev/monops](https://mikejennings.dev/monops)**.
 
 ## What this is not, first
 
@@ -43,13 +43,20 @@ python -m entity_screening.cli run \
 pytest
 ```
 
-Interactive review UI (two processes — the Streamlit app is a thin client of the API,
-not a direct pipeline caller):
+Interactive review UI — the HB 127 case worksheet (two processes; the Streamlit app is
+a thin client of the API, not a direct pipeline caller):
 
 ```
 uvicorn entity_screening.api.main:app --reload
-streamlit run app.py   # in a second terminal
+streamlit run app.py   # in a second terminal — opens on the self-healing demo case
 ```
+
+The demo case (`case_id="demo"`) builds itself from bundled synthetic fixtures on first
+access: a fabricated subject, a structured declaration, a labelled synthetic publication
+record, and a fabricated GLEIF ownership chain whose ultimate parent is named for a real
+DoD Section 1260H entity — so the headline "undisclosed ultimate parent on a concern list"
+finding rests on real reference data. No real declaration data is handled, ever
+(`Subject`/`Declaration` reject `synthetic=False` by construction).
 
 Or the same two services as containers (the wrapper sets `GIT_COMMIT` from
 your current checkout before building, so the "Run provenance" panel in the
