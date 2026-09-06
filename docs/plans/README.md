@@ -27,6 +27,7 @@ that's worth its own note in the file or a follow-up plan, not a silent rewrite.
 | 2026-09-02 | [Section 9 deployment -- Lightsail via Terraform](2026-09-02-lightsail-deployment.md) | Built -- live at mikejennings.dev/monops |
 | 2026-09-02 | [Remediation pass -- findings from the 2026-09-02 codebase evaluation](2026-09-02-remediation-pass.md) | Built |
 | 2026-09-06 | [Use Case 01 -- HB 127 researcher screening: implementation](2026-09-06-use-case-01-implementation.md) | Built (the vertical slice, C1--C8; step 4 and beyond outstanding) |
+| 2026-09-06 | [Concern ties as a distinct observation, not a Finding](2026-09-06-concern-ties-as-a-distinct-observation.md) | Plan, not yet built |
 
 **Known gap in this log:** the V2/Epic C plan (GLEIF ownership graph + foreign-control
 flagging, built in commit `3c07677`) was approved via plan mode but never copied here —
