@@ -1,13 +1,16 @@
-"""Streamlit review UI: a thin HTTP client of the FastAPI layer
-(entity_screening/api/main.py) — docs/requirements.md Section 9a. No direct
-imports from the entity_screening pipeline package; everything shown here
-arrived over HTTP, exactly as any other API consumer would see it.
+"""Streamlit review UI -- the HB 127 case worksheet (Use Case 01).
+
+A thin HTTP client of the FastAPI layer (entity_screening/api/case_routes.py).
+No direct imports from the engine; everything shown here arrived over HTTP,
+exactly as any other API consumer would see it.
+
+This is the only visitor-facing view. The corpus-screening batch path
+(docs/requirements.md Section 9c) stays reachable through the CLI and the
+/runs/* API routes, unadvertised -- it is not a second front door here.
 
 Run with (two terminals):
     uvicorn entity_screening.api.main:app --reload
     streamlit run app.py
-Or via `docker compose up` (see docker-compose.yml), which points this at
-the api container automatically through the API_BASE_URL env var.
 """
 from __future__ import annotations
 
@@ -17,159 +20,64 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Entity & Research-Affiliation Screening Toolkit", layout="wide")
+st.set_page_config(page_title="HB 127 Researcher Screening", layout="wide")
 
-st.title("Entity & Research-Affiliation Screening Toolkit")
+DEMO_CASE_ID = "demo"
+
+st.title("HB 127 Researcher Screening — case worksheet")
 st.caption(
-    "Portfolio project — every result below is a **scored candidate**, never a "
-    "confirmed finding. See docs/requirements.md for non-goals and methodology."
+    "Portfolio project. Every row below is an **observed discrepancy**, never an "
+    "evaluation: the system states facts about each item and never says whether an "
+    "omission is *substantial* — that judgment is the analyst's. Demo data is "
+    "**synthetic**; no real declaration data is handled (see docs/use-case-01-"
+    "hb127-researcher-screening.md)."
 )
-
-# Wider slider ranges for weights whose sensible ceiling isn't simply
-# "a few times the default" — screening_hit_confidence_multiplier and
-# multiple_list_hit_bonus in particular.
-RUBRIC_SLIDER_RANGES = {
-    "screening_hit_weight": (0.0, 150.0),
-    "screening_hit_confidence_multiplier": (0.0, 3.0),
-    "multiple_list_hit_bonus": (0.0, 60.0),
-    "foreign_control_weight": (0.0, 150.0),
-    "bibliometric_hit_weight": (0.0, 150.0),
-}
-
-# Workstream 2b: a small, fixed menu of bundled fixture files, not a free-text
-# path -- UX only, the server-side MONOPS_DATA_FILE_ALLOWLIST check is the
-# actual control (api/main.py:_check_allowlisted). Keep this list and
-# docker-compose.prod.yml's allowlist env var in the same order/content.
-BUNDLED_NSF_FILES = [
-    "tests/fixtures/demo_nsf_awards.json",
-    "tests/fixtures/sample_nsf_awards.json",
-]
-BUNDLED_OPENSANCTIONS_FILES = [
-    "tests/fixtures/demo_opensanctions_targets.csv",
-    "tests/fixtures/sample_opensanctions_targets.csv",
-]
 
 with st.sidebar:
     api_base_url = st.text_input(
         "API base URL", value=os.environ.get("API_BASE_URL", "http://localhost:8000")
     ).rstrip("/")
 
-    # Workstream 2a: whether the public demo has an action gate configured at
-    # all -- never the secret's value, just the fact one is required (see
-    # api/main.py's /health route). Fails open (gate treated as off) if the
-    # API isn't reachable yet here; the health/rubric check right after this
-    # sidebar block surfaces a real connectivity error to the user anyway,
-    # and the server remains the actual enforcement regardless of what this
-    # renders as.
     try:
-        _action_gate_enabled = bool(
+        _gate = bool(
             requests.get(f"{api_base_url}/health", timeout=10).json().get("action_gate_enabled")
         )
     except requests.RequestException:
-        _action_gate_enabled = False
+        _gate = False
 
-    st.header("Data sources")
-    nsf_file = st.selectbox("NSF awards JSON file", BUNDLED_NSF_FILES, index=0)
-    opensanctions_file = st.selectbox(
-        "OpenSanctions targets.simple.csv", BUNDLED_OPENSANCTIONS_FILES, index=0
-    )
-    threshold = st.slider("Screening match threshold", 0.0, 1.0, 0.80, 0.01)
-    section_117_file = st.text_input(
-        "Section 117 foreign funding disclosure .xlsx (optional)", value=""
-    )
+    st.header("Case")
+    case_id = st.text_input("Case ID", value=DEMO_CASE_ID)
+
+    st.header("Analyst")
+    actor = st.text_input("Your identifier (recorded on every action)", value="analyst.demo")
 
     st.header("Actions")
     st.caption(
-        "Starting a new run and every enrichment step below are gated on the "
-        "public demo -- viewing the pre-computed demo run, its scored table, "
-        "evidence trail, rubric sliders, and exports all stay open regardless."
+        "Running reconciliation, dispositioning findings, adjudicating and "
+        "certifying are gated on the public demo. Viewing the worksheet and "
+        "exporting the investigative file stay open."
     )
-    action_secret = st.text_input(
-        "Action secret (only needed on the public demo)", type="password", value=""
-    )
-    # Optimistic: enabled once *something* is entered, not only when it's
-    # correct -- the client has no way to verify correctness without a round
-    # trip, and the server 403s (with a clear error surfaced below) if it's
-    # wrong. When no gate is configured at all (local dev, the common case),
-    # everything stays enabled regardless of this field.
-    _actions_enabled = (not _action_gate_enabled) or bool(action_secret)
-    _action_secret_headers = {"X-Monops-Action-Secret": action_secret} if action_secret else {}
-
-    run_button = st.button("Run screening", type="primary", disabled=not _actions_enabled)
-    if _action_gate_enabled and not _actions_enabled:
-        st.caption("⚠️ Disabled on the public demo — enter the action secret above to enable.")
-
-    st.header("Ownership analysis (optional, Epic C)")
-    st.caption(
-        "Leave both blank to skip — GLEIF's files aren't bundled (~525MB combined, "
-        "updated daily; see docs/data_sources.md)."
-    )
-    gleif_lei_file = st.text_input("GLEIF Level 1 (LEI-CDF) CSV", value="")
-    gleif_relationships_file = st.text_input("GLEIF Level 2 (RR-CDF) CSV", value="")
-    enrich_button = st.button("Enrich with ownership data", disabled=not _actions_enabled)
-
-    st.header("Bibliometric affiliation layer (optional, Epic E)")
-    st.caption(
-        "Resolves this run's PIs to OpenAlex authors and checks their co-authorship/"
-        "affiliation history against the same concern lists -- a live API call, no "
-        "file to supply."
-    )
-    openalex_contact_email = st.text_input("Contact email (OpenAlex 'polite pool', optional)", value="")
-    bibliometric_button = st.button("Enrich with bibliometric data", disabled=not _actions_enabled)
-
-    st.header("Topic-similarity flags (optional, advisory only)")
-    st.caption(
-        "Ranks PIs' real papers against DoD/CET critical-technology reference "
-        "corpora -- requires bibliometric enrichment to have run first for this "
-        "run. These are never scored matches: a topical-resemblance signal alone "
-        "cannot establish application or risk, so results are recommendations to "
-        "consult a subject-matter expert, shown separately from the scored table."
-    )
-    topic_similarity_button = st.button(
-        "Compute topic-similarity flags", disabled=not _actions_enabled
-    )
+    action_secret = st.text_input("Action secret (public demo only)", type="password", value="")
+    _actions_enabled = (not _gate) or bool(action_secret)
+    _headers = {"X-Monops-Action-Secret": action_secret} if action_secret else {}
+    if _gate and not _actions_enabled:
+        st.caption("⚠️ Enter the action secret to enable the gated actions.")
 
 
-def _api_get(path: str, **params) -> requests.Response:
-    response = requests.get(f"{api_base_url}{path}", params=params or None, timeout=30)
-    response.raise_for_status()
-    return response
+def _get(path: str, **params) -> requests.Response:
+    r = requests.get(f"{api_base_url}{path}", params=params or None, timeout=60)
+    r.raise_for_status()
+    return r
 
 
-def _api_post(
-    path: str, payload: dict, timeout: int = 120, headers: dict | None = None
-) -> requests.Response:
-    response = requests.post(f"{api_base_url}{path}", json=payload, timeout=timeout, headers=headers)
-    response.raise_for_status()
-    return response
-
-
-# Bibliometric/topic-similarity enrichment can be 175-297 sequential OpenAlex
-# calls for a real 53-entity run (measured directly against the real demo
-# dataset -- see openalex_client.py's module docstring), any of which can add
-# up to 90s of retry-backoff sleep under rate limiting. 120s (kept as the
-# default above -- a reasonable guardrail for a synchronous screening run,
-# which makes no live external calls at all) is nowhere near enough for this.
-#
-# This value is a reasoned placeholder, not a live-measured one: OpenAlex was
-# rate-limited from the machine this was written on for this entire work
-# session, blocking the real CLI timing pass
-# docs/plans/2026-09-02-remediation-pass.md's Workstream 9 explicitly calls
-# for ("time python -m entity_screening.cli run --enrich-bibliometric ...").
-# Re-measure and adjust before trusting this number for anything beyond
-# "better than 120s." Streamlit will also drop the websocket on a long
-# synchronous POST regardless of this client-side timeout -- st.status below
-# is what actually keeps the page from looking frozen either way.
-ENRICHMENT_TIMEOUT_SECONDS = 600
-
-
-@st.cache_data(show_spinner="Fetching default rubric...")
-def _default_rubric(base_url: str) -> dict:
-    return requests.get(f"{base_url}/rubric/default", timeout=10).json()
+def _post(path: str, payload: dict, timeout: int = 120) -> requests.Response:
+    r = requests.post(f"{api_base_url}{path}", json=payload, timeout=timeout, headers=_headers)
+    r.raise_for_status()
+    return r
 
 
 try:
-    default_rubric = _default_rubric(api_base_url)
+    reason_codes = _get("/cases/reason-codes").json()
 except requests.RequestException as exc:
     st.error(
         f"Can't reach the API at {api_base_url}: {exc}\n\n"
@@ -177,295 +85,244 @@ except requests.RequestException as exc:
     )
     st.stop()
 
-with st.sidebar:
-    st.header("Scoring rubric")
-    st.caption("Adjust weights and re-score instantly — no code changes required.")
-    rubric_overrides = {}
-    for field_name, default_value in default_rubric.items():
-        lo, hi = RUBRIC_SLIDER_RANGES.get(field_name, (0.0, max(default_value * 3, 10.0)))
-        rubric_overrides[field_name] = st.slider(
-            field_name.replace("_", " "),
-            min_value=lo,
-            max_value=hi,
-            value=float(default_value),
-            step=max((hi - lo) / 50, 0.1),
-        )
+DISMISS_CODES = reason_codes["dismiss"]
+ESCALATION_CODES = reason_codes["escalation"]
 
-
-DEMO_RUN_ID = "demo"
-
-
-def _start_new_run() -> str:
-    payload = {
-        "nsf_file": nsf_file,
-        "opensanctions_file": opensanctions_file,
-        "threshold": threshold,
-    }
-    if section_117_file:
-        payload["section_117_file"] = section_117_file
-    summary = _api_post("/runs", payload, headers=_action_secret_headers).json()
-    st.session_state["run_id"] = summary["run_id"]
-    return summary["run_id"]
-
-
-run_id = st.session_state.get("run_id")
-manifest = None
-if run_id and not run_button:
-    try:
-        manifest = _api_get(f"/runs/{run_id}/manifest").json()
-    except requests.RequestException:
-        # The API may have restarted (fresh, data-wiped) since this browser
-        # session last ran — a stale run_id 404s cleanly, so fall through to
-        # the pre-computed demo run below rather than auto-starting a new,
-        # now-gated run on the visitor's behalf.
-        run_id = None
-
-if run_button:
-    # Workstream 2c: only start a new run on this explicit click, never on
-    # page load. The button itself is disabled client-side when the action
-    # gate isn't satisfied (see the sidebar); the server's 403 plus this
-    # same error handling is what actually enforces it either way.
-    try:
-        run_id = _start_new_run()
-        manifest = _api_get(f"/runs/{run_id}/manifest").json()
-    except requests.RequestException as exc:
-        st.error(f"Run failed: {exc}")
-        st.stop()
-elif run_id is None:
-    # On load, with no session run_id and no explicit click, show the
-    # pre-computed public-demo run rather than auto-starting a new one --
-    # the API self-heals this run into existence on first request if it's
-    # missing (api/main.py:_ensure_demo_run_exists).
-    run_id = DEMO_RUN_ID
-    try:
-        manifest = _api_get(f"/runs/{run_id}/manifest").json()
-        st.session_state["run_id"] = run_id
-    except requests.RequestException as exc:
-        st.error(f"Couldn't load the demo run: {exc}")
-        st.stop()
-
-with st.expander("Run provenance", expanded=False):
-    st.json(manifest)
-
-if enrich_button:
-    if gleif_lei_file and gleif_relationships_file:
-        try:
-            enrichment = _api_post(
-                f"/runs/{run_id}/ownership",
-                {
-                    "gleif_lei_file": gleif_lei_file,
-                    "gleif_relationships_file": gleif_relationships_file,
-                    "threshold": threshold,
-                },
-                headers=_action_secret_headers,
-            ).json()
-            st.success(
-                f"Ownership analysis complete: {enrichment['flags_count']} "
-                "foreign-control flag(s) found."
-            )
-        except requests.RequestException as exc:
-            st.error(f"Ownership enrichment failed: {exc}")
-    else:
-        st.warning("Both GLEIF file paths are required to run ownership analysis.")
-
-if bibliometric_button:
-    with st.status("Running bibliometric enrichment against live OpenAlex data...", expanded=True) as status:
-        try:
-            st.write(
-                "This can take several minutes against a real dataset -- each PI's "
-                "co-authorship history is walked one real paper at a time."
-            )
-            # Deliberately does NOT pass the sidebar's general screening threshold --
-            # bibliometric cross-checking has a volume-multiplication precision risk
-            # screen_entity() doesn't (every co-author's institution across every
-            # paper gets checked, not one entity's own name once; a real false
-            # positive at 0.80 confirmed this during V3's build, see
-            # docs/data_sources.md), so it keeps its own higher default unless a
-            # caller explicitly overrides it.
-            payload = {"contact_email": openalex_contact_email or None}
-            enrichment = _api_post(
-                f"/runs/{run_id}/bibliometric", payload,
-                timeout=ENRICHMENT_TIMEOUT_SECONDS, headers=_action_secret_headers,
-            ).json()
-            status.update(
-                label=f"Bibliometric enrichment complete: {enrichment['hits_count']} candidate hit(s) found.",
-                state="complete",
-            )
-        except requests.RequestException as exc:
-            status.update(label="Bibliometric enrichment failed.", state="error")
-            st.error(
-                f"Bibliometric enrichment failed: {exc}\n\n"
-                "If this was a timeout, the run may still have finished on the server -- "
-                "wait a moment and check the evidence trail below before retrying, since "
-                "retrying a run that actually succeeded duplicates nothing (re-running is "
-                "safe) but does re-do real work."
-            )
-
-if topic_similarity_button:
-    with st.status("Ranking PIs' real papers against reference corpora...", expanded=True) as status:
-        try:
-            result = _api_post(
-                f"/runs/{run_id}/topic-similarity", {},
-                timeout=ENRICHMENT_TIMEOUT_SECONDS, headers=_action_secret_headers,
-            ).json()
-            st.session_state["topic_similarity_flags"] = result["flags"]
-            status.update(
-                label=(
-                    f"Topic-similarity ranking complete: {len(result['flags'])} advisory "
-                    "flag(s) -- not scored matches, see the section below."
-                ),
-                state="complete",
-            )
-        except requests.RequestException as exc:
-            status.update(label="Topic-similarity ranking failed.", state="error")
-            detail = exc.response.json().get("detail") if exc.response is not None else str(exc)
-            st.error(f"Topic-similarity ranking failed: {detail}")
+# --- load the worksheet ---------------------------------------------------
 
 try:
-    scores = _api_get(f"/runs/{run_id}/scores", **rubric_overrides).json()
+    worksheet = _get(f"/cases/{case_id}/worksheet").json()
 except requests.RequestException as exc:
-    st.error(f"Couldn't fetch scores: {exc}")
+    st.error(f"Couldn't load case {case_id!r}: {exc}")
     st.stop()
 
-df = pd.DataFrame(
-    [
-        {
-            "canonical_name": s["canonical_name"],
-            "status": s["status"],
-            "total_score": round(s["total_score"], 1),
-            "factors": ", ".join(f"{k}={v:.1f}" for k, v in s["factors"].items()) or "—",
-            "list_hits": ", ".join(sorted({h["list_name"] for h in s["screening_hits"]})) or "—",
-            "hit_kinds": ", ".join(sorted({h["producer"] for h in s["screening_hits"]})) or "—",
-            "best_match_confidence": round(
-                max((h["confidence"] for h in s["screening_hits"]), default=0.0), 3
-            ),
-            "foreign_control": (
-                ", ".join(
-                    sorted({f["ultimate_parent_jurisdiction"] for f in s["ownership_flags"]})
-                )
-                or "—"
-            ),
-        }
-        for s in scores
-    ]
-).sort_values("total_score", ascending=False)
+col_a, col_b, col_c = st.columns(3)
+col_a.metric("State", worksheet["state"])
+col_b.metric("Coverage basis", worksheet["coverage_basis"])
+col_c.metric("Statutory deadline", worksheet["statutory_deadline"] or "—")
 
-# A foreign-control flag with no screening hit is still a genuine candidate
-# match (Epic C) -- status (from the API) already reflects that, so counting
-# by status here rather than by screening_hits alone avoids undercounting.
-_candidate_count = sum(1 for s in scores if s["status"] == "candidate_match")
-st.subheader(f"{len(df)} entities screened — {_candidate_count} candidate matches")
-
-if _candidate_count == 0:
-    # Finding 8: with the shipped demo defaults this is the common case, not
-    # an error -- explain why rather than leave a visitor looking at what
-    # reads as a broken demo. Real, not hand-waved: awardeeCountryCode=CN
-    # against the live NSF Award Search API returns totalCount: 0 (confirmed
-    # directly, 2026-09-02) -- NSF only funds US-based recipient
-    # organizations, so a direct sanctions-list hit on an *awardee's own
-    # name* is structurally impossible with real NSF data, not just rare in
-    # this particular sample. A genuine tie to a flagged institution shows up
-    # instead through the bibliometric co-authorship layer below (a legal
-    # research collaboration, unlike direct funding) -- see the
-    # "Enrich with bibliometric data" button in the sidebar.
-    st.info(
-        "**Why zero candidate matches is the expected result here, not a broken "
-        "demo:** NSF only funds US-based recipient organizations, so a direct "
-        "sanctions-list hit on an awardee's own name is structurally "
-        "impossible with real NSF award data — confirmed directly by querying "
-        "the live NSF Award Search API for any non-US awardee "
-        "(`awardeeCountryCode=CN` returns `totalCount: 0`), not just absent "
-        "from this particular sample. The genuine finding this dataset was "
-        "built to demonstrate lives in the **bibliometric co-authorship "
-        "layer** instead (a real, legal research collaboration can create a "
-        "tie a direct name check never could) — see the evidence trail below "
-        "after running bibliometric enrichment from the sidebar."
-    )
-
-show_hits_only = st.checkbox("Show only candidate matches", value=False)
-display_df = df[df["status"] == "candidate_match"] if show_hits_only else df
-
-st.dataframe(display_df, width="stretch", hide_index=True)
-
-st.subheader("Evidence trail")
-scores_by_name = {s["canonical_name"]: s for s in scores}
-selected_name = st.selectbox(
-    "Inspect an entity's evidence",
-    options=display_df["canonical_name"].tolist() if not display_df.empty else [],
-)
-if selected_name:
-    hits = scores_by_name[selected_name]["screening_hits"]
-    ownership_flags = scores_by_name[selected_name]["ownership_flags"]
-
-    for hit in hits:
-        if hit["producer"] == "bibliometric":
-            caveat = hit.get("evidence", {}).get("source_attribution", {}).get("caveat")
-            if caveat:
-                st.caption(f"⚠️ {caveat}")
-        st.json(hit)
-    if not hits:
-        st.info("No screening hits for this entity.")
-
-    if ownership_flags:
-        st.markdown("**Foreign-control flags**")
-        for flag in ownership_flags:
-            st.json(flag)
+if st.button("Re-run reconciliation", disabled=not _actions_enabled):
+    with st.spinner("Reconciling declaration against public records…"):
+        try:
+            result = _post(f"/cases/{case_id}/reconcile", {}, timeout=600).json()
+            st.success(
+                f"{result['finding_count']} finding(s) across "
+                f"{', '.join(result['discovery_sources'])}."
+            )
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Reconciliation failed: {exc}")
 
 st.divider()
-st.subheader("Topic-similarity flags (advisory — not a scored match)")
-st.caption(
-    "A topical-resemblance signal alone cannot establish application or risk -- "
-    "these are recommendations to consult a subject-matter expert, never blended "
-    "into the scored table above or into total_score."
+
+rows = worksheet["rows"]
+if not rows:
+    st.info("No findings. Run reconciliation from the button above.")
+    st.stop()
+
+st.subheader(
+    f"{len(rows)} discrepancy row(s) — "
+    f"{worksheet['unactioned_count']} unactioned"
 )
-topic_flags = st.session_state.get("topic_similarity_flags", [])
-if topic_flags:
-    for flag in topic_flags:
-        tier_label = "Primary (DoD)" if flag["corpus_tier"] == "primary" else "Secondary (CET)"
-        st.markdown(
-            f"**{flag['pi_name']}** — *{flag['work_title']}* — "
-            f"similar to **{flag['technology_area']}** ({tier_label}, "
-            f"similarity {flag['similarity_score']:.2f}, runner-up "
-            f"{flag['evidence'].get('runner_up_area')} at "
-            f"{flag['evidence'].get('runner_up_similarity', 0):.2f})"
-        )
-        st.caption(flag["recommendation"])
+if worksheet["unactioned_count"] > 0:
+    st.warning(
+        "The case cannot leave the worksheet until **every** row has an analyst "
+        "action (use-case-01 Section 8's closure rule)."
+    )
 else:
-    st.info("No topic-similarity flags yet — use the sidebar button to compute them.")
+    st.success("Every row is actioned — the worksheet can close.")
 
-st.subheader("Export")
-st.caption(
-    "Each export is a deliberate action, not a side effect of moving a slider — "
-    "every click here writes its own manifest recording exactly which rubric "
-    "produced the file, independent of the run's original one."
+# --- the worksheet table ------------------------------------------------
+
+BASIS_LABEL = {
+    "absent_from_in_scope_source": "gap in an in-scope source",
+    "absent_outside_all_source_scopes": "outside every source's scope",
+    "partial_match_below_threshold": "partial match to a declared item",
+}
+
+table = pd.DataFrame(
+    [
+        {
+            "finding_id": r["finding"]["finding_id"],
+            "source": r["finding"]["discovered"]["source"],
+            "institution": r["finding"]["discovered"]["institution_name"],
+            "country": r["finding"]["discovered"]["country"] or "—",
+            "observed": " – ".join(
+                x for x in (
+                    r["finding"]["discovered"]["first_observed"],
+                    r["finding"]["discovered"]["last_observed"],
+                ) if x
+            ) or "—",
+            "records": r["finding"]["discovered"]["record_count"],
+            "why it surfaced": BASIS_LABEL.get(
+                r["finding"]["factual_basis"], r["finding"]["factual_basis"]
+            ),
+            "in scope of": ", ".join(
+                s["source_kind"] for s in r["finding"]["declaration_search"] if s["covers_this_item"]
+            ) or "(none)",
+            "concern hit": ", ".join(
+                h["list_name"] for h in r["finding"]["concern_list_evidence"]
+            ) or "—",
+            "action": (r["action"] or {}).get("action", "— unactioned —"),
+            "reason": (r["action"] or {}).get("reason_code", ""),
+            "by": (r["action"] or {}).get("actor", ""),
+        }
+        for r in rows
+    ]
 )
-col1, col2 = st.columns(2)
-if col1.button("Prepare CSV export"):
-    try:
-        response = _api_get(f"/runs/{run_id}/export.csv", **rubric_overrides)
-        st.session_state["csv_export"] = (response.content, response.headers.get("X-Export-Id"))
-    except requests.RequestException as exc:
-        st.error(f"CSV export failed: {exc}")
-if col2.button("Prepare Excel export"):
-    try:
-        response = _api_get(f"/runs/{run_id}/export.xlsx", **rubric_overrides)
-        st.session_state["xlsx_export"] = (response.content, response.headers.get("X-Export-Id"))
-    except requests.RequestException as exc:
-        st.error(f"Excel export failed: {exc}")
+st.dataframe(table, width="stretch", hide_index=True)
 
-if "csv_export" in st.session_state:
-    content, export_id = st.session_state["csv_export"]
-    st.download_button(
-        f"Download CSV (export {export_id})",
-        data=content,
-        file_name="candidate_matches.csv",
-        mime="text/csv",
+# --- disposition ------------------------------------------------------
+
+st.subheader("Disposition")
+tab_single, tab_bulk = st.tabs(["One finding", "Bulk (a class at once)"])
+
+with tab_single:
+    labels = {
+        f"{r['finding']['discovered']['institution_name']} "
+        f"({r['finding']['discovered']['source']})": r["finding"]["finding_id"]
+        for r in rows
+    }
+    picked = st.selectbox("Finding", list(labels), key="single_pick")
+    fid = labels[picked]
+    finding = next(r["finding"] for r in rows if r["finding"]["finding_id"] == fid)
+
+    with st.expander("Evidence for this finding", expanded=True):
+        st.json(finding)
+
+    action = st.selectbox(
+        "Action",
+        ["dismiss", "request_clarification", "escalate", "certification_required"],
+        key="single_action",
     )
-if "xlsx_export" in st.session_state:
-    content, export_id = st.session_state["xlsx_export"]
-    st.download_button(
-        f"Download Excel (export {export_id})",
-        data=content,
-        file_name="candidate_matches.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    codes = DISMISS_CODES if action == "dismiss" else ESCALATION_CODES
+    code = st.selectbox("Reason code", list(codes), format_func=lambda c: f"{c} — {codes[c]}", key="single_code")
+    note = st.text_area("Reason note (free text — the analyst's own words)", key="single_note")
+    if st.button("Record action", disabled=not _actions_enabled, key="single_btn"):
+        try:
+            _post(
+                f"/cases/{case_id}/findings/{fid}/action",
+                {"action": action, "reason_code": code, "reason_note": note, "actor": actor},
+            )
+            st.success("Recorded.")
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+
+with tab_bulk:
+    st.caption(
+        "Select a class — e.g. every 'outside every source's scope' row — and "
+        "disposition it with one reason. One batch, one act, one stated basis."
     )
+    basis_filter = st.multiselect(
+        "Rows where 'why it surfaced' is",
+        sorted({r["finding"]["factual_basis"] for r in rows}),
+        format_func=lambda b: BASIS_LABEL.get(b, b),
+    )
+    selected = [
+        r["finding"]["finding_id"]
+        for r in rows
+        if not basis_filter or r["finding"]["factual_basis"] in basis_filter
+    ]
+    st.write(f"{len(selected)} row(s) selected.")
+    bulk_action = st.selectbox("Action", ["dismiss", "escalate"], key="bulk_action")
+    bulk_codes = DISMISS_CODES if bulk_action == "dismiss" else ESCALATION_CODES
+    bulk_code = st.selectbox(
+        "Reason code", list(bulk_codes), format_func=lambda c: f"{c} — {bulk_codes[c]}", key="bulk_code"
+    )
+    bulk_note = st.text_area("Reason note", key="bulk_note")
+    if st.button("Apply to the selected class", disabled=not _actions_enabled, key="bulk_btn"):
+        try:
+            _post(
+                f"/cases/{case_id}/worksheet/actions",
+                {
+                    "finding_ids": selected,
+                    "action": bulk_action,
+                    "reason_code": bulk_code,
+                    "reason_note": bulk_note,
+                    "actor": actor,
+                },
+            )
+            st.success(f"Applied to {len(selected)} row(s).")
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+
+# --- certification, adjudication, outcome, export --------------------
+
+st.divider()
+st.subheader("Adjudication and the investigative file")
+
+with st.expander("§51B.153 department-head certification (for a disregarded non-disclosure)"):
+    cert_fid = st.selectbox("Finding", list(labels), key="cert_pick")
+    substance = st.text_area("Substance of the failure to disclose", key="cert_substance")
+    reasons = st.text_area("Reasons for disregarding it", key="cert_reasons")
+    head = st.text_input("Department head (or designee)", key="cert_head")
+    if st.button("Record certification", disabled=not _actions_enabled, key="cert_btn"):
+        try:
+            _post(
+                f"/cases/{case_id}/certifications",
+                {
+                    "finding_id": labels[cert_fid],
+                    "substance_of_failure": substance,
+                    "reasons_for_disregarding": reasons,
+                    "department_head": head,
+                },
+            )
+            st.success("Certification recorded — it will appear in the investigative file.")
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+
+can_close = worksheet["can_close"]
+if worksheet["state"] == "worksheet":
+    if st.button("Close the worksheet → adjudication", disabled=not (_actions_enabled and can_close)):
+        try:
+            _post(f"/cases/{case_id}/transition", {"target_state": "adjudication"})
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+
+if worksheet["state"] == "adjudication":
+    assessment = st.text_area("Assessment", key="adj_assessment")
+    recommendation = st.text_area("Recommendation", key="adj_recommendation")
+    if st.button("Record adjudication", disabled=not _actions_enabled, key="adj_btn"):
+        try:
+            _post(
+                f"/cases/{case_id}/adjudication",
+                {"assessment": assessment, "recommendation": recommendation, "actor": actor},
+            )
+            st.success("Adjudication recorded.")
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+
+st.markdown("**Export the investigative file** (redacted by default — classified subject fields removed):")
+c1, c2 = st.columns(2)
+if c1.button("Prepare JSON"):
+    try:
+        st.session_state["if_json"] = _get(f"/cases/{case_id}/investigative-file.json").content
+    except requests.RequestException as exc:
+        st.error(f"Export failed: {exc}")
+if c2.button("Prepare Excel"):
+    try:
+        st.session_state["if_xlsx"] = _get(f"/cases/{case_id}/investigative-file.xlsx").content
+    except requests.RequestException as exc:
+        st.error(f"Export failed: {exc}")
+if "if_json" in st.session_state:
+    st.download_button("Download investigative file (JSON)", st.session_state["if_json"],
+                       file_name="investigative_file.json", mime="application/json")
+if "if_xlsx" in st.session_state:
+    st.download_button("Download investigative file (Excel)", st.session_state["if_xlsx"],
+                       file_name="investigative_file.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+st.divider()
+with st.expander("This institution's accumulated dismissal bases (Section 4.1)"):
+    try:
+        summary = _get("/cases/dismissal-basis-summary").json()
+        if summary["by_reason_code"]:
+            st.dataframe(pd.DataFrame(summary["by_reason_code"]), hide_index=True)
+        else:
+            st.caption("No dismissals recorded yet.")
+    except requests.RequestException as exc:
+        st.caption(f"(unavailable: {exc})")
