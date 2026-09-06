@@ -205,17 +205,17 @@ DS-160 content is among the more sensitive personal data an institution holds: d
 
 ## 10. Demo data strategy
 
-**The split is clean rather than compromised: real reference data, synthetic person.**
+**The intent is real reference data, synthetic person.** As built, one seam is not yet clean — the demo's GLEIF ownership chain is a labelled fixture pending a real-data check (below) — but the concern-list *designations* the findings turn on are real, and no real person is described.
 
-- **Real:** publications, institutional records, concern lists, ownership chains, adversary-country determinations. All public, all already in the repository.
-- **Synthetic:** the subject and their declaration. Fabricated entirely.
+- **Real:** institutional records, concern lists and their designations (OpenSanctions, the DoD Section 1260H list). All public, all already in the repository.
+- **Synthetic:** the subject and their declaration, fabricated entirely; the demo's publication record (a clearly-labelled fixture); and — as built — the demo's GLEIF ownership chain (see below).
 - **Never:** a real author's publication record attached to a fictional name. Anyone who looks up the papers finds the real person, and the result is a screening dossier on them with deniability attached — worse than either honest alternative.
 
 **The primary demo finding requires no publication record at all:**
 
 > *Declared employer: [synthetic Chinese subsidiary]. Not disclosed: that entity's ultimate parent, per GLEIF Level 2 relationship data, appears on the DoD Section 1260H list.*
 
-This runs on a synthetic declaration plus wholly real GLEIF and 1260H reference data. No fabricated publications, no real person, and it gives Epic C the demonstration it has never had. A second finding driven by a clearly-labeled bibliometric fixture exercises Epic E without attributing real work to a fictional author.
+**As built, the 1260H designation is real and the ownership chain is a fixture.** The chain's ultimate parent is named for a real 1260H-listed entity — so the designation the finding turns on is real reference data — but the GLEIF LEIs and the `IS_DIRECTLY_CONSOLIDATED_BY` / `IS_ULTIMATELY_CONSOLIDATED_BY` edges connecting the synthetic employer to it are fabricated and labelled (`tests/fixtures/demo_case/gleif.NOTICE.md`; the LEIs carry a `SYNTH…` prefix). Replacing this with a real extracted chain — a real GLEIF subsidiary whose real ultimate parent is 1260H-listed — is a binding real-data check in `docs/plans/2026-09-06-use-case-01-implementation.md`, pending a live GLEIF download. Every exported investigative file carries a top-level provenance marker saying so. No fabricated publications, no real person, and it still gives Epic C the demonstration it has never had. A second finding driven by a clearly-labelled bibliometric fixture exercises Epic E without attributing real work to a fictional author.
 
 ---
 
