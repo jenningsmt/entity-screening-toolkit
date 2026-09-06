@@ -48,7 +48,16 @@ from entity_screening.ownership.graph import parent_chain
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.scoring.rubric import STOCK_RUBRIC, rubric_from_dict, rubric_to_dict
 
-app = FastAPI(title="Entity Screening Toolkit API")
+app = FastAPI(
+    title="Research Security Screening API",
+    description=(
+        "HB 127 researcher screening (Use Case 01). The /cases/* routes are the "
+        "primary surface: subject-in, worked-worksheet-and-investigative-file-out. "
+        "The /runs/* batch routes remain callable for population re-screening "
+        "against updated reference data (docs/requirements.md Section 9c) but are "
+        "not the visitor-facing path."
+    ),
+)
 
 # Resolved at call time (not bound as a function default) so tests can
 # redirect these via env vars without touching the real data/processed/
@@ -425,3 +434,12 @@ def get_ownership_chain(
     finally:
         conn.close()
     return parent_chain_to_dto(result)
+
+
+# --- Use Case 01 (HB 127 researcher screening) -----------------------------
+# The case worksheet is the visitor-facing surface (docs/requirements.md
+# Section 9c / docs/plans/2026-09-06-use-case-01-implementation.md); the
+# batch routes above stay for population re-screening.
+from entity_screening.api.case_routes import router as case_router  # noqa: E402
+
+app.include_router(case_router)
