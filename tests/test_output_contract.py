@@ -24,7 +24,14 @@ from fastapi.testclient import TestClient
 from entity_screening.api.main import app
 from entity_screening.common import storage
 from entity_screening.common.attribution import OPENALEX_PRECISION_CAVEAT, attribution_for
-from entity_screening.common.schema import ForeignControlFlag, MatchStatus, ScreeningHit
+from entity_screening.common.schema import (
+    CaseState,
+    ForeignControlFlag,
+    MatchStatus,
+    ScreeningHit,
+    WorksheetActionKind,
+)
+from entity_screening.common.schema import _FORBIDDEN_FINDING_FIELD_TOKENS
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 NSF_FILE = str(FIXTURES_DIR / "sample_nsf_awards.json")
@@ -115,6 +122,112 @@ def test_output_contract_at_the_csv_and_api_boundaries(client, tmp_path):
     for s in scores:
         has_evidence = bool(s["screening_hits"]) or bool(s["ownership_flags"])
         assert s["status"] == ("candidate_match" if has_evidence else "no_hit")
+
+
+def _walk_keys(obj):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield k
+            yield from _walk_keys(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _walk_keys(item)
+
+
+def test_investigative_file_export_contract(tmp_path):
+    """The investigative file is a new output boundary (use-case-01). The
+    same guarantees the batch CSV carries must hold here: attribution +
+    licence on every evidence payload (Section 10), no evaluative field
+    anywhere in the Finding graph as serialized (Section 4), and the
+    language discipline. Plus: classified subject fields redacted by
+    default (Section 9)."""
+    from entity_screening.case import demo, export, service, store
+
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    demo.build_demo_case(conn)
+    conn.close()
+
+    from entity_screening.pipeline import reconcile_case
+
+    reconcile_case(
+        "demo",
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+
+    conn = storage.connect(db_path)
+    rows = service.worksheet(conn, "demo").rows
+    for row in rows[:-1]:
+        service.record_action(
+            conn, "demo", row.finding.finding_id, WorksheetActionKind.DISMISS,
+            "record_error_or_misattribution", "stale", "analyst.a",
+        )
+    service.record_action(
+        conn, "demo", rows[-1].finding.finding_id, WorksheetActionKind.CERTIFICATION_REQUIRED,
+        "possible_nondisclosure_for_certification", "ultimate parent on 1260H", "analyst.a",
+    )
+    service.record_certification(
+        conn, "demo", rows[-1].finding.finding_id,
+        "Undisclosed ultimate parent of a declared employer appears on the DoD 1260H list.",
+        "Collaboration was publicly documented and disclosed elsewhere in the packet.",
+        "Dr. Department Head",
+    )
+    service.transition(conn, "demo", CaseState.ADJUDICATION)
+    service.record_adjudication(conn, "demo", "One item routed for certification; rest dismissed.", "Proceed with certification on file.", "analyst.a")
+
+    out_path, manifest = export.export_investigative_file(
+        conn, "demo", fmt="json", runs_dir=tmp_path / "runs"
+    )
+    unredacted_path, _ = export.export_investigative_file(
+        conn, "demo", fmt="json", redact=False, runs_dir=tmp_path / "runs"
+    )
+    xlsx_path, _ = export.export_investigative_file(
+        conn, "demo", fmt="xlsx", runs_dir=tmp_path / "runs"
+    )
+    conn.close()
+
+    payload = json.loads(out_path.read_text())
+
+    # --- every finding row carries the full contract ---
+    assert payload["findings"]
+    for finding in payload["findings"]:
+        assert finding["discovered"]["institution_name"]
+        assert finding["declaration_search"]
+        assert finding["factual_basis"]
+        for evidence_list in (finding["concern_list_evidence"], finding["ownership_evidence"]):
+            for ev in evidence_list:
+                attribution = ev["evidence"]["source_attribution"]
+                assert attribution["attribution"], "Section 10: attribution must reach the investigative file"
+                assert attribution["license"], "Section 10: licence must reach the investigative file"
+
+    # --- no evaluative field anywhere in the serialized Finding graph (Section 4) ---
+    finding_keys = set(_walk_keys(payload["findings"]))
+    for key in finding_keys:
+        for token in _FORBIDDEN_FINDING_FIELD_TOKENS:
+            assert token not in key.lower(), f"evaluative key {key!r} in the exported findings"
+
+    # --- language discipline: system-generated text only (reason_note / notes are human) ---
+    system_text = json.dumps(
+        {k: v for k, v in payload.items() if k not in ("worksheet", "adjudications", "certifications")}
+    ).lower()
+    assert "confirmed" not in system_text
+    assert "risk score" not in system_text
+
+    # --- redaction (Section 9) ---
+    assert payload["subject"]["classified_fields"] == {
+        "_redacted": True,
+        "_reason": "field-level sensitive (use-case-01 Section 9)",
+    }
+    assert "SYNTH-000000" not in out_path.read_text()  # passport number, redacted
+    assert "SYNTH-000000" in unredacted_path.read_text()  # present only when asked
+
+    assert manifest.redaction_profile == "default"
+    assert manifest.finding_count == len(payload["findings"])
+    assert xlsx_path.exists()
 
 
 def _assert_hits_carry_the_full_contract(hits: list[dict]) -> None:

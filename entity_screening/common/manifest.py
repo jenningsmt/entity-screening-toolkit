@@ -378,6 +378,65 @@ class ReconciliationManifest:
 
 
 @dataclass
+class InvestigativeFileManifest:
+    """One immutable record per investigative-file export (Sec. 51B.153's
+    named output artifact). Same per-call immutability as ExportManifest --
+    the same case, re-exported at a later adjudication seq or a different
+    redaction profile, gets its own file. Records `case_id` (opaque) only,
+    never the subject.
+    """
+
+    export_id: str
+    case_id: str
+    exported_at: str
+    redaction_profile: str  # "default" (classified fields redacted) | "unredacted"
+    adjudication_seq_exported: int | None
+    format: str
+    finding_count: int
+    git_commit: str | None = None
+
+    @classmethod
+    def create(
+        cls,
+        case_id: str,
+        redaction_profile: str,
+        adjudication_seq_exported: int | None,
+        fmt: str,
+        finding_count: int,
+    ) -> "InvestigativeFileManifest":
+        return cls(
+            export_id=str(uuid.uuid4()),
+            case_id=case_id,
+            exported_at=datetime.now(timezone.utc).isoformat(),
+            redaction_profile=redaction_profile,
+            adjudication_seq_exported=adjudication_seq_exported,
+            format=fmt,
+            finding_count=finding_count,
+            git_commit=_git_commit(),
+        )
+
+    def export_dir(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        path = Path(base) / "cases" / self.case_id / "investigative_file" / self.export_id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def write(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        out_path = self.export_dir(base) / "manifest.json"
+        out_path.write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
+        return out_path
+
+    @classmethod
+    def load(cls, path: Path | str) -> "InvestigativeFileManifest":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(**data)
+
+
+@dataclass
 class TopicSimilarityManifest:
     """Describes exactly which embedding model and reference-corpus files produced
     a run's topic-similarity flags (deferred VSS work).
