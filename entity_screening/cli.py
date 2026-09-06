@@ -15,7 +15,18 @@ from entity_screening import pipeline
 from entity_screening.bibliometric.topic_similarity import CET_CORPUS_FILE, DOD_CORPUS_FILE
 from entity_screening.common import storage
 from entity_screening.common.manifest import RunManifest
-from entity_screening.common.schema import MatchStatus
+from entity_screening.common.schema import (
+    _FINDING_GRAPH_ALLOWED_FIELDS,
+    _FORBIDDEN_FINDING_FIELD_TOKENS,
+    CoverageBasis,
+    Declaration,
+    DiscoveredAffiliation,
+    DeclarationSearch,
+    Finding,
+    MatchStatus,
+    NearestDeclared,
+    Subject,
+)
 from entity_screening.common.attribution import attribution_for
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
@@ -137,6 +148,76 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             "MatchStatus must have exactly one member, CANDIDATE_MATCH — "
             "output must never be able to assert a confirmed match."
         )
+
+    # The fact/judgment boundary (use-case-01 Section 4): the Finding graph
+    # states observable facts and never evaluates them. Guard the whole graph,
+    # not just Finding's outer shell -- an evaluative field on a nested type
+    # reaches the investigative-file export just as surely.
+    from dataclasses import fields as _dc_fields
+
+    _finding_graph_types = {
+        "Finding": Finding,
+        "DiscoveredAffiliation": DiscoveredAffiliation,
+        "DeclarationSearch": DeclarationSearch,
+        "NearestDeclared": NearestDeclared,
+    }
+    for type_name, dc in _finding_graph_types.items():
+        actual = {f.name for f in _dc_fields(dc)}
+        allowed = _FINDING_GRAPH_ALLOWED_FIELDS.get(type_name)
+        if allowed is None:
+            problems.append(
+                f"{type_name} is in the Finding graph but has no entry in "
+                "_FINDING_GRAPH_ALLOWED_FIELDS — add one deliberately."
+            )
+            continue
+        if actual != allowed:
+            problems.append(
+                f"{type_name}'s fields {sorted(actual)} do not match the frozen "
+                f"allowlist {sorted(allowed)} — the fact/judgment boundary is "
+                "enforced here, so widening what the system may assert about a "
+                "person must be a deliberate edit to _FINDING_GRAPH_ALLOWED_FIELDS "
+                "in the same commit (use-case-01 Section 4)."
+            )
+        forbidden = {
+            name
+            for name in actual
+            for token in _FORBIDDEN_FINDING_FIELD_TOKENS
+            if token in name.lower()
+        }
+        if forbidden:
+            problems.append(
+                f"{type_name} carries evaluative field(s) {sorted(forbidden)} — a "
+                "Finding-graph type may not hold a severity/risk/priority/score/"
+                "materiality/tier/weight/disposition claim about a person."
+            )
+
+    # No real PII by construction: Subject / Declaration reject synthetic=False.
+    for pii_type in (Subject, Declaration):
+        try:
+            if pii_type is Subject:
+                pii_type(
+                    subject_id="x",
+                    display_name="x",
+                    coverage_basis=CoverageBasis.FOREIGN_NATIONAL_NO_PR,
+                    synthetic=False,
+                    classified_fields={},
+                )
+            else:
+                pii_type(
+                    declaration_id="x",
+                    subject_id="x",
+                    synthetic=False,
+                    sources=(),
+                    affiliations=(),
+                )
+        except ValueError:
+            pass
+        else:
+            problems.append(
+                f"{pii_type.__name__}(synthetic=False) was accepted — this build "
+                "must make a real subject unrepresentable, not merely discouraged "
+                "(use-case-01 Section 9)."
+            )
 
     expected_lists = {"opensanctions_consolidated", "dod_section_1260h"}
     missing_lists = expected_lists - registered_lists().keys()

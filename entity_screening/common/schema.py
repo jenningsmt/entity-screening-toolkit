@@ -189,3 +189,366 @@ class ScoredEntity:
     screening_hits: tuple[ScreeningHit, ...]
     run_id: str
     ownership_flags: tuple[ForeignControlFlag, ...] = ()
+
+
+# ---------------------------------------------------------------------------
+# Case model (Use Case 01 -- HB 127 researcher screening).
+#
+# docs/use-case-01-hb127-researcher-screening.md is the specification;
+# docs/plans/2026-09-06-use-case-01-implementation.md is the plan. The unit
+# of work is a *case*: one subject, one triggering event, one deadline, one
+# file. The statutory test is a failure to disclose, so this is a
+# declaration-versus-record reconciliation problem, not screening-and-scoring.
+#
+# Two structural commitments, both enforced here rather than in documentation:
+#
+#   1. The fact/judgment boundary (use-case doc Section 4). The system states
+#      observable facts about a discrepancy and never evaluates them. The
+#      Finding graph -- Finding and every type it contains -- carries no
+#      severity, risk, priority, score, materiality, tier, weight or
+#      disposition field. _FINDING_GRAPH_ALLOWED_FIELDS below is the frozen
+#      allowlist; cli.py `validate` fails CI if any of these types grows a
+#      field not on it. This is the same mechanism as MatchStatus's single
+#      member, applied to a second kind of assertion -- guarding the whole
+#      graph, not just Finding's outer shell, because an evaluative field
+#      added to DiscoveredAffiliation would reach the export just as surely.
+#
+#   2. No real PII, ever, in this build (use-case doc Section 9,
+#      requirements Section 3). Subject and Declaration reject synthetic=False
+#      in __post_init__ -- "no real PII by construction," not by policy.
+# ---------------------------------------------------------------------------
+
+
+class CoverageBasis(Enum):
+    """Which limb of HB 127 Sec. 51B.151(a) brings a subject under screening.
+
+    Recorded at intake by whoever opens the case -- never inferred by the
+    system. Whether a person is subject to screening is a legal
+    determination, not an observable fact, so Section 4's fact/judgment
+    boundary keeps the system out of it (use-case doc Section 12).
+    """
+
+    FOREIGN_NATIONAL_NO_PR = "151a1"  # foreign citizen, not a US permanent resident
+    FOREIGN_ADVERSARY_TIE = "151a2"  # foreign-adversary affiliation, or >=1yr employment/training
+
+
+class CaseState(Enum):
+    """The case lifecycle (use-case doc Section 5). A case must reach CLOSED
+    before an offer is made or access is granted."""
+
+    INTAKE = "intake"
+    DECLARATION_ASSEMBLY = "declaration_assembly"
+    DISCOVERY = "discovery"
+    WORKSHEET = "worksheet"
+    ADJUDICATION = "adjudication"
+    OUTCOME = "outcome"
+    CLOSED = "closed"
+
+
+@dataclass(frozen=True)
+class Subject:
+    """The person a case is about. PII-bearing; `classified_fields` holds the
+    sensitive declaration attributes (DOB, passport/national-ID numbers, home
+    address, ...) and is redacted by default on export.
+
+    `synthetic` must be True: this build never handles real declaration data
+    (use-case doc Section 9). The guard is in __post_init__ so a real subject
+    is unrepresentable, not merely discouraged.
+    """
+
+    subject_id: str
+    display_name: str
+    coverage_basis: CoverageBasis
+    synthetic: bool
+    classified_fields: dict[str, Any]
+
+    def __post_init__(self) -> None:
+        if self.synthetic is not True:
+            raise ValueError(
+                "Subject.synthetic must be True -- this build handles no real "
+                "declaration data of any kind (docs/requirements.md Section 3, "
+                "use-case-01 Section 9). Real-subject screening is out of scope "
+                "by construction, not by policy."
+            )
+
+
+class ScopeKind(Enum):
+    """How a declaration source's coverage is bounded, per category
+    (use-case doc Section 6). A DS-160's employment history is a five-year
+    TEMPORAL_WINDOW; its education is HIGHEST_ONLY; its org memberships are a
+    TYPE_ENUMERATION. A CV is FULL_HISTORY. The reconciliation engine uses
+    this to decide whether a discovered fact's absence is a gap in a document
+    that asked for it, or an artifact of that document's scope."""
+
+    TEMPORAL_WINDOW = "temporal_window"
+    HIGHEST_ONLY = "highest_only"
+    TYPE_ENUMERATION = "type_enumeration"
+    FULL_HISTORY = "full_history"
+
+
+@dataclass(frozen=True)
+class DeclarationSource:
+    """One document (or absent document) in the declared set, with the scope
+    it actually covers. `present=False` records that a source type was
+    considered and is not available for this subject -- a covered person may
+    have no DS-160 at all (use-case doc Section 1.1, consequence 3)."""
+
+    source_id: str
+    kind: str  # "ds160" | "passport" | "cv" | "institutional_supplemental"
+    present: bool
+    scope_kind: ScopeKind
+    scope_descriptor: dict[str, Any]  # e.g. {"window_years": 5, "anchor": "<submission date>"}
+
+
+@dataclass(frozen=True)
+class DeclaredAffiliation:
+    """One institution/employer association the subject declared, tagged with
+    the source it came from."""
+
+    affiliation_id: str
+    source_id: str
+    institution_name: str
+    country: str | None
+    role: str | None
+    start_date: str | None
+    end_date: str | None
+    activity_kind: str | None  # "employment" | "education" | "membership" | ...
+
+
+@dataclass(frozen=True)
+class Declaration:
+    """The merged declared set for one subject: every available source, each
+    carrying its own scope, plus the flattened affiliation list."""
+
+    declaration_id: str
+    subject_id: str
+    synthetic: bool
+    sources: tuple[DeclarationSource, ...]
+    affiliations: tuple[DeclaredAffiliation, ...]
+
+    def __post_init__(self) -> None:
+        if self.synthetic is not True:
+            raise ValueError(
+                "Declaration.synthetic must be True -- see Subject.__post_init__."
+            )
+
+
+@dataclass(frozen=True)
+class Case:
+    """One case: one subject, one triggering event, one deadline, one file.
+    `statutory_deadline` is a first-class field, captured at intake, not a
+    note -- the case must reach CLOSED before that date (use-case doc
+    Section 5)."""
+
+    case_id: str
+    subject_id: str
+    trigger: str
+    access_scope: str
+    coverage_basis: CoverageBasis
+    synthetic: bool
+    state: CaseState = CaseState.INTAKE
+    statutory_deadline: date | None = None
+    office_id: str = "default"  # single-tenant for now; a later multi-tenant filter, not a migration
+
+
+@dataclass(frozen=True)
+class DiscoveredAffiliation:
+    """One institution/employer association found in a discovery source
+    (OpenAlex publications, the GLEIF ownership chain, NSF awards). The
+    measurable attributes are what Section 4 permits the system to state:
+    counts, date ranges, authorship position, country -- never an
+    evaluation of them.
+
+    `country_on_adversary_list` is None until the foreign-adversary-country
+    list exists (Section 12 step 4); None means "not yet checked," never
+    "clear" (use-case doc Section 7)."""
+
+    source: str  # "openalex" | "gleif_ownership" | "nsf_award"
+    institution_name: str
+    country: str | None
+    country_on_adversary_list: bool | None
+    adversary_list_version: str | None
+    first_observed: str | None
+    last_observed: str | None
+    record_count: int
+    role: str | None
+    source_refs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DeclarationSearch:
+    """Per-source: was this declaration source searched for the discovered
+    item, what scope does it cover, and does that scope admit the item. The
+    trail every Finding carries so an auditor can see which documents were
+    consulted and what each one asked for (use-case doc Section 4, Section 8)."""
+
+    source_kind: str
+    present: bool
+    scope_kind: ScopeKind
+    scope_descriptor: dict[str, Any]
+    covers_this_item: bool
+
+
+@dataclass(frozen=True)
+class NearestDeclared:
+    """A declared affiliation that came closest to matching a discovered one
+    without clearing -- retained so a genuine near-miss is visible, not
+    hidden (the same discipline as author_resolve keeping tied candidates)."""
+
+    declared_affiliation_id: str
+    institution_name: str
+    best_confidence: float
+    match_basis: str
+    cleared_name: bool
+    scope_compatible: bool
+
+
+class FactualBasis(Enum):
+    """Why a discovered affiliation surfaced as a Finding -- a factual
+    classification, never an evaluation (use-case doc Section 4)."""
+
+    ABSENT_FROM_IN_SCOPE_SOURCE = "absent_from_in_scope_source"
+    ABSENT_ONLY_OUTSIDE_SCOPE_WINDOWS = "absent_only_outside_scope_windows"
+    PARTIAL_MATCH_BELOW_THRESHOLD = "partial_match_below_threshold"
+
+
+@dataclass(frozen=True)
+class Finding:
+    """One discrepancy between the declared set and the discovered record.
+
+    Carries NO severity, risk, priority, score, materiality, tier, weight or
+    disposition field -- and neither does any type in its graph
+    (DiscoveredAffiliation, DeclarationSearch, NearestDeclared). An
+    evaluative claim about a person is not a thing this schema can hold. The
+    human's decision lives on a separate WorksheetAction / Adjudication
+    record. _FINDING_GRAPH_ALLOWED_FIELDS below is checked by cli.py
+    `validate`.
+    """
+
+    finding_id: str
+    case_id: str
+    run_id: str  # the reconciliation execution that produced it
+    discovered: DiscoveredAffiliation
+    declaration_search: tuple[DeclarationSearch, ...]
+    factual_basis: FactualBasis
+    nearest_declared: tuple[NearestDeclared, ...]
+    concern_list_evidence: tuple[ScreeningHit, ...] = ()
+    ownership_evidence: tuple[ForeignControlFlag, ...] = ()
+
+
+class WorksheetActionKind(Enum):
+    DISMISS = "dismiss"
+    REQUEST_CLARIFICATION = "request_clarification"
+    ESCALATE = "escalate"
+    CERTIFICATION_REQUIRED = "certification_required"  # flag as needing a Sec. 51B.153 certification
+
+
+@dataclass(frozen=True)
+class WorksheetAction:
+    """One analyst disposition of one Finding. `reason_code` is a controlled
+    vocabulary (see case/vocab.py) so the office's accumulated dismissal
+    bases can be aggregated -- the "how does your institution define
+    substantial?" by-product (use-case doc Section 4.1). `batch_id` groups a
+    bulk action taken across a class of findings in one step."""
+
+    finding_id: str
+    action: WorksheetActionKind
+    reason_code: str
+    reason_note: str
+    actor: str
+    recorded_at: str
+    batch_id: str | None = None
+
+
+@dataclass(frozen=True)
+class Adjudication:
+    """The analyst's assessment and recommendation for a case. Append-only:
+    re-opening a closed case appends a new Adjudication (seq + 1) rather than
+    editing the prior one, which stays intact and readable because it was
+    correct given what was known then (use-case doc Section 5)."""
+
+    case_id: str
+    seq: int
+    assessment: str
+    recommendation: str
+    actor: str
+    recorded_at: str
+
+
+@dataclass(frozen=True)
+class Certification:
+    """A department head's written certification under Sec. 51B.153 that a
+    non-disclosure may be disregarded, and why. The statute names this
+    document and requires a copy in the research security office's
+    investigative file."""
+
+    case_id: str
+    finding_id: str
+    substance_of_failure: str
+    reasons_for_disregarding: str
+    department_head: str
+    recorded_at: str
+
+
+# The frozen allowlist behind the fact/judgment boundary. cli.py `validate`
+# asserts that every type in the Finding graph has exactly the fields listed
+# here -- so adding e.g. `risk_tier` to DiscoveredAffiliation fails CI until
+# someone deliberately edits this dict in the same commit and is forced to
+# notice they are widening what the system is allowed to assert.
+_FINDING_GRAPH_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
+    "Finding": frozenset(
+        {
+            "finding_id",
+            "case_id",
+            "run_id",
+            "discovered",
+            "declaration_search",
+            "factual_basis",
+            "nearest_declared",
+            "concern_list_evidence",
+            "ownership_evidence",
+        }
+    ),
+    "DiscoveredAffiliation": frozenset(
+        {
+            "source",
+            "institution_name",
+            "country",
+            "country_on_adversary_list",
+            "adversary_list_version",
+            "first_observed",
+            "last_observed",
+            "record_count",
+            "role",
+            "source_refs",
+        }
+    ),
+    "DeclarationSearch": frozenset(
+        {"source_kind", "present", "scope_kind", "scope_descriptor", "covers_this_item"}
+    ),
+    "NearestDeclared": frozenset(
+        {
+            "declared_affiliation_id",
+            "institution_name",
+            "best_confidence",
+            "match_basis",
+            "cleared_name",
+            "scope_compatible",
+        }
+    ),
+}
+
+# Field-name substrings that must never appear on a Finding-graph type: an
+# evaluative claim about a person. Checked alongside the allowlist so a
+# rename that slips a new field past review still trips on the intent.
+_FORBIDDEN_FINDING_FIELD_TOKENS: tuple[str, ...] = (
+    "severity",
+    "risk",
+    "priority",
+    "score",
+    "materiality",
+    "tier",
+    "weight",
+    "disposition",
+    "rank",
+)

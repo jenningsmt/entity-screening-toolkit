@@ -210,6 +210,97 @@ CREATE TABLE IF NOT EXISTS ownership_flags (
     -- deletes by run_id first, so removing the PK does not create a
     -- duplication path.
 );
+
+-- --------------------------------------------------------------------------
+-- Case model (Use Case 01 -- HB 127 researcher screening). All additive:
+-- these tables are new, so plain CREATE TABLE IF NOT EXISTS is sufficient
+-- against a pre-existing DuckDB file -- unlike the screening_hits.producer
+-- column above, no existing table changes shape, so connect() needs no
+-- ALTER for any of this. See docs/plans/2026-09-06-use-case-01-implementation.md
+-- Section 4.3. Nested structures (a Declaration's sources/affiliations, a
+-- Finding's discovered/search/evidence) are JSON columns rather than
+-- normalized tables: each is always read and written as a whole, the same
+-- call the existing scored_entities.factors / screening_hits.evidence
+-- columns already make. Row marshalling lives in entity_screening/case/store.py.
+
+CREATE TABLE IF NOT EXISTS subjects (
+    subject_id VARCHAR PRIMARY KEY,
+    display_name VARCHAR,
+    coverage_basis VARCHAR,
+    synthetic BOOLEAN,
+    classified_fields JSON
+);
+
+CREATE TABLE IF NOT EXISTS declarations (
+    declaration_id VARCHAR PRIMARY KEY,
+    subject_id VARCHAR,
+    synthetic BOOLEAN,
+    sources JSON,
+    affiliations JSON
+);
+
+CREATE TABLE IF NOT EXISTS cases (
+    case_id VARCHAR PRIMARY KEY,
+    subject_id VARCHAR,
+    trigger VARCHAR,
+    access_scope VARCHAR,
+    coverage_basis VARCHAR,
+    synthetic BOOLEAN,
+    state VARCHAR,
+    statutory_deadline DATE,
+    office_id VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS findings (
+    finding_id VARCHAR,
+    case_id VARCHAR,
+    run_id VARCHAR,
+    discovered JSON,
+    declaration_search JSON,
+    factual_basis VARCHAR,
+    nearest_declared JSON,
+    concern_list_evidence JSON,
+    ownership_evidence JSON
+    -- "Current state per case" like scored_entities: reconcile_case deletes
+    -- WHERE case_id = ? before inserting. The immutable history is
+    -- adjudications (append-only) plus exported investigative files.
+    -- `run_id` cross-references the ReconciliationManifest; it is not a
+    -- scoping key.
+);
+
+CREATE TABLE IF NOT EXISTS worksheet_actions (
+    finding_id VARCHAR,
+    case_id VARCHAR,
+    action VARCHAR,
+    reason_code VARCHAR,
+    reason_note VARCHAR,
+    actor VARCHAR,
+    recorded_at VARCHAR,
+    batch_id VARCHAR
+    -- Append-only history. The latest row per finding_id is the effective
+    -- action; earlier rows are kept so a change of disposition is visible.
+);
+
+CREATE TABLE IF NOT EXISTS adjudications (
+    case_id VARCHAR,
+    seq INTEGER,
+    assessment VARCHAR,
+    recommendation VARCHAR,
+    actor VARCHAR,
+    recorded_at VARCHAR,
+    PRIMARY KEY (case_id, seq)
+    -- Append-only: re-opening a closed case appends seq + 1, never edits.
+);
+
+CREATE TABLE IF NOT EXISTS certifications (
+    case_id VARCHAR,
+    finding_id VARCHAR,
+    substance_of_failure VARCHAR,
+    reasons_for_disregarding VARCHAR,
+    department_head VARCHAR,
+    recorded_at VARCHAR
+    -- Append-only. Sec. 51B.153's named artifact.
+);
 """
 
 
