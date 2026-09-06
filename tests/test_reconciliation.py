@@ -137,13 +137,27 @@ def test_old_affiliation_outside_a_ds160_only_declaration_is_outside_scope():
 def test_near_match_is_classified_as_partial_not_a_stark_omission():
     decl = _declaration(
         [DeclarationSource("cv", "cv", True, ScopeKind.FULL_HISTORY, {})],
-        [_declared("Leland Stanford Junior University", "cv", "2010", "2014")],
+        [_declared("University of Texas at Austin", "cv", "2010", "2014")],
     )
-    findings = reconcile("c1", "r1", decl, [_discovered("Stanford University", "2011", "2013")])
+    findings = reconcile(
+        "c1", "r1", decl, [_discovered("University of Texas at Dallas", "2011", "2013")]
+    )
     assert len(findings) == 1
     assert findings[0].factual_basis == FactualBasis.PARTIAL_MATCH_BELOW_THRESHOLD
-    assert findings[0].nearest_declared[0].institution_name == "Leland Stanford Junior University"
-    assert 0.70 <= findings[0].nearest_declared[0].best_confidence < RECONCILIATION_THRESHOLD
+    assert findings[0].nearest_declared[0].institution_name == "University of Texas at Austin"
+    assert 0.85 <= findings[0].nearest_declared[0].best_confidence < RECONCILIATION_THRESHOLD
+
+
+def test_a_low_shared_word_match_is_a_stark_omission_not_a_partial():
+    # "Fudan University" vs "Stanford University" share only "university" --
+    # ~0.74 on token-sort, not a real near-match.
+    decl = _declaration(
+        [DeclarationSource("cv", "cv", True, ScopeKind.FULL_HISTORY, {})],
+        [_declared("Stanford University", "cv", "2010", "2014")],
+    )
+    findings = reconcile("c1", "r1", decl, [_discovered("Fudan University", "2011", "2013")])
+    assert len(findings) == 1
+    assert findings[0].factual_basis == FactualBasis.ABSENT_FROM_IN_SCOPE_SOURCE
 
 
 # --- discovery from a fixture -------------------------------------------

@@ -301,6 +301,16 @@ CREATE TABLE IF NOT EXISTS certifications (
     recorded_at VARCHAR
     -- Append-only. Sec. 51B.153's named artifact.
 );
+
+CREATE TABLE IF NOT EXISTS case_outcomes (
+    case_id VARCHAR,
+    outcome VARCHAR,       -- cleared | cleared_with_certification | not_cleared | withdrawn
+    note VARCHAR,
+    actor VARCHAR,
+    recorded_at VARCHAR
+    -- Append-only; the latest row is the effective outcome. A re-opened case
+    -- that reaches Outcome again appends a new row, the prior one intact.
+);
 """
 
 

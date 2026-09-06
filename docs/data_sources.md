@@ -401,12 +401,20 @@ direction here (a spurious finding, dismissed once), not the dangerous one.
 0.90 clears every genuine same-institution pair except two that are
 genuinely hard — "UC Berkeley" as a bare acronym-in-context (0.46) and
 "Stanford University" vs the legal "Leland Stanford Junior University"
-(0.73) — both of which surface as `PARTIAL_MATCH_BELOW_THRESHOLD` findings
-(floor 0.70) with the near-match shown in `nearest_declared`, not as a
-stark omission. It sits above USTC-vs-USTB (0.876), the highest-scoring
-distinct pair found, so a real omission at a concern-adjacent university is
-not absorbed. Provisional pending a larger pass against live OpenAlex once
-that access is available; re-measure and adjust the constant if it moves.
+(0.73). It sits above USTC-vs-USTB (0.876), the highest-scoring distinct
+pair found, so a real omission at a concern-adjacent university is not
+absorbed. Provisional pending a larger pass against live OpenAlex once that
+access is available; re-measure and adjust the constant if it moves.
+
+`PARTIAL_MATCH_FLOOR` (**0.85**) is a second band: a discovered name that
+scores in `[0.85, 0.90)` against a declared one is classified
+`PARTIAL_MATCH_BELOW_THRESHOLD` (a plausible-same near-miss) rather than a
+stark omission. Not lower, because two unrelated `<X> University` names
+share the "university" token and land around 0.74–0.82 on token-sort (Fudan
+vs Stanford 0.74, Peking vs Tsinghua 0.78) — not a real near-match. This
+band only sets a row's headline classification; `nearest_declared` is
+populated regardless, so the analyst sees a weak declared match either way.
+Also provisional.
 
 ## Sources reserved for V3
 

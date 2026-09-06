@@ -29,7 +29,16 @@ from entity_screening.resolution.matcher import score_pair
 from entity_screening.resolution.normalize import normalize_institution_name
 
 RECONCILIATION_THRESHOLD = 0.90
-PARTIAL_MATCH_FLOOR = 0.70
+# Below the match threshold but close enough that a declared affiliation is
+# plausibly the same one -- classified PARTIAL_MATCH_BELOW_THRESHOLD rather
+# than a stark omission, with the near-match shown in `nearest_declared`.
+# 0.85, not lower: two unrelated "<X> University" names share the "university"
+# token and land around 0.74-0.82 on token-sort (Fudan vs Stanford, 0.74;
+# Peking vs Tsinghua, 0.78), which is not a real near-match. `nearest_declared`
+# is populated regardless of this band, so the analyst sees a weak match
+# either way -- this only sets the row's headline classification. Provisional,
+# same status as RECONCILIATION_THRESHOLD (docs/data_sources.md).
+PARTIAL_MATCH_FLOOR = 0.85
 
 
 @dataclass(frozen=True)

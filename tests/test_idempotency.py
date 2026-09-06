@@ -202,3 +202,55 @@ def test_enrich_topic_similarity_is_idempotent_and_does_not_disturb_bibliometric
     # hit -- openalex_author_matches is what actually proves survival here.)
     assert _table_count(db_path, "screening_hits", manifest.run_id) == bibliometric_hits_before
     assert _table_count(db_path, "openalex_author_matches", manifest.run_id) == author_matches_before > 0
+
+
+def test_reconcile_case_is_current_state_and_reopen_preserves_the_prior_adjudication(tmp_path):
+    """The case path's version of the same property: re-running reconciliation
+    replaces the finding set (not append), and a re-open leaves the earlier
+    adjudication and its worksheet actions intact and readable."""
+    from entity_screening.case import demo, service, store
+    from entity_screening.common.schema import CaseState, WorksheetActionKind
+
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    demo.build_demo_case(conn)
+    conn.close()
+
+    kwargs = dict(
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+    _, findings_1 = pipeline.reconcile_case("demo", **kwargs)
+    _, findings_2 = pipeline.reconcile_case("demo", **kwargs)
+
+    conn = storage.connect(db_path)
+    # (a)/(b): current-state -- re-run replaces, does not accumulate.
+    assert len(findings_1) == len(findings_2) == len(store.load_findings(conn, "demo"))
+
+    # Work the worksheet, adjudicate, close.
+    for row in service.worksheet(conn, "demo").rows:
+        service.record_action(
+            conn, "demo", row.finding.finding_id, WorksheetActionKind.DISMISS,
+            "analyst_judgment_not_material", "reviewed", "analyst.a",
+        )
+    service.transition(conn, "demo", CaseState.ADJUDICATION)
+    first_adj = service.record_adjudication(conn, "demo", "Cleared.", "Proceed.", "analyst.a")
+    service.transition(conn, "demo", CaseState.OUTCOME)
+    service.record_outcome(conn, "demo", "cleared", "analyst.a")
+    service.transition(conn, "demo", CaseState.CLOSED)
+    actions_before = len(store.load_worksheet_actions(conn, "demo"))
+    service.reopen_case(conn, "demo")
+    conn.close()
+
+    # Re-reconcile after re-open.
+    pipeline.reconcile_case("demo", **kwargs)
+    conn = storage.connect(db_path)
+    # (c): the prior adjudication and worksheet actions survive the re-open
+    # and the fresh reconciliation.
+    adjudications = store.load_adjudications(conn, "demo")
+    assert adjudications[0] == first_adj
+    assert len(store.load_worksheet_actions(conn, "demo")) == actions_before > 0
+    conn.close()
