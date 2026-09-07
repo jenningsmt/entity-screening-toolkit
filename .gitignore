@@ -22,6 +22,10 @@ data/processed/*
 .DS_Store
 Thumbs.db
 
+# Local scratch: files handed in for one-off use (e.g. an image to swap in),
+# not repo content in their own right.
+Claude outputs/
+
 # Terraform (infra/) -- state and the local provider-plugin cache never
 # belong in git. infra/.terraform.lock.hcl (the dependency lock file) is
 # the one exception: that SHOULD be committed, so it's deliberately not

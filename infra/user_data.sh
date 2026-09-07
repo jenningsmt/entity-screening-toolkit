@@ -50,8 +50,8 @@ git clone --depth 1 "$REPO_URL" "$APP_DIR"
 # --- Placeholder page at the apex, Monops itself lives at /monops ----------
 mkdir -p /var/www/monops-placeholder
 cp "$APP_DIR/infra/placeholder/index.html" /var/www/monops-placeholder/index.html
-if [ -f "$APP_DIR/assets/monops-logo.jpeg" ]; then
-    cp "$APP_DIR/assets/monops-logo.jpeg" /var/www/monops-placeholder/monops-logo.jpeg
+if [ -f "$APP_DIR/assets/monops-logo.png" ]; then
+    cp "$APP_DIR/assets/monops-logo.png" /var/www/monops-placeholder/monops-logo.png
 fi
 # Workstream 2e: keep the demo out of search indexes and casual scrapers.
 # Host-wide by nature (one robots.txt per origin) -- revisit this, not add a

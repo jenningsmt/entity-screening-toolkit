@@ -1,6 +1,6 @@
 # Monops -- Entity & Research-Affiliation Screening Toolkit
 
-![Monops logo](assets/monops-logo.jpeg)
+![Monops logo](assets/monops-logo.png)
 
 **Status:** V1–V3 built; the project then moved from corpus screening to **case-based review** (`docs/requirements.md` Section 9c). The first vertical slice of **Use Case 01 — Texas HB 127 researcher screening** is built: a subject-in / worked-worksheet-and-investigative-file-out workflow that reconciles a declared affiliation set against public records (`docs/use-case-01-hb127-researcher-screening.md`, `docs/plans/2026-09-06-use-case-01-implementation.md`). The HB 127 case worksheet is the visitor-facing view; the batch pipeline stays for population re-screening. The project is named **Monops**; publicly deployed on AWS Lightsail — **[mikejennings.dev/monops](https://mikejennings.dev/monops)**.
 
