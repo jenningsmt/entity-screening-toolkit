@@ -30,7 +30,7 @@ APP_DIR="/opt/monops"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y --no-install-recommends \
-    ca-certificates curl gnupg git nginx certbot python3-certbot-nginx
+    ca-certificates curl gnupg git nginx certbot python3-certbot-nginx openssl
 
 # --- Docker Engine + Compose plugin, from Docker's own apt repo -----------
 install -m 0755 -d /etc/apt/keyrings
@@ -71,6 +71,31 @@ nginx -t
 systemctl enable --now nginx
 systemctl reload nginx
 
+# --- Action-gate secret ----------------------------------------------------
+# docker-compose.prod.yml reads MONOPS_ACTION_SECRET=${MONOPS_ACTION_SECRET:-}
+# from the environment compose is invoked in. The monops.service unit below
+# passes NO environment, so without this it resolves to empty -- and
+# api/main.py:_require_action_secret documents that an unset secret means
+# *every action is unlocked*. It fails open and it fails silently (only
+# /health's action_gate_enabled would ever hint at it). So the bootstrap
+# mints one and hands it to the unit via EnvironmentFile.
+#
+# Never overwritten: a manual re-run of this script on a box that already has
+# /etc/monops.env must not rotate the operator's secret out from under them.
+# `set +x` around the write so the secret never lands in the bootstrap log
+# (which is tee'd to /var/log/monops-bootstrap.log); the path is echoed at
+# the end, the value never is.
+set +x
+if [ ! -f /etc/monops.env ]; then
+    monops_secret="$(openssl rand -hex 24)"
+    [ -n "$monops_secret" ] || { echo "FATAL: could not generate MONOPS_ACTION_SECRET" >&2; exit 1; }
+    ( umask 077; printf 'MONOPS_ACTION_SECRET=%s\n' "$monops_secret" > /etc/monops.env )
+    unset monops_secret
+    chown root:root /etc/monops.env
+    chmod 600 /etc/monops.env
+fi
+set -x
+
 # --- App stack, wrapped in a systemd unit so it survives a crash/reboot ----
 # (on top of docker-compose.prod.yml's own `restart: unless-stopped` --
 # belt and suspenders, and matches docs/requirements.md Section 9's explicit
@@ -87,6 +112,11 @@ Type=oneshot
 RemainAfterExit=yes
 Restart=on-failure
 WorkingDirectory=/opt/monops
+# Supplies MONOPS_ACTION_SECRET (written above, root-only) into compose's
+# environment, so docker-compose.prod.yml's ${MONOPS_ACTION_SECRET:-}
+# resolves to the real value instead of empty. Without this the public
+# instance boots with the action gate open.
+EnvironmentFile=/etc/monops.env
 ExecStart=/bin/bash -c 'cd /opt/monops && GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build'
 ExecStop=/usr/bin/docker compose -f /opt/monops/docker-compose.yml -f /opt/monops/docker-compose.prod.yml down
 
@@ -98,3 +128,4 @@ systemctl daemon-reload
 systemctl enable --now monops.service
 
 echo "Monops bootstrap complete: $(date -u)"
+echo "Action-gate secret written to /etc/monops.env (root-only). Read it with: sudo cat /etc/monops.env -- it is required in the UI sidebar to use any gated action."

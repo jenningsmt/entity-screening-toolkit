@@ -103,6 +103,12 @@ Follow the prompts (it'll offer to redirect HTTP to HTTPS -- take it).
 Certbot's own systemd timer (`certbot.timer`, installed with the package)
 handles renewal automatically; no cron entry needed on current Ubuntu.
 
+From this point the deployed nginx vhost is **certbot-managed** and has
+diverged from `infra/nginx/monops.conf` (which stays HTTP-only). Never copy
+the template over it -- see §7a for why and for how nginx changes are
+actually applied. If TLS is ever clobbered anyway, recover with
+`sudo certbot install --nginx --cert-name mikejennings.dev`.
+
 Confirm in a browser: `https://mikejennings.dev/monops` should load with a
 valid padlock and the actual Streamlit UI -- not a "Please wait..." spinner
 that never resolves, which is the classic symptom of a websocket or
@@ -117,6 +123,7 @@ new commit to the running instance:
 ssh -i ~/.ssh/monops_lightsail ubuntu@<static-ip>
 sudo git config --global --add safe.directory /opt/monops
 sudo git -C /opt/monops pull
+sudo git -C /opt/monops rev-parse HEAD          # check this against the commit you expect
 sudo systemctl restart monops
 ```
 
@@ -129,11 +136,45 @@ operate on a repo it doesn't own unless told otherwise, and `ubuntu` likely
 also doesn't have plain write permission on root-owned files regardless. The
 `sudo git config --global --add safe.directory` line is a one-time fix (it
 edits *root's* global gitconfig, since every command here already runs via
-`sudo`) -- every redeploy after the first one only needs the `git pull` and
-`systemctl restart` lines. **A silent trap worth knowing about:** if this
-step is skipped, `git pull` fails but `sudo systemctl restart monops` still
-succeeds -- it just restarts the *old* code, with no error surfaced anywhere
-that would tell you the deploy didn't actually ship anything new.
+`sudo`) -- every redeploy after the first one only needs the `git pull`,
+`rev-parse` check and `systemctl restart` lines. **A silent trap worth
+knowing about:** if this step is skipped, `git pull` fails but `sudo
+systemctl restart monops` still succeeds -- it just restarts the *old* code,
+with no error surfaced anywhere that would tell you the deploy didn't
+actually ship anything new. That is why the `rev-parse HEAD` check is in the
+sequence: it is the only thing that actually confirms new code landed.
+
+### 7a. What a `git pull` deploy does NOT touch
+
+- **nginx config does not ship via `git pull`.** `infra/user_data.sh` copies
+  `infra/nginx/monops.conf` into place exactly once, at first boot. After
+  certbot runs (step 6) the deployed vhost is certbot-managed and has
+  diverged from the repo template -- see that file's own header. To apply an
+  nginx change (e.g. the 2026-09-07 rate-limit fix): hand-edit the deployed
+  `/etc/nginx/sites-available/monops` on the instance to match the two
+  changes the template now carries (the `/monops/static/` location, and
+  `burst=100` on `/monops`), then `sudo nginx -t && sudo systemctl reload
+  nginx`. Copying the template over the deployed file destroys TLS -- this
+  happened 2026-09-06, took the site down with `ERR_CONNECTION_REFUSED`, and
+  was recovered with `sudo certbot install --nginx --cert-name
+  mikejennings.dev`.
+- **The action-gate secret does not ship either.** It is minted once by the
+  bootstrap into `/etc/monops.env` (root-only) and loaded by the
+  `monops.service` unit via `EnvironmentFile=`. Read it with `sudo cat
+  /etc/monops.env`; the value is what you paste into the UI sidebar's
+  "Action secret" field to run any gated action. A `terraform apply` rebuild
+  on a box that already has this file leaves it alone (the bootstrap never
+  overwrites it).
+
+### 7b. After a deploy that changes the case path
+
+Warm the self-healing demo case so the first real visitor doesn't pay the
+build cost (and so a stale `DEMO_FIXTURE_VERSION` rebuild happens now, not
+under load):
+
+```
+curl -s http://127.0.0.1:8000/cases/demo/worksheet > /dev/null
+```
 
 ## 8. Public-demo security posture (Workstream 2)
 
@@ -149,8 +190,11 @@ is a hard requirement to get the stack running:
   sliders, and exports all stay open regardless -- this gates *actions*, not
   read access (see `docs/plans/2026-09-02-remediation-pass.md`'s Workstream
   2 for the full reasoning on why site-wide auth was deliberately rejected).
-  Set the actual value in the deploying shell's own environment before
-  `docker compose up` -- **never commit the real secret value to the repo.**
+  On a fresh instance the bootstrap now mints this into `/etc/monops.env` and
+  the systemd unit loads it (see §7a) -- so a bootstrapped instance is gated
+  by default. To rotate it, edit `/etc/monops.env` on the instance and
+  `sudo systemctl restart monops`. **Never commit the real secret value to
+  the repo.**
 - **`MONOPS_DATA_FILE_ALLOWLIST`** -- restricts `nsf_file`/`opensanctions_file`/
   GLEIF file paths `POST /runs` and `POST /runs/{id}/ownership` will accept
   to the four bundled demo/sample fixtures (`docker-compose.prod.yml` sets
@@ -168,9 +212,14 @@ scraper that simply ignores them):
   disallowing `/monops/` (`curl https://mikejennings.dev/robots.txt`).
 
 The actual defence against request volume is `infra/nginx/monops.conf`'s
-rate limit (`limit_req_zone`, 5 req/s per client IP with a burst of 20),
-which exempts Streamlit's websocket upgrade requests so the live UI doesn't
-stutter under its own budget.
+rate limit (`limit_req_zone`, 5 req/s per client IP, burst 100), which
+exempts Streamlit's websocket upgrade requests so the live UI doesn't
+stutter under its own budget, and does not rate-limit `/monops/static/` at
+all -- a fresh Streamlit page pulls ~150 lazily-imported frontend chunks in
+one burst, and the original burst of 20 rejected the excess with 503,
+breaking the site for every cold-cache visitor (found 2026-09-07, after
+days unnoticed because a warm cache never hits the limit). Every expensive
+operation is behind the action secret regardless.
 
 ## 9. Housekeeping (Section 9's remaining asks)
 
