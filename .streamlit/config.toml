@@ -1,0 +1,24 @@
+# Streamlit project config. Checked in on purpose -- this is the authoritative
+# place the app's theme is set, and it applies identically to `streamlit run
+# app.py` locally, `scripts/compose-up.ps1`, and the deployed container (copied
+# to /app/.streamlit/config.toml by Dockerfile.streamlit's `COPY . .`).
+#
+# NOTE for anyone adding Streamlit secrets later: put them in
+# .streamlit/secrets.toml and add THAT file to .gitignore specifically. Do not
+# ignore the whole .streamlit/ directory -- this config must stay tracked, or
+# the theme silently reverts to per-visitor OS preference in the built image.
+
+[theme]
+# The sidebar logo (assets/monops-logo.png) is an opaque dark-navy card drawn
+# for a dark ground. Pinning to dark makes the sidebar ground match it, and --
+# the real reason -- makes a single-view public demo present the same way for
+# every visitor instead of following each one's OS light/dark preference.
+#
+# `base = "dark"` only, no hand-tuned palette: Streamlit's built-in dark theme
+# is contrast-checked across every widget, and the worksheet's fact/judgment
+# presentation (plain dataframes, st.json evidence, the alert callouts that
+# carry the closure rule) must not be degraded to make the logo sit better.
+#
+# This is a default, not a lock: a visitor can still switch to light via
+# the overflow menu -> Settings -> "Choose app theme".
+base = "dark"

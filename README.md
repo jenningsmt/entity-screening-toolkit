@@ -51,6 +51,11 @@ uvicorn entity_screening.api.main:app --reload
 streamlit run app.py   # in a second terminal — opens on the self-healing demo case
 ```
 
+The app defaults to a dark theme (`.streamlit/config.toml`) so the demo presents the same
+way for every visitor rather than following each one's OS light/dark preference; a visitor
+can still switch via Settings → "Choose app theme". Any future demo screenshot or GIF
+should be captured in the dark theme.
+
 The demo case (`case_id="demo"`) builds itself from bundled synthetic fixtures on first
 access: a fabricated subject, a structured declaration, a labelled synthetic publication
 record, and a fabricated GLEIF ownership chain whose ultimate parent is named for a real

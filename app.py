@@ -38,11 +38,14 @@ st.set_page_config(page_title="HB 127 Researcher Screening", layout="wide")
 #
 # The asset is a PNG but NOT transparent -- verified: it is a solid, opaque
 # dark-navy (~#001020) rectangle, alpha 255 everywhere except a couple of
-# anti-aliased corner pixels. So the theme behaviour is unchanged in kind
-# from the earlier JPEG: in dark mode the navy is close enough to Streamlit's
-# dark sidebar to pass; in light mode it reads as a dark-navy block on the
-# light-grey panel. `size="medium"` keeps that block from dominating. A
-# genuinely transparent logo is still the real fix.
+# anti-aliased corner pixels. That is why the app's theme is now pinned dark
+# (.streamlit/config.toml, base = "dark"): Streamlit's dark sidebar is close
+# enough to ~#001020 that the card blends in. Pinning also makes the demo
+# present the same way for every visitor instead of following their OS
+# preference. A visitor can still switch to light via Settings -> "Choose app
+# theme", and on that light panel the card reads as a dark-navy block --
+# `size="medium"` keeps it from dominating, and a genuinely transparent logo
+# would still be the real fix for that case.
 _LOGO = Path(__file__).resolve().parent / "assets" / "monops-logo.png"
 if _LOGO.exists():
     st.logo(str(_LOGO), size="medium")

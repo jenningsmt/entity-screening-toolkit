@@ -7,7 +7,12 @@ pyarrow
 rapidfuzz
 
 # UI
-streamlit
+# Pinned (the rest of this file is not -- a full pin sweep is separate debt):
+# .streamlit/config.toml pins the app to a dark theme, and an unpinned rebuild
+# would resolve streamlit to whatever is newest on PyPI that day, shipping the
+# theme config into an untested version. 1.63.0 is the version already running
+# in the deployed image (read via `docker exec` over SSH, 2026-09-07).
+streamlit==1.63.0
 
 # HTTP / API access (NSF, OpenAlex, EDSM-style APIs; Streamlit -> API client)
 requests
