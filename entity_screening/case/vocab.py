@@ -54,8 +54,68 @@ ESCALATION_REASON_CODES: dict[str, str] = {
     "other": "See the note.",
 }
 
+# --------------------------------------------------------------------------
+# ConcernTie vocabularies (Sec. 51B.151(b)). `outside_declaration_scope` is
+# meaningful for a discrepancy and meaningless for a tie -- a tie's dismissal
+# turns on the relationship's currency, the designation's timing, or its
+# materiality to the requested access scope.
+# --------------------------------------------------------------------------
+
+TIE_DISMISS_REASON_CODES: dict[str, str] = {
+    "historical_or_divested_relationship": (
+        "The tie is to a relationship that has ended -- the ownership link or the "
+        "subject's involvement is no longer current."
+    ),
+    "designation_postdates_the_relationship": (
+        "The concern-list designation took effect after the subject's involvement "
+        "ended (cite both dates in the note)."
+    ),
+    "immaterial_to_requested_access_scope": (
+        "The tie does not touch the research data or systems this access request "
+        "concerns. The access scope and the reasoning are in the note."
+    ),
+    "misidentified_entity": (
+        "The name match is to a different entity than the concern-listed one "
+        "(the 'Chinese Academy of Sciences' / 'Ordnance Science' shape)."
+    ),
+    "known_and_previously_reviewed": (
+        "Reviewed in a prior case or disclosure cycle; disposition on record."
+    ),
+    "analyst_judgment_tie_does_not_impair": (
+        "In the analyst's judgment the tie would not prevent this person, in this "
+        "role, from maintaining the security or integrity of the research. The "
+        "reasoning is in the note -- this code records only that the basis was the "
+        "analyst's own Sec. 51B.151(b) judgment. (This value states the human's "
+        "conclusion, which is the right side of the fact/judgment line; the "
+        "forbidden-token guard in common/schema.py applies to field names on the "
+        "observation types, not to reason-code values.)"
+    ),
+    "other": "A basis not covered above; see the note.",
+}
+
+TIE_ESCALATION_REASON_CODES: dict[str, str] = {
+    "needs_supervisor_review": "Beyond the analyst's authority to dispose of alone.",
+    "needs_export_control_review": "Implicates export-control / restricted-party questions.",
+    "needs_counterintelligence_referral": (
+        "Meets the office's threshold for referral to the institution's research "
+        "security / counterintelligence point of contact."
+    ),
+    "needs_subject_clarification": "Cannot be dispositioned without input from the subject.",
+    "recommend_access_scope_limitation": (
+        "Route to the department with a recommendation to limit what the person can "
+        "access, rather than to block employment."
+    ),
+    "other": "See the note.",
+}
+
 
 def is_valid_reason_code(action: str, reason_code: str) -> bool:
     if action == "dismiss":
         return reason_code in DISMISS_REASON_CODES
     return reason_code in ESCALATION_REASON_CODES
+
+
+def is_valid_tie_reason_code(action: str, reason_code: str) -> bool:
+    if action == "dismiss":
+        return reason_code in TIE_DISMISS_REASON_CODES
+    return reason_code in TIE_ESCALATION_REASON_CODES

@@ -38,6 +38,7 @@ from entity_screening.common.schema import (
     Case,
     CaseState,
     Certification,
+    ConcernTie,
     CoverageBasis,
     DeclaredAffiliation,
     Declaration,
@@ -52,6 +53,8 @@ from entity_screening.common.schema import (
     ScopeKind,
     ScreeningHit,
     Subject,
+    TieAction,
+    TieKind,
     WorksheetAction,
     WorksheetActionKind,
 )
@@ -385,6 +388,12 @@ def _flag_from_dict(data: dict) -> ForeignControlFlag:
     )
 
 
+_FINDING_COLUMNS = (
+    "finding_id, case_id, run_id, discovered, declaration_search, "
+    "factual_basis, nearest_declared"
+)
+
+
 def replace_findings(
     conn: duckdb.DuckDBPyConnection,
     case_id: str,
@@ -393,7 +402,12 @@ def replace_findings(
     """Current-state per case: deletes this case's findings, then inserts.
     Re-running reconciliation replaces the set. `run_id` on each Finding is
     kept as a column for cross-reference to the ReconciliationManifest, not
-    as a scoping key."""
+    as a scoping key.
+
+    Columns are named explicitly so a DuckDB file created before the
+    concern_list_evidence / ownership_evidence columns were dropped still
+    works -- those vestigial columns just default to NULL and are never
+    read."""
     conn.execute("DELETE FROM findings WHERE case_id = ?", [case_id])
     rows = [
         (
@@ -404,22 +418,18 @@ def replace_findings(
             json.dumps([_search_to_dict(s) for s in f.declaration_search], default=str),
             f.factual_basis.value,
             json.dumps([_nearest_to_dict(n) for n in f.nearest_declared], default=str),
-            json.dumps([_hit_to_dict(h) for h in f.concern_list_evidence], default=str),
-            json.dumps([_flag_to_dict(fl) for fl in f.ownership_evidence], default=str),
         )
         for f in findings
     ]
     if rows:
         conn.executemany(
-            "INSERT INTO findings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
+            f"INSERT INTO findings ({_FINDING_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)", rows
         )
 
 
 def load_findings(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[Finding]:
     rows = conn.execute(
-        "SELECT finding_id, case_id, run_id, discovered, declaration_search, "
-        "factual_basis, nearest_declared, concern_list_evidence, ownership_evidence "
-        "FROM findings WHERE case_id = ? ORDER BY finding_id",
+        f"SELECT {_FINDING_COLUMNS} FROM findings WHERE case_id = ? ORDER BY finding_id",
         [case_id],
     ).fetchall()
     findings = []
@@ -431,8 +441,6 @@ def load_findings(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[Finding
         declaration_search,
         factual_basis,
         nearest_declared,
-        concern_list_evidence,
-        ownership_evidence,
     ) in rows:
         findings.append(
             Finding(
@@ -447,6 +455,95 @@ def load_findings(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[Finding
                 nearest_declared=tuple(
                     _nearest_from_dict(d) for d in json.loads(nearest_declared)
                 ),
+            )
+        )
+    return findings
+
+
+# --------------------------------------------------------------------------
+# Concern ties (Sec. 51B.151(b))
+# --------------------------------------------------------------------------
+
+_TIE_COLUMNS = (
+    "tie_id, case_id, run_id, tie_kind, anchor_affiliation_id, related_finding_id, "
+    "concern_entity_name, country, country_on_adversary_list, adversary_list_version, "
+    "first_observed, last_observed, record_count, concern_list_evidence, ownership_evidence"
+)
+
+
+def replace_ties(
+    conn: duckdb.DuckDBPyConnection, case_id: str, ties: Iterable[ConcernTie]
+) -> None:
+    """Current-state per case, same as replace_findings."""
+    conn.execute("DELETE FROM concern_ties WHERE case_id = ?", [case_id])
+    rows = [
+        (
+            t.tie_id,
+            t.case_id,
+            t.run_id,
+            t.tie_kind.value,
+            t.anchor_affiliation_id,
+            t.related_finding_id,
+            t.concern_entity_name,
+            t.country,
+            t.country_on_adversary_list,
+            t.adversary_list_version,
+            t.first_observed,
+            t.last_observed,
+            t.record_count,
+            json.dumps([_hit_to_dict(h) for h in t.concern_list_evidence], default=str),
+            json.dumps([_flag_to_dict(fl) for fl in t.ownership_evidence], default=str),
+        )
+        for t in ties
+    ]
+    if rows:
+        conn.executemany(
+            f"INSERT INTO concern_ties ({_TIE_COLUMNS}) VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+
+
+def load_ties(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[ConcernTie]:
+    rows = conn.execute(
+        f"SELECT {_TIE_COLUMNS} FROM concern_ties WHERE case_id = ? ORDER BY tie_id",
+        [case_id],
+    ).fetchall()
+    ties = []
+    for (
+        tie_id,
+        case_id,
+        run_id,
+        tie_kind,
+        anchor_affiliation_id,
+        related_finding_id,
+        concern_entity_name,
+        country,
+        country_on_adversary_list,
+        adversary_list_version,
+        first_observed,
+        last_observed,
+        record_count,
+        concern_list_evidence,
+        ownership_evidence,
+    ) in rows:
+        ties.append(
+            ConcernTie(
+                tie_id=tie_id,
+                case_id=case_id,
+                run_id=run_id,
+                tie_kind=TieKind(tie_kind),
+                anchor_affiliation_id=anchor_affiliation_id,
+                related_finding_id=related_finding_id,
+                concern_entity_name=concern_entity_name,
+                country=country,
+                country_on_adversary_list=(
+                    None if country_on_adversary_list is None else bool(country_on_adversary_list)
+                ),
+                adversary_list_version=adversary_list_version,
+                first_observed=first_observed,
+                last_observed=last_observed,
+                record_count=int(record_count) if record_count is not None else 0,
                 concern_list_evidence=tuple(
                     _hit_from_dict(d) for d in json.loads(concern_list_evidence)
                 ),
@@ -455,7 +552,7 @@ def load_findings(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[Finding
                 ),
             )
         )
-    return findings
+    return ties
 
 
 # --------------------------------------------------------------------------
@@ -513,6 +610,73 @@ def effective_actions(
     for action in load_worksheet_actions(conn, case_id):
         effective[action.finding_id] = action
     return effective
+
+
+# --------------------------------------------------------------------------
+# Tie actions (mirror of worksheet actions, keyed to tie_id)
+# --------------------------------------------------------------------------
+
+
+def append_tie_action(
+    conn: duckdb.DuckDBPyConnection, case_id: str, action: TieAction
+) -> None:
+    conn.execute(
+        "INSERT INTO tie_actions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            action.tie_id,
+            case_id,
+            action.action.value,
+            action.reason_code,
+            action.reason_note,
+            action.actor,
+            action.recorded_at,
+            action.batch_id,
+        ],
+    )
+
+
+def load_tie_actions(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[TieAction]:
+    rows = conn.execute(
+        "SELECT tie_id, action, reason_code, reason_note, actor, recorded_at, batch_id "
+        "FROM tie_actions WHERE case_id = ? ORDER BY recorded_at",
+        [case_id],
+    ).fetchall()
+    return [
+        TieAction(
+            tie_id=tie_id,
+            action=WorksheetActionKind(action),
+            reason_code=reason_code,
+            reason_note=reason_note,
+            actor=actor,
+            recorded_at=recorded_at,
+            batch_id=batch_id,
+        )
+        for tie_id, action, reason_code, reason_note, actor, recorded_at, batch_id in rows
+    ]
+
+
+def effective_tie_actions(
+    conn: duckdb.DuckDBPyConnection, case_id: str
+) -> dict[str, TieAction]:
+    effective: dict[str, TieAction] = {}
+    for action in load_tie_actions(conn, case_id):
+        effective[action.tie_id] = action
+    return effective
+
+
+# --------------------------------------------------------------------------
+# Demo-fixture version marker
+# --------------------------------------------------------------------------
+
+
+def demo_meta_get(conn: duckdb.DuckDBPyConnection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM demo_meta WHERE key = ?", [key]).fetchone()
+    return None if row is None else row[0]
+
+
+def demo_meta_set(conn: duckdb.DuckDBPyConnection, key: str, value: str) -> None:
+    conn.execute("DELETE FROM demo_meta WHERE key = ?", [key])
+    conn.execute("INSERT INTO demo_meta VALUES (?, ?)", [key, value])
 
 
 # --------------------------------------------------------------------------

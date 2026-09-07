@@ -206,8 +206,8 @@ def test_enrich_topic_similarity_is_idempotent_and_does_not_disturb_bibliometric
 
 def test_reconcile_case_is_current_state_and_reopen_preserves_the_prior_adjudication(tmp_path):
     """The case path's version of the same property: re-running reconciliation
-    replaces the finding set (not append), and a re-open leaves the earlier
-    adjudication and its worksheet actions intact and readable."""
+    replaces both the finding set AND the concern-tie set (not append), and a
+    re-open leaves the earlier adjudication and its actions intact."""
     from entity_screening.case import demo, service, store
     from entity_screening.common.schema import CaseState, WorksheetActionKind
 
@@ -223,18 +223,24 @@ def test_reconcile_case_is_current_state_and_reopen_preserves_the_prior_adjudica
         gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
         gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
-    _, findings_1 = pipeline.reconcile_case("demo", **kwargs)
-    _, findings_2 = pipeline.reconcile_case("demo", **kwargs)
+    _, f1, t1 = pipeline.reconcile_case("demo", **kwargs)
+    _, f2, t2 = pipeline.reconcile_case("demo", **kwargs)
 
     conn = storage.connect(db_path)
     # (a)/(b): current-state -- re-run replaces, does not accumulate.
-    assert len(findings_1) == len(findings_2) == len(store.load_findings(conn, "demo"))
+    assert len(f1) == len(f2) == len(store.load_findings(conn, "demo"))
+    assert len(t1) == len(t2) == len(store.load_ties(conn, "demo")) == 1
 
-    # Work the worksheet, adjudicate, close.
+    # Work the whole worksheet, adjudicate, close.
     for row in service.worksheet(conn, "demo").rows:
         service.record_action(
             conn, "demo", row.finding.finding_id, WorksheetActionKind.DISMISS,
             "analyst_judgment_not_material", "reviewed", "analyst.a",
+        )
+    for row in service.worksheet(conn, "demo").tie_rows:
+        service.record_tie_action(
+            conn, "demo", row.tie.tie_id, WorksheetActionKind.ESCALATE,
+            "needs_counterintelligence_referral", "reviewed", "analyst.a",
         )
     service.transition(conn, "demo", CaseState.ADJUDICATION)
     first_adj = service.record_adjudication(conn, "demo", "Cleared.", "Proceed.", "analyst.a")
@@ -248,9 +254,9 @@ def test_reconcile_case_is_current_state_and_reopen_preserves_the_prior_adjudica
     # Re-reconcile after re-open.
     pipeline.reconcile_case("demo", **kwargs)
     conn = storage.connect(db_path)
-    # (c): the prior adjudication and worksheet actions survive the re-open
-    # and the fresh reconciliation.
+    # (c): the prior adjudication and actions survive the re-open + fresh reconcile.
     adjudications = store.load_adjudications(conn, "demo")
     assert adjudications[0] == first_adj
     assert len(store.load_worksheet_actions(conn, "demo")) == actions_before > 0
+    assert len(store.load_tie_actions(conn, "demo")) > 0
     conn.close()

@@ -65,8 +65,26 @@ def _finding_to_dict(finding) -> dict:
         "declaration_search": [_search_to_dict(s) for s in finding.declaration_search],
         "factual_basis": finding.factual_basis.value,
         "nearest_declared": [_nearest_to_dict(n) for n in finding.nearest_declared],
-        "concern_list_evidence": [_hit_to_dict(h) for h in finding.concern_list_evidence],
-        "ownership_evidence": [_flag_to_dict(f) for f in finding.ownership_evidence],
+    }
+
+
+def _tie_to_dict(tie) -> dict:
+    return {
+        "tie_id": tie.tie_id,
+        "case_id": tie.case_id,
+        "run_id": tie.run_id,
+        "tie_kind": tie.tie_kind.value,
+        "anchor_affiliation_id": tie.anchor_affiliation_id,
+        "related_finding_id": tie.related_finding_id,
+        "concern_entity_name": tie.concern_entity_name,
+        "country": tie.country,
+        "country_on_adversary_list": tie.country_on_adversary_list,
+        "adversary_list_version": tie.adversary_list_version,
+        "first_observed": tie.first_observed,
+        "last_observed": tie.last_observed,
+        "record_count": tie.record_count,
+        "concern_list_evidence": [_hit_to_dict(h) for h in tie.concern_list_evidence],
+        "ownership_evidence": [_flag_to_dict(f) for f in tie.ownership_evidence],
     }
 
 
@@ -79,8 +97,11 @@ def build_investigative_file(
     subject = store.load_subject(conn, case.subject_id)
     declaration = store.load_declaration_for_subject(conn, case.subject_id)
     findings = store.load_findings(conn, case_id)
+    ties = store.load_ties(conn, case_id)
     effective = store.effective_actions(conn, case_id)
     history = store.load_worksheet_actions(conn, case_id)
+    tie_effective = store.effective_tie_actions(conn, case_id)
+    tie_history = store.load_tie_actions(conn, case_id)
     adjudications = store.load_adjudications(conn, case_id)
     certifications = store.load_certifications(conn, case_id)
     outcome = service.latest_outcome(conn, case_id)
@@ -136,6 +157,9 @@ def build_investigative_file(
                 for a in (declaration.affiliations if declaration else ())
             ],
         },
+        # concern_ties sorts before findings; the Sec. 51B.151(b) observations
+        # are the higher-stakes ones and a reader should hit them first.
+        "concern_ties": [_tie_to_dict(t) for t in ties],
         "findings": [_finding_to_dict(f) for f in findings],
         "worksheet": {
             "effective_actions": {
@@ -160,6 +184,31 @@ def build_investigative_file(
                     "batch_id": wa.batch_id,
                 }
                 for wa in history
+            ],
+        },
+        "tie_actions": {
+            "effective_actions": {
+                tid: {
+                    "action": ta.action.value,
+                    "reason_code": ta.reason_code,
+                    "reason_note": ta.reason_note,
+                    "actor": ta.actor,
+                    "recorded_at": ta.recorded_at,
+                    "batch_id": ta.batch_id,
+                }
+                for tid, ta in tie_effective.items()
+            },
+            "action_history": [
+                {
+                    "tie_id": ta.tie_id,
+                    "action": ta.action.value,
+                    "reason_code": ta.reason_code,
+                    "reason_note": ta.reason_note,
+                    "actor": ta.actor,
+                    "recorded_at": ta.recorded_at,
+                    "batch_id": ta.batch_id,
+                }
+                for ta in tie_history
             ],
         },
         "adjudications": [asdict(a) for a in adjudications],
@@ -204,8 +253,39 @@ def export_investigative_file(
     return out_path, manifest
 
 
+_FINDING_SHEET_COLUMNS = [
+    "finding_id", "discovered_source", "institution_name", "country",
+    "first_observed", "last_observed", "record_count", "factual_basis",
+    "declaration_sources_searched", "in_scope_of",
+]
+_TIE_SHEET_COLUMNS = [
+    "tie_id", "tie_kind", "concern_entity_name", "anchor_affiliation_id",
+    "related_finding_id", "country", "country_on_adversary_list",
+    "adversary_list_version", "concern_lists", "best_confidence",
+    "concern_evidence_json", "ownership_evidence_json",
+]
+_ACTION_SHEET_COLUMNS = [
+    "finding_id", "action", "reason_code", "reason_note", "actor", "recorded_at", "batch_id",
+]
+_TIE_ACTION_SHEET_COLUMNS = [
+    "tie_id", "action", "reason_code", "reason_note", "actor", "recorded_at", "batch_id",
+]
+_ADJUDICATION_SHEET_COLUMNS = [
+    "case_id", "seq", "assessment", "recommendation", "actor", "recorded_at",
+]
+_CERTIFICATION_SHEET_COLUMNS = [
+    "case_id", "finding_id", "substance_of_failure", "reasons_for_disregarding",
+    "department_head", "recorded_at",
+]
+
+
 def _write_xlsx(payload: dict, out_path: Path) -> None:
     import pandas as pd
+
+    def sheet(writer, name, rows, columns):
+        # Explicit `columns` so the header row renders even with zero data --
+        # a reader can tell "none recorded" from "not implemented".
+        pd.DataFrame(rows, columns=columns).to_excel(writer, sheet_name=name, index=False)
 
     with pd.ExcelWriter(out_path) as writer:
         # First sheet: the synthetic-data marker, so it is the first thing a
@@ -220,7 +300,38 @@ def _write_xlsx(payload: dict, out_path: Path) -> None:
         pd.DataFrame(payload["declaration"]["affiliations"]).to_excel(
             writer, sheet_name="Declared affiliations", index=False
         )
-        pd.DataFrame(
+        # Concern ties before Findings -- the Sec. 51B.151(b) observations are
+        # the higher-stakes ones and must not be buried under omission rows.
+        sheet(
+            writer,
+            "Concern ties",
+            [
+                {
+                    "tie_id": t["tie_id"],
+                    "tie_kind": t["tie_kind"],
+                    "concern_entity_name": t["concern_entity_name"],
+                    "anchor_affiliation_id": t["anchor_affiliation_id"] or "",
+                    "related_finding_id": t["related_finding_id"] or "",
+                    "country": t["country"] or "",
+                    "country_on_adversary_list": (
+                        "not yet checked" if t["country_on_adversary_list"] is None
+                        else str(t["country_on_adversary_list"])
+                    ),
+                    "adversary_list_version": t["adversary_list_version"] or "",
+                    "concern_lists": ", ".join(h["list_name"] for h in t["concern_list_evidence"]),
+                    "best_confidence": max(
+                        (h["confidence"] for h in t["concern_list_evidence"]), default=0.0
+                    ),
+                    "concern_evidence_json": json.dumps(t["concern_list_evidence"], sort_keys=True),
+                    "ownership_evidence_json": json.dumps(t["ownership_evidence"], sort_keys=True),
+                }
+                for t in payload["concern_ties"]
+            ],
+            _TIE_SHEET_COLUMNS,
+        )
+        sheet(
+            writer,
+            "Findings",
             [
                 {
                     "finding_id": f["finding_id"],
@@ -238,22 +349,12 @@ def _write_xlsx(payload: dict, out_path: Path) -> None:
                         s["source_kind"] for s in f["declaration_search"] if s["covers_this_item"]
                     )
                     or "(none)",
-                    "concern_lists": ", ".join(
-                        h["list_name"] for h in f["concern_list_evidence"]
-                    )
-                    or "",
-                    "concern_evidence_json": json.dumps(f["concern_list_evidence"], sort_keys=True),
-                    "ownership_evidence_json": json.dumps(f["ownership_evidence"], sort_keys=True),
                 }
                 for f in payload["findings"]
-            ]
-        ).to_excel(writer, sheet_name="Findings", index=False)
-        pd.DataFrame(payload["worksheet"]["action_history"]).to_excel(
-            writer, sheet_name="Worksheet actions", index=False
+            ],
+            _FINDING_SHEET_COLUMNS,
         )
-        pd.DataFrame(payload["adjudications"]).to_excel(
-            writer, sheet_name="Adjudications", index=False
-        )
-        pd.DataFrame(payload["certifications"]).to_excel(
-            writer, sheet_name="Certifications", index=False
-        )
+        sheet(writer, "Worksheet actions", payload["worksheet"]["action_history"], _ACTION_SHEET_COLUMNS)
+        sheet(writer, "Tie actions", payload["tie_actions"]["action_history"], _TIE_ACTION_SHEET_COLUMNS)
+        sheet(writer, "Adjudications", payload["adjudications"], _ADJUDICATION_SHEET_COLUMNS)
+        sheet(writer, "Certifications", payload["certifications"], _CERTIFICATION_SHEET_COLUMNS)

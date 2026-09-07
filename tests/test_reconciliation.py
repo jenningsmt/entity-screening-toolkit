@@ -187,40 +187,7 @@ def test_reconcile_case_end_to_end_against_the_demo_fixtures(tmp_path):
     demo.build_demo_case(conn)
     conn.close()
 
-    manifest, findings = reconcile_case(
-        demo.DEMO_CASE_ID,
-        db_path=db_path,
-        runs_dir=tmp_path / "runs",
-        works_fixture=demo.load_demo_works_fixture(),
-    )
-
-    # The two undisclosed institutions become findings; the two declared
-    # ones do not.
-    names = sorted(f.discovered.institution_name for f in findings)
-    assert names == ["Beijing Institute of Technology", "Zhejiang University"]
-    assert all(f.factual_basis == FactualBasis.ABSENT_FROM_IN_SCOPE_SOURCE for f in findings)
-
-    # Manifest carries the opaque case_id and nothing that identifies the
-    # subject.
-    blob = json.dumps(manifest.to_dict())
-    assert "Wei Chen" not in blob
-    assert manifest.case_id == "demo"
-    assert manifest.finding_count == 2
-
-    # The case advanced to the worksheet.
-    conn = storage.connect(db_path)
-    assert store.load_case(conn, "demo").state == CaseState.WORKSHEET
-    assert len(store.load_findings(conn, "demo")) == 2
-    conn.close()
-
-
-def test_reconcile_case_ownership_path_produces_the_section_10_headline_finding(tmp_path):
-    db_path = tmp_path / "case.duckdb"
-    conn = storage.connect(db_path)
-    demo.build_demo_case(conn)
-    conn.close()
-
-    _, findings = reconcile_case(
+    manifest, findings, ties = reconcile_case(
         demo.DEMO_CASE_ID,
         db_path=db_path,
         runs_dir=tmp_path / "runs",
@@ -228,21 +195,144 @@ def test_reconcile_case_ownership_path_produces_the_section_10_headline_finding(
         gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
         gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
-    ownership = [f for f in findings if f.discovered.source == "gleif_ownership"]
-    assert len(ownership) == 1
-    finding = ownership[0]
-    # The undisclosed ultimate parent, matched against the real 1260H list.
-    assert finding.discovered.institution_name == "Aviation Industry Corporation of China Ltd."
-    assert finding.factual_basis == FactualBasis.ABSENT_OUTSIDE_ALL_SOURCE_SCOPES
-    assert [h.list_name for h in finding.concern_list_evidence] == ["dod_section_1260h"]
 
-    hit = finding.concern_list_evidence[0]
-    # AC 14: attribution + licence reach the finding's evidence, for both the
-    # concern list and GLEIF.
+    # Two undisclosed institutions become findings (the Sec. 51B.153 test).
+    names = sorted(f.discovered.institution_name for f in findings)
+    assert names == ["Beijing Institute of Technology", "Zhejiang University"]
+    assert all(f.factual_basis == FactualBasis.ABSENT_FROM_IN_SCOPE_SOURCE for f in findings)
+    assert all(f.discovered.source == "openalex" for f in findings)
+
+    # Exactly one concern tie (the Sec. 51B.151(b) test): the declared
+    # employer's ultimate parent on the real 1260H list.
+    assert len(ties) == 1
+    (tie,) = ties
+    assert tie.tie_kind.value == "declared_employer_ultimate_parent"
+    assert tie.concern_entity_name == "Aviation Industry Corporation of China Ltd."
+    assert [h.list_name for h in tie.concern_list_evidence] == ["dod_section_1260h"]
+    assert tie.related_finding_id is None  # an ownership tie has no corresponding finding
+
+    # Manifest: opaque case_id, no subject identity.
+    blob = json.dumps(manifest.to_dict())
+    assert "Wei Chen" not in blob
+    assert manifest.case_id == "demo"
+    assert manifest.finding_count == 2
+    assert manifest.tie_count == 1
+
+    conn = storage.connect(db_path)
+    assert store.load_case(conn, "demo").state == CaseState.WORKSHEET
+    assert len(store.load_findings(conn, "demo")) == 2
+    assert len(store.load_ties(conn, "demo")) == 1
+    conn.close()
+
+
+def test_ownership_tie_evidence_carries_attribution_for_both_the_list_and_gleif(tmp_path):
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    demo.build_demo_case(conn)
+    conn.close()
+
+    _, _, ties = reconcile_case(
+        demo.DEMO_CASE_ID,
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+    hit = ties[0].concern_list_evidence[0]
+    assert hit.entity_id == "demo-aff-subsidiary"  # a stable id, not an entity name (also-fix)
     assert hit.evidence["source_attribution"]["attribution"]
     assert hit.evidence["source_attribution"]["license"]
     assert hit.evidence["ownership_path"]["source_attribution"]["license"]
     assert hit.evidence["ownership_path"]["declared_employer_name"] == "Nanjing Zhongke Robotics Co., Ltd."
+
+
+def test_ownership_tie_is_emitted_even_when_the_parent_is_itself_declared(tmp_path):
+    from entity_screening.common import storage as st
+    from entity_screening.case import store as cs
+    from entity_screening.common.schema import DeclaredAffiliation as DA
+
+    db_path = tmp_path / "case.duckdb"
+    conn = st.connect(db_path)
+    demo.build_demo_case(conn)
+    decl = cs.load_declaration_for_subject(conn, "demo-subject")
+    # Add the ultimate parent as a declared affiliation of its own.
+    decl = type(decl)(
+        declaration_id=decl.declaration_id,
+        subject_id=decl.subject_id,
+        synthetic=True,
+        sources=decl.sources,
+        affiliations=decl.affiliations
+        + (
+            DA("demo-aff-avic", "demo-cv", "Aviation Industry Corporation of China Ltd.",
+               "CN", "consultant", "2020", "2021", "employment"),
+        ),
+    )
+    cs.save_declaration(conn, decl)
+    conn.close()
+
+    _, _, ties = reconcile_case(
+        demo.DEMO_CASE_ID,
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+    # The parent being declared does not suppress the Sec. 51B.151(b) tie.
+    assert any(t.concern_entity_name == "Aviation Industry Corporation of China Ltd." for t in ties)
+
+
+def test_both_at_once_produces_one_finding_and_one_tie_joined_by_id(tmp_path):
+    """An affiliation that is BOTH undisclosed AND concern-listed produces a
+    Finding (Sec. 51B.153) and a ConcernTie (Sec. 51B.151(b)) -- two
+    artifacts, paired by tie.related_finding_id (a stored join, never a name
+    match)."""
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    demo.build_demo_case(conn)
+    conn.close()
+
+    # The synthetic subject "published" while at a real 1260H entity that
+    # their declaration never mentions.
+    works = {
+        "works": [
+            {
+                "id": "https://openalex.org/SYNTH-BOTH",
+                "title": "Synthetic both-at-once paper",
+                "publication_date": "2017-01-01",
+                "authorships": [
+                    {
+                        "is_subject": True,
+                        "author_position": "first",
+                        "author": {"id": "https://openalex.org/SYNTH-A1", "display_name": "Wei Chen"},
+                        "institutions": [
+                            {
+                                "id": "https://openalex.org/SYNTH-I-AVIC",
+                                "display_name": "Aviation Industry Corporation of China Ltd.",
+                                "country_code": "CN",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    _, findings, ties = reconcile_case(
+        demo.DEMO_CASE_ID,
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=works["works"],
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+
+    avic_findings = [f for f in findings if "Aviation Industry" in f.discovered.institution_name]
+    own_ties = [t for t in ties if t.tie_kind.value == "own_affiliation_history"]
+    assert len(avic_findings) == 1
+    assert len(own_ties) == 1
+    assert own_ties[0].related_finding_id == avic_findings[0].finding_id
 
 
 def test_reconcile_case_is_current_state_not_append(tmp_path):
@@ -251,10 +341,17 @@ def test_reconcile_case_is_current_state_not_append(tmp_path):
     demo.build_demo_case(conn)
     conn.close()
 
-    kwargs = dict(db_path=db_path, runs_dir=tmp_path / "runs", works_fixture=demo.load_demo_works_fixture())
-    _, first = reconcile_case(demo.DEMO_CASE_ID, **kwargs)
-    _, second = reconcile_case(demo.DEMO_CASE_ID, **kwargs)
+    kwargs = dict(
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+    _, first_f, first_t = reconcile_case(demo.DEMO_CASE_ID, **kwargs)
+    _, second_f, second_t = reconcile_case(demo.DEMO_CASE_ID, **kwargs)
 
     conn = storage.connect(db_path)
-    assert len(store.load_findings(conn, "demo")) == len(first) == len(second) == 2
+    assert len(store.load_findings(conn, "demo")) == len(first_f) == len(second_f) == 2
+    assert len(store.load_ties(conn, "demo")) == len(first_t) == len(second_t) == 1
     conn.close()

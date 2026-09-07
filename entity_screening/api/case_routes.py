@@ -22,7 +22,12 @@ from entity_screening.api.deps import require_action_secret
 from entity_screening.api.deps import runs_dir as _runs_dir
 from entity_screening.case import demo, export as case_export, service, store
 from entity_screening.case.service import CaseStateError
-from entity_screening.case.vocab import DISMISS_REASON_CODES, ESCALATION_REASON_CODES
+from entity_screening.case.vocab import (
+    DISMISS_REASON_CODES,
+    ESCALATION_REASON_CODES,
+    TIE_DISMISS_REASON_CODES,
+    TIE_ESCALATION_REASON_CODES,
+)
 from entity_screening.common import storage
 from entity_screening.common.schema import (
     Case,
@@ -94,6 +99,10 @@ class BulkActionRequest(ActionRequest):
     finding_ids: list[str]
 
 
+class BulkTieActionRequest(ActionRequest):
+    tie_ids: list[str]
+
+
 class AdjudicationRequest(BaseModel):
     assessment: str
     recommendation: str
@@ -128,9 +137,13 @@ def _connect() -> duckdb.DuckDBPyConnection:
 
 def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
     """Builds and reconciles the demo case on first access -- fixtures only,
-    no live network call. Idempotent: build_demo_case replaces, and
-    reconcile_case is current-state."""
-    if demo.demo_case_exists(conn):
+    no live network call. Rebuilds it whenever DEMO_FIXTURE_VERSION has moved
+    past what a persistent data volume last recorded, so a schema/fixture
+    change (e.g. concern ties split out of Finding) does not leave stale rows
+    behind. Idempotent: build_demo_case replaces, and reconcile_case is
+    current-state."""
+    version = str(demo.DEMO_FIXTURE_VERSION)
+    if demo.demo_case_exists(conn) and store.demo_meta_get(conn, "fixture_version") == version:
         return
     demo.build_demo_case(conn)
     pipeline.reconcile_case(
@@ -141,6 +154,7 @@ def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
         gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
         gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
+    store.demo_meta_set(conn, "fixture_version", version)
 
 
 def _load_case_or_404(conn: duckdb.DuckDBPyConnection, case_id: str) -> Case:
@@ -150,6 +164,19 @@ def _load_case_or_404(conn: duckdb.DuckDBPyConnection, case_id: str) -> Case:
     if case is None:
         raise HTTPException(status_code=404, detail=f"Unknown case_id: {case_id}")
     return case
+
+
+def _action_dto(action) -> dict | None:
+    if action is None:
+        return None
+    return {
+        "action": action.action.value,
+        "reason_code": action.reason_code,
+        "reason_note": action.reason_note,
+        "actor": action.actor,
+        "recorded_at": action.recorded_at,
+        "batch_id": action.batch_id,
+    }
 
 
 def _worksheet_payload(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict:
@@ -163,25 +190,21 @@ def _worksheet_payload(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict:
             if view.case.statutory_deadline
             else None
         ),
-        "unactioned_count": view.unactioned_count,
+        "unactioned_count": view.unactioned_count,  # across both row types
         "can_close": view.can_close,
         "rows": [
             {
                 "finding": case_export._finding_to_dict(row.finding),
-                "action": (
-                    None
-                    if row.action is None
-                    else {
-                        "action": row.action.action.value,
-                        "reason_code": row.action.reason_code,
-                        "reason_note": row.action.reason_note,
-                        "actor": row.action.actor,
-                        "recorded_at": row.action.recorded_at,
-                        "batch_id": row.action.batch_id,
-                    }
-                ),
+                "action": _action_dto(row.action),
             }
             for row in view.rows
+        ],
+        "tie_rows": [
+            {
+                "tie": case_export._tie_to_dict(row.tie),
+                "action": _action_dto(row.action),
+            }
+            for row in view.tie_rows
         ],
     }
 
@@ -193,25 +216,42 @@ def _worksheet_payload(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict:
 
 @router.get("/reason-codes")
 def reason_codes() -> dict:
-    return {"dismiss": DISMISS_REASON_CODES, "escalation": ESCALATION_REASON_CODES}
+    return {
+        "dismiss": DISMISS_REASON_CODES,
+        "escalation": ESCALATION_REASON_CODES,
+        "tie_dismiss": TIE_DISMISS_REASON_CODES,
+        "tie_escalation": TIE_ESCALATION_REASON_CODES,
+    }
 
 
 @router.get("/dismissal-basis-summary")
 def dismissal_basis_summary() -> dict:
     """Section 4.1's by-product: the office's own accumulated answer to 'how
     does your institution define substantial?', aggregated from real
-    adjudications rather than a policy guessed at up front."""
+    adjudications rather than a policy guessed at up front. Split by
+    observation kind -- discrepancy dismissals and concern-tie dismissals
+    turn on different things and are drawn from different vocabularies."""
     conn = _connect()
     try:
-        rows = conn.execute(
+        finding_rows = conn.execute(
             "SELECT reason_code, count(*) FROM worksheet_actions "
+            "WHERE action = 'dismiss' GROUP BY reason_code ORDER BY count(*) DESC"
+        ).fetchall()
+        tie_rows = conn.execute(
+            "SELECT reason_code, count(*) FROM tie_actions "
             "WHERE action = 'dismiss' GROUP BY reason_code ORDER BY count(*) DESC"
         ).fetchall()
     finally:
         conn.close()
     return {
-        "by_reason_code": [{"reason_code": rc, "count": n} for rc, n in rows],
-        "vocabulary": DISMISS_REASON_CODES,
+        "discrepancy": {
+            "by_reason_code": [{"reason_code": rc, "count": n} for rc, n in finding_rows],
+            "vocabulary": DISMISS_REASON_CODES,
+        },
+        "concern_tie": {
+            "by_reason_code": [{"reason_code": rc, "count": n} for rc, n in tie_rows],
+            "vocabulary": TIE_DISMISS_REASON_CODES,
+        },
     }
 
 
@@ -297,7 +337,7 @@ def reconcile(
     finally:
         conn.close()
     is_demo = case_id == demo.DEMO_CASE_ID
-    manifest, findings = pipeline.reconcile_case(
+    manifest, findings, ties = pipeline.reconcile_case(
         case_id,
         db_path=_db_path(),
         runs_dir=_runs_dir(),
@@ -309,6 +349,7 @@ def reconcile(
     return {
         "case_id": case_id,
         "finding_count": len(findings),
+        "tie_count": len(ties),
         "discovery_sources": manifest.discovery_sources,
         "reconciliation_run_id": manifest.run_id,
     }
@@ -365,6 +406,61 @@ def post_bulk_action(
                 conn,
                 case_id,
                 request.finding_ids,
+                WorksheetActionKind(request.action),
+                request.reason_code,
+                request.reason_note,
+                request.actor,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        payload = _worksheet_payload(conn, case_id)
+        payload["batch_id"] = batch_id
+        return payload
+    finally:
+        conn.close()
+
+
+@router.post("/{case_id}/ties/{tie_id}/action")
+def post_tie_action(
+    case_id: str,
+    tie_id: str,
+    request: ActionRequest,
+    _s: None = Depends(require_action_secret),
+) -> dict:
+    conn = _connect()
+    try:
+        _load_case_or_404(conn, case_id)
+        try:
+            service.record_tie_action(
+                conn,
+                case_id,
+                tie_id,
+                WorksheetActionKind(request.action),
+                request.reason_code,
+                request.reason_note,
+                request.actor,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return _worksheet_payload(conn, case_id)
+    finally:
+        conn.close()
+
+
+@router.post("/{case_id}/ties/actions")
+def post_bulk_tie_action(
+    case_id: str,
+    request: BulkTieActionRequest,
+    _s: None = Depends(require_action_secret),
+) -> dict:
+    conn = _connect()
+    try:
+        _load_case_or_404(conn, case_id)
+        try:
+            batch_id, _ = service.record_bulk_tie_action(
+                conn,
+                case_id,
+                request.tie_ids,
                 WorksheetActionKind(request.action),
                 request.reason_code,
                 request.reason_note,

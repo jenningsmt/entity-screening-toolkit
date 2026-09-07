@@ -40,27 +40,36 @@ def _demo_conn(tmp_path):
     return storage.connect(db_path)
 
 
-def test_worksheet_cannot_close_while_a_row_is_unactioned(tmp_path):
-    conn = _demo_conn(tmp_path)
-    view = service.worksheet(conn, "demo")
-    assert len(view.rows) == 3
-    assert view.can_close is False
-
-    # Action two of three.
-    for row in view.rows[:2]:
+def _action_all_findings(conn):
+    for row in service.worksheet(conn, "demo").rows:
         service.record_action(
             conn, "demo", row.finding.finding_id, WorksheetActionKind.DISMISS,
-            "record_error_or_misattribution", "stale affiliation", "analyst.a",
+            "analyst_judgment_not_material", "n/a", "analyst.a",
         )
+
+
+def _action_all_ties(conn):
+    for row in service.worksheet(conn, "demo").tie_rows:
+        service.record_tie_action(
+            conn, "demo", row.tie.tie_id, WorksheetActionKind.ESCALATE,
+            "needs_counterintelligence_referral", "n/a", "analyst.a",
+        )
+
+
+def test_worksheet_cannot_close_while_a_row_of_either_type_is_unactioned(tmp_path):
+    conn = _demo_conn(tmp_path)
+    view = service.worksheet(conn, "demo")
+    assert len(view.rows) == 2 and len(view.tie_rows) == 1
+    assert view.can_close is False
+
+    # Action every discrepancy row -- still cannot close: the tie is open.
+    _action_all_findings(conn)
     with pytest.raises(CaseStateError):
         service.transition(conn, "demo", CaseState.ADJUDICATION)
+    assert service.worksheet(conn, "demo").can_close is False
 
-    # Action the last one.
-    service.record_action(
-        conn, "demo", view.rows[2].finding.finding_id,
-        WorksheetActionKind.CERTIFICATION_REQUIRED,
-        "possible_nondisclosure_for_certification", "1260H parent", "analyst.a",
-    )
+    # Action the concern tie too.
+    _action_all_ties(conn)
     assert service.worksheet(conn, "demo").can_close is True
     service.transition(conn, "demo", CaseState.ADJUDICATION)
     assert store.load_case(conn, "demo").state == CaseState.ADJUDICATION
@@ -79,7 +88,33 @@ def test_bulk_action_dispositions_a_class_with_one_reason_and_one_batch_id(tmp_p
     assert len({a.batch_id for a in actions}) == 1 == len({batch_id})
     effective = store.effective_actions(conn, "demo")
     assert all(effective[i].batch_id == batch_id for i in ids)
+    # Findings done; the tie still blocks closure.
+    assert service.worksheet(conn, "demo").can_close is False
+    _action_all_ties(conn)
     assert service.worksheet(conn, "demo").can_close is True
+    conn.close()
+
+
+def test_bulk_tie_action_shares_one_batch_id(tmp_path):
+    conn = _demo_conn(tmp_path)
+    tie_ids = [r.tie.tie_id for r in service.worksheet(conn, "demo").tie_rows]
+    batch_id, actions = service.record_bulk_tie_action(
+        conn, "demo", tie_ids, WorksheetActionKind.DISMISS,
+        "historical_or_divested_relationship", "divested 2019", "analyst.a",
+    )
+    assert {a.batch_id for a in actions} == {batch_id}
+    conn.close()
+
+
+def test_tie_reason_code_must_be_in_the_tie_vocabulary(tmp_path):
+    conn = _demo_conn(tmp_path)
+    tie_id = service.worksheet(conn, "demo").tie_rows[0].tie.tie_id
+    with pytest.raises(ValueError):
+        # a discrepancy dismiss code, not a tie one
+        service.record_tie_action(
+            conn, "demo", tie_id, WorksheetActionKind.DISMISS,
+            "outside_declaration_scope", "", "a",
+        )
     conn.close()
 
 
@@ -95,11 +130,8 @@ def test_reason_code_must_be_in_the_controlled_vocabulary(tmp_path):
 
 def test_adjudication_is_append_only_and_reopening_keeps_the_prior_one(tmp_path):
     conn = _demo_conn(tmp_path)
-    for row in service.worksheet(conn, "demo").rows:
-        service.record_action(
-            conn, "demo", row.finding.finding_id, WorksheetActionKind.DISMISS,
-            "analyst_judgment_not_material", "n/a", "analyst.a",
-        )
+    _action_all_findings(conn)
+    _action_all_ties(conn)
     service.transition(conn, "demo", CaseState.ADJUDICATION)
     service.record_adjudication(conn, "demo", "No substantial omission.", "Clear to proceed.", "analyst.a")
     service.transition(conn, "demo", CaseState.OUTCOME)
@@ -125,6 +157,7 @@ def test_adjudication_is_append_only_and_reopening_keeps_the_prior_one(tmp_path)
             conn, "demo", row.finding.finding_id, WorksheetActionKind.ESCALATE,
             "needs_supervisor_review", "reassessing after new list release", "analyst.b",
         )
+    _action_all_ties(conn)
     service.transition(conn, "demo", CaseState.ADJUDICATION)
     service.record_adjudication(conn, "demo", "Escalating on the new 1260H entry.", "Hold.", "analyst.b")
 

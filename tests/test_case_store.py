@@ -14,6 +14,7 @@ from entity_screening.common.schema import (
     Case,
     CaseState,
     Certification,
+    ConcernTie,
     CoverageBasis,
     DeclaredAffiliation,
     Declaration,
@@ -28,6 +29,8 @@ from entity_screening.common.schema import (
     ScopeKind,
     ScreeningHit,
     Subject,
+    TieAction,
+    TieKind,
     WorksheetAction,
     WorksheetActionKind,
 )
@@ -102,16 +105,16 @@ def _finding() -> Finding:
         case_id="case-1",
         run_id="run-1",
         discovered=DiscoveredAffiliation(
-            source="gleif_ownership",
-            institution_name="Synthetic Subsidiary Co., Ltd.",
+            source="openalex",
+            institution_name="Beijing Institute of Technology",
             country="CN",
             country_on_adversary_list=None,
             adversary_list_version=None,
-            first_observed=None,
-            last_observed=None,
-            record_count=1,
-            role="declared_employer_parent",
-            source_refs=("LEI-AAA", "LEI-BBB"),
+            first_observed="2015",
+            last_observed="2017",
+            record_count=3,
+            role="publication_affiliation",
+            source_refs=("W1", "W2"),
         ),
         declaration_search=(
             DeclarationSearch(
@@ -133,9 +136,27 @@ def _finding() -> Finding:
                 scope_compatible=True,
             ),
         ),
+    )
+
+
+def _tie() -> ConcernTie:
+    return ConcernTie(
+        tie_id="tie-1",
+        case_id="case-1",
+        run_id="run-1",
+        tie_kind=TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT,
+        anchor_affiliation_id="demo-aff-subsidiary",
+        related_finding_id=None,
+        concern_entity_name="Real Parent Corp",
+        country="CN",
+        country_on_adversary_list=None,
+        adversary_list_version=None,
+        first_observed=None,
+        last_observed=None,
+        record_count=1,
         concern_list_evidence=(
             ScreeningHit(
-                entity_id="find-1",
+                entity_id="demo-aff-subsidiary",
                 list_name="dod_section_1260h",
                 matched_variant="Real Parent Corp",
                 matched_field="ownership_ultimate_parent",
@@ -147,12 +168,12 @@ def _finding() -> Finding:
         ),
         ownership_evidence=(
             ForeignControlFlag(
-                entity_id="find-1",
+                entity_id="demo-aff-subsidiary",
                 entity_lei="LEI-AAA",
                 entity_jurisdiction="CN",
                 ultimate_parent_lei="LEI-BBB",
                 ultimate_parent_name="Real Parent Corp",
-                ultimate_parent_jurisdiction="CN",
+                ultimate_parent_jurisdiction="DE",
                 relationship_path=("LEI-AAA", "LEI-BBB"),
                 match_confidence=0.95,
                 evidence={"truncated": False, "source_attribution": {"attribution": "GLEIF", "license": "CC0"}},
@@ -185,6 +206,54 @@ def test_findings_are_current_state_per_case(tmp_path):
     # Re-running reconciliation replaces the set rather than accumulating.
     store.replace_findings(conn, "case-1", [_finding(), _finding()])
     assert len(store.load_findings(conn, "case-1")) == 2
+    conn.close()
+
+
+def test_concern_ties_round_trip_and_are_current_state(tmp_path):
+    conn = _conn(tmp_path)
+    store.replace_ties(conn, "case-1", [_tie()])
+    store.replace_ties(conn, "case-1", [_tie()])  # replace, not append
+    loaded = store.load_ties(conn, "case-1")
+    assert len(loaded) == 1
+    assert loaded[0] == _tie()
+    conn.close()
+
+
+def test_tie_actions_append_and_effective_is_latest(tmp_path):
+    conn = _conn(tmp_path)
+    store.append_tie_action(
+        conn, "case-1",
+        TieAction("tie-1", WorksheetActionKind.ESCALATE, "needs_supervisor_review", "", "a", "2026-09-06T10:00:00Z"),
+    )
+    store.append_tie_action(
+        conn, "case-1",
+        TieAction("tie-1", WorksheetActionKind.DISMISS, "historical_or_divested_relationship", "divested 2019", "a", "2026-09-06T11:00:00Z"),
+    )
+    assert len(store.load_tie_actions(conn, "case-1")) == 2
+    assert store.effective_tie_actions(conn, "case-1")["tie-1"].action == WorksheetActionKind.DISMISS
+    conn.close()
+
+
+def test_load_findings_tolerates_a_pre_migration_row_with_the_two_dropped_columns(tmp_path):
+    """A DuckDB file created before concern_list_evidence / ownership_evidence
+    were dropped keeps those columns. load_findings names its columns
+    explicitly, so it reads such a row cleanly."""
+    conn = _conn(tmp_path)
+    conn.execute("ALTER TABLE findings ADD COLUMN IF NOT EXISTS concern_list_evidence JSON")
+    conn.execute("ALTER TABLE findings ADD COLUMN IF NOT EXISTS ownership_evidence JSON")
+    store.replace_findings(conn, "case-1", [_finding()])
+    loaded = store.load_findings(conn, "case-1")
+    assert loaded == [_finding()]
+    conn.close()
+
+
+def test_demo_meta_round_trip(tmp_path):
+    conn = _conn(tmp_path)
+    assert store.demo_meta_get(conn, "fixture_version") is None
+    store.demo_meta_set(conn, "fixture_version", "2")
+    assert store.demo_meta_get(conn, "fixture_version") == "2"
+    store.demo_meta_set(conn, "fixture_version", "3")
+    assert store.demo_meta_get(conn, "fixture_version") == "3"
     conn.close()
 
 

@@ -25,13 +25,15 @@ from datetime import datetime, timezone
 import duckdb
 
 from entity_screening.case import store
-from entity_screening.case.vocab import is_valid_reason_code
+from entity_screening.case.vocab import is_valid_reason_code, is_valid_tie_reason_code
 from entity_screening.common.schema import (
     Adjudication,
     Case,
     CaseState,
     Certification,
+    ConcernTie,
     Finding,
+    TieAction,
     WorksheetAction,
     WorksheetActionKind,
 )
@@ -70,10 +72,17 @@ class WorksheetRow:
 
 
 @dataclass(frozen=True)
+class TieRow:
+    tie: ConcernTie
+    action: TieAction | None
+
+
+@dataclass(frozen=True)
 class WorksheetView:
     case: Case
-    rows: tuple[WorksheetRow, ...]
-    unactioned_count: int
+    rows: tuple[WorksheetRow, ...]  # discrepancy (Finding) rows
+    tie_rows: tuple[TieRow, ...]  # concern-tie rows
+    unactioned_count: int  # across BOTH row types
     can_close: bool
 
 
@@ -86,12 +95,23 @@ def worksheet(conn: duckdb.DuckDBPyConnection, case_id: str) -> WorksheetView:
     rows = tuple(
         WorksheetRow(finding=f, action=effective.get(f.finding_id)) for f in findings
     )
-    unactioned = sum(1 for r in rows if r.action is None)
+    ties = store.load_ties(conn, case_id)
+    tie_effective = store.effective_tie_actions(conn, case_id)
+    tie_rows = tuple(
+        TieRow(tie=t, action=tie_effective.get(t.tie_id)) for t in ties
+    )
+    unactioned = sum(1 for r in rows if r.action is None) + sum(
+        1 for r in tie_rows if r.action is None
+    )
+    total = len(rows) + len(tie_rows)
     return WorksheetView(
         case=case,
         rows=rows,
+        tie_rows=tie_rows,
         unactioned_count=unactioned,
-        can_close=(unactioned == 0 and len(rows) > 0),
+        # A case cannot leave the worksheet while any row of EITHER type is
+        # unactioned (use-case-01 Section 8, extended for concern ties).
+        can_close=(unactioned == 0 and total > 0),
     )
 
 
@@ -148,6 +168,60 @@ def record_bulk_action(
     return batch_id, actions
 
 
+def record_tie_action(
+    conn: duckdb.DuckDBPyConnection,
+    case_id: str,
+    tie_id: str,
+    action: WorksheetActionKind,
+    reason_code: str,
+    reason_note: str,
+    actor: str,
+    batch_id: str | None = None,
+) -> TieAction:
+    """One analyst disposition of one ConcernTie -- own reason vocabulary
+    (case/vocab.py:TIE_DISMISS_REASON_CODES)."""
+    if not is_valid_tie_reason_code(action.value, reason_code):
+        raise ValueError(
+            f"reason_code {reason_code!r} is not in the concern-tie vocabulary for "
+            f"action {action.value!r} (see entity_screening/case/vocab.py)."
+        )
+    known = {t.tie_id for t in store.load_ties(conn, case_id)}
+    if tie_id not in known:
+        raise ValueError(f"tie_id {tie_id!r} is not in case {case_id!r}")
+    ta = TieAction(
+        tie_id=tie_id,
+        action=action,
+        reason_code=reason_code,
+        reason_note=reason_note,
+        actor=actor,
+        recorded_at=_now(),
+        batch_id=batch_id,
+    )
+    store.append_tie_action(conn, case_id, ta)
+    return ta
+
+
+def record_bulk_tie_action(
+    conn: duckdb.DuckDBPyConnection,
+    case_id: str,
+    tie_ids: list[str],
+    action: WorksheetActionKind,
+    reason_code: str,
+    reason_note: str,
+    actor: str,
+) -> tuple[str, list[TieAction]]:
+    """Bulk tie disposition -- a convenience, not a requirement (concern-tie
+    rows are few; the volume problem is on the discrepancy side)."""
+    batch_id = str(uuid.uuid4())
+    actions = [
+        record_tie_action(
+            conn, case_id, tid, action, reason_code, reason_note, actor, batch_id=batch_id
+        )
+        for tid in tie_ids
+    ]
+    return batch_id, actions
+
+
 def transition(
     conn: duckdb.DuckDBPyConnection, case_id: str, target: CaseState
 ) -> Case:
@@ -165,8 +239,9 @@ def transition(
         if not view.can_close:
             raise CaseStateError(
                 f"Case {case_id!r} has {view.unactioned_count} unactioned worksheet "
-                "row(s). Every finding must have an analyst action before the case "
-                "leaves the worksheet (use-case-01 Section 8's closure rule)."
+                "row(s). Every discrepancy AND every concern tie must have an analyst "
+                "action before the case leaves the worksheet (use-case-01 Section 8's "
+                "closure rule)."
             )
     from dataclasses import replace
 

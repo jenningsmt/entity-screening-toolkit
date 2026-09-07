@@ -43,6 +43,11 @@ def test_no_pii_in_any_manifest_or_log_for_a_fully_worked_case(tmp_path):
             conn, "demo", row.finding.finding_id, WorksheetActionKind.DISMISS,
             "analyst_judgment_not_material", "reviewed", "analyst.a",
         )
+    for row in service.worksheet(conn, "demo").tie_rows:
+        service.record_tie_action(
+            conn, "demo", row.tie.tie_id, WorksheetActionKind.ESCALATE,
+            "needs_counterintelligence_referral", "reviewed", "analyst.a",
+        )
     service.transition(conn, "demo", CaseState.ADJUDICATION)
     service.record_adjudication(conn, "demo", "Cleared.", "Proceed.", "analyst.a")
     export.export_investigative_file(conn, "demo", fmt="json", runs_dir=runs_dir)
@@ -62,4 +67,4 @@ def test_no_pii_in_any_manifest_or_log_for_a_fully_worked_case(tmp_path):
     # The reconciliation manifest specifically: case_id, counts, threshold -- no subject.
     recon = json.loads((runs_dir / "cases" / "demo" / "reconciliation.json").read_text())
     assert recon["case_id"] == "demo"
-    assert set(recon) >= {"discovery_sources", "finding_count", "reconciliation_threshold"}
+    assert set(recon) >= {"discovery_sources", "finding_count", "tie_count", "reconciliation_threshold"}

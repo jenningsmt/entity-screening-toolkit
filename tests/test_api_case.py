@@ -20,35 +20,35 @@ def test_demo_case_self_heals_and_shows_a_worked_worksheet(client):
     body = response.json()
     assert body["case_id"] == "demo"
     assert body["state"] == "worksheet"
-    # Two publication omissions + one ownership-parent-on-1260H finding.
-    sources = sorted(r["finding"]["discovered"]["source"] for r in body["rows"])
-    assert sources == ["gleif_ownership", "openalex", "openalex"]
+    # Two discrepancy rows (openalex) + one concern-tie row.
+    assert sorted(r["finding"]["discovered"]["source"] for r in body["rows"]) == ["openalex", "openalex"]
+    assert len(body["tie_rows"]) == 1
     assert body["can_close"] is False  # nothing actioned yet
 
-    ownership_row = next(
-        r for r in body["rows"] if r["finding"]["discovered"]["source"] == "gleif_ownership"
-    )
-    hit = ownership_row["finding"]["concern_list_evidence"][0]
+    tie = body["tie_rows"][0]["tie"]
+    assert tie["tie_kind"] == "declared_employer_ultimate_parent"
+    hit = tie["concern_list_evidence"][0]
     assert hit["list_name"] == "dod_section_1260h"
     assert hit["evidence"]["source_attribution"]["license"]
 
 
 def test_worksheet_closure_rule_and_investigative_file_export(client):
-    rows = client.get("/cases/demo/worksheet").json()["rows"]
-    ids = [r["finding"]["finding_id"] for r in rows]
+    body = client.get("/cases/demo/worksheet").json()
+    ids = [r["finding"]["finding_id"] for r in body["rows"]]
+    tie_ids = [r["tie"]["tie_id"] for r in body["tie_rows"]]
 
     # Cannot advance while unactioned.
     blocked = client.post("/cases/demo/transition", json={"target_state": "adjudication"})
     assert blocked.status_code == 409
 
-    # Bulk-dismiss two, certify the third.
+    # Bulk-dismiss one, certify the other.
     bulk = client.post(
         "/cases/demo/worksheet/actions",
         json={
-            "finding_ids": ids[:2],
+            "finding_ids": ids[:1],
             "action": "dismiss",
             "reason_code": "record_error_or_misattribution",
-            "reason_note": "stale affiliations",
+            "reason_note": "stale affiliation",
             "actor": "analyst.a",
         },
     )
@@ -56,23 +56,36 @@ def test_worksheet_closure_rule_and_investigative_file_export(client):
     assert bulk.json()["batch_id"]
 
     client.post(
-        f"/cases/demo/findings/{ids[2]}/action",
+        f"/cases/demo/findings/{ids[1]}/action",
         json={
             "action": "certification_required",
             "reason_code": "possible_nondisclosure_for_certification",
-            "reason_note": "ultimate parent on 1260H",
+            "reason_note": "undisclosed affiliation",
             "actor": "analyst.a",
         },
     )
     client.post(
         "/cases/demo/certifications",
         json={
-            "finding_id": ids[2],
-            "substance_of_failure": "Undisclosed ultimate parent on the DoD 1260H list.",
+            "finding_id": ids[1],
+            "substance_of_failure": "Undisclosed affiliation to a foreign institution.",
             "reasons_for_disregarding": "Documented and disclosed elsewhere in the packet.",
             "department_head": "Dr. Head",
         },
     )
+
+    # Findings done -- still cannot close: the concern tie is open.
+    assert client.get("/cases/demo/worksheet").json()["can_close"] is False
+    tie_resp = client.post(
+        f"/cases/demo/ties/{tie_ids[0]}/action",
+        json={
+            "action": "escalate",
+            "reason_code": "needs_counterintelligence_referral",
+            "reason_note": "ultimate parent on 1260H",
+            "actor": "analyst.a",
+        },
+    )
+    assert tie_resp.status_code == 200
 
     worksheet = client.get("/cases/demo/worksheet").json()
     assert worksheet["can_close"] is True
@@ -80,7 +93,7 @@ def test_worksheet_closure_rule_and_investigative_file_export(client):
     assert client.post("/cases/demo/transition", json={"target_state": "adjudication"}).status_code == 200
     assert client.post(
         "/cases/demo/adjudication",
-        json={"assessment": "One item certified; rest dismissed.", "recommendation": "Proceed.", "actor": "analyst.a"},
+        json={"assessment": "One item certified; a tie escalated.", "recommendation": "Proceed.", "actor": "analyst.a"},
     ).status_code == 200
 
     export = client.get("/cases/demo/investigative-file.json")
@@ -90,9 +103,43 @@ def test_worksheet_closure_rule_and_investigative_file_export(client):
         "_redacted": True,
         "_reason": "field-level sensitive (use-case-01 Section 9)",
     }
-    assert len(payload["findings"]) == 3
+    assert len(payload["findings"]) == 2
+    assert len(payload["concern_ties"]) == 1
     assert payload["certifications"]
-    assert payload["adjudications"][0]["assessment"].startswith("One item certified")
+    assert payload["tie_actions"]["action_history"]
+    assert list(payload).index("concern_ties") < list(payload).index("findings")
+
+
+def test_reason_codes_route_includes_the_tie_vocabularies(client):
+    codes = client.get("/cases/reason-codes").json()
+    assert "tie_dismiss" in codes and "tie_escalation" in codes
+    assert "historical_or_divested_relationship" in codes["tie_dismiss"]
+
+
+def test_dismissal_basis_summary_splits_by_observation_kind(client):
+    body = client.get("/cases/demo/worksheet").json()
+    fid = body["rows"][0]["finding"]["finding_id"]
+    tid = body["tie_rows"][0]["tie"]["tie_id"]
+    client.post(
+        f"/cases/demo/findings/{fid}/action",
+        json={"action": "dismiss", "reason_code": "analyst_judgment_not_material", "reason_note": "", "actor": "a"},
+    )
+    client.post(
+        f"/cases/demo/ties/{tid}/action",
+        json={"action": "dismiss", "reason_code": "historical_or_divested_relationship", "reason_note": "", "actor": "a"},
+    )
+    summary = client.get("/cases/dismissal-basis-summary").json()
+    assert summary["discrepancy"]["by_reason_code"][0]["reason_code"] == "analyst_judgment_not_material"
+    assert summary["concern_tie"]["by_reason_code"][0]["reason_code"] == "historical_or_divested_relationship"
+
+
+def test_tie_action_rejects_a_discrepancy_vocabulary_code(client):
+    tid = client.get("/cases/demo/worksheet").json()["tie_rows"][0]["tie"]["tie_id"]
+    resp = client.post(
+        f"/cases/demo/ties/{tid}/action",
+        json={"action": "dismiss", "reason_code": "outside_declaration_scope", "reason_note": "", "actor": "a"},
+    )
+    assert resp.status_code == 400
 
 
 def test_invalid_reason_code_is_rejected(client):

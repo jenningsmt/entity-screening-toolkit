@@ -31,6 +31,12 @@ from entity_screening.common.schema import (
 
 DEMO_CASE_ID = "demo"
 
+# Bumped whenever the demo fixtures OR the shape of what reconciliation
+# produces changes, so a persistent data volume rebuilds the demo case
+# instead of serving stale rows. v2: concern ties split out of Finding
+# (docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md).
+DEMO_FIXTURE_VERSION = 2
+
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "demo_case"
 
 # Fabricated three-node ownership chain -- see tests/fixtures/demo_case/gleif.NOTICE.md.
@@ -94,11 +100,25 @@ def demo_case_exists(conn: duckdb.DuckDBPyConnection) -> bool:
     return store.load_case(conn, DEMO_CASE_ID) is not None
 
 
+_DEMO_CASE_TABLES = (
+    "findings",
+    "concern_ties",
+    "worksheet_actions",
+    "tie_actions",
+    "adjudications",
+    "certifications",
+    "case_outcomes",
+)
+
+
 def build_demo_case(conn: duckdb.DuckDBPyConnection) -> Case:
     """Idempotent: safe to call whenever the demo case might be missing (a
-    fresh deployment, a wiped data volume). Records the subject, declaration
-    and case in Intake state; the caller runs reconciliation separately, the
-    same as a real intake."""
+    fresh deployment, a wiped data volume) or stale (a DEMO_FIXTURE_VERSION
+    bump). Wipes any prior demo-case rows across every case table, then
+    records the subject, declaration and case in Intake state; the caller
+    runs reconciliation separately, the same as a real intake."""
+    for table in _DEMO_CASE_TABLES:
+        conn.execute(f"DELETE FROM {table} WHERE case_id = ?", [DEMO_CASE_ID])
     subject = _subject_from_fixture(_load("subject.json"))
     declaration = _declaration_from_fixture(_load("declaration.json"))
     case = Case(

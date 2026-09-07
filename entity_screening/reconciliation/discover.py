@@ -8,12 +8,13 @@ system to state.
 - discover_from_publications: OpenAlex. "Publication, or presentation" is the
   statute's exact language and OpenAlex's exact domain. Fixture-driven for
   the demo and tests (`works_fixture`); a live pull is optional and never on
-  the demo's critical path.
-- discover_from_ownership: the GLEIF ownership chain. Added in C3.
+  the demo's critical path. Feeds the Sec. 51B.153 omission test.
+- tie_from_ownership / ties_from_own_affiliations: the Sec. 51B.151(b) tie
+  test -- emit ConcernTie observations, a distinct row type from a Finding.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import uuid
 
 import duckdb
 
@@ -23,11 +24,13 @@ from entity_screening.bibliometric.institution_match import resolve_openalex_ins
 from entity_screening.bibliometric.openalex_client import FetchFn, get_author_works
 from entity_screening.common.attribution import attribution_for
 from entity_screening.common.schema import (
+    ConcernTie,
     DeclaredAffiliation,
     DiscoveredAffiliation,
     ForeignControlFlag,
     MatchStatus,
     ScreeningHit,
+    TieKind,
 )
 from entity_screening.ownership.graph import DEFAULT_MAX_DEPTH, ultimate_parent
 from entity_screening.ownership.match import resolve_entity_to_lei
@@ -39,7 +42,6 @@ from entity_screening.resolution.matcher import (
 from entity_screening.screening.lists import EntityOfConcernList
 
 PUBLICATION_ROLE = "publication_affiliation"
-OWNERSHIP_PARENT_ROLE = "ultimate_parent_of_declared_employer"
 
 
 def _year(value: str | None) -> str | None:
@@ -172,33 +174,32 @@ def discover_from_publications(
 
 
 # --------------------------------------------------------------------------
-# Ownership discovery path (C3).
+# Concern-tie discovery paths (Sec. 51B.151(b)).
 #
-# The compose the spec's "Epics C and D already built -- this is wiring" left
-# implicit: nothing today feeds an ownership-chain parent name into the
-# concern-list screener. enrich_ownership computes only the cross-jurisdiction
-# ForeignControlFlag. Here: resolve a declared employer to a GLEIF LEI, walk
-# to its ultimate parent(s), and screen each parent's legal name against the
-# registered concern lists -- the Section 10 headline finding shape ("a
-# declared employer whose ultimate parent sits on a concern list", use-case-01
-# Section 7), unreachable by name-matching the declared name alone.
+# A tie to a concern-listed entity is not a non-disclosure -- it is the
+# subject of the statute's separate background check. These adapters emit
+# ConcernTie observations, a distinct row type from a Finding. See
+# docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md.
 # --------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class OwnershipDiscovery:
-    discovered: DiscoveredAffiliation
-    declared_employer_name: str
-    concern_hits: tuple[ScreeningHit, ...]
-    ownership_flags: tuple[ForeignControlFlag, ...]
 
 
 def _screen_name_against_concern_lists(
     name: str,
     concern_lists: list[EntityOfConcernList],
     threshold: float,
-    ownership_context: dict,
+    *,
+    anchor_entity_id: str,
+    matched_field: str,
+    producer: str,
+    ownership_path: dict | None = None,
 ) -> list[ScreeningHit]:
+    """Screens one name against every registered concern list.
+
+    `anchor_entity_id` is the subject-side id (a declared affiliation_id, or
+    "" for the subject's own affiliation history) -- NOT an entity name; that
+    field is a UUID everywhere else in the codebase. The concern entity's own
+    name is carried in `matched_variant` and `evidence["matched_entry_fields"]`.
+    """
     hits: list[ScreeningHit] = []
     for concern_list in concern_lists:
         for entry in concern_list.candidates_for(name):
@@ -209,33 +210,35 @@ def _screen_name_against_concern_lists(
                     best = candidate
             if best is None or not is_candidate_match(best, threshold):
                 continue
+            evidence = {
+                "entry_id": entry.entry_id,
+                "match_basis": best.match_basis,
+                "matched_entry_fields": entry.source_fields,
+                "source_attribution": attribution_for(concern_list.list_name),
+            }
+            if ownership_path is not None:
+                evidence["ownership_path"] = {
+                    **ownership_path,
+                    "source_attribution": attribution_for("gleif_golden_copy"),
+                }
             hits.append(
                 ScreeningHit(
-                    entity_id=ownership_context["declared_employer_name"],
+                    entity_id=anchor_entity_id,
                     list_name=concern_list.list_name,
                     matched_variant=best.right_name,
-                    matched_field="ownership_ultimate_parent",
+                    matched_field=matched_field,
                     confidence=best.confidence,
-                    evidence={
-                        "entry_id": entry.entry_id,
-                        "match_basis": best.match_basis,
-                        "matched_entry_fields": entry.source_fields,
-                        # How the screener reached this entity: the ownership
-                        # chain from the declared employer, GLEIF-attributed.
-                        "ownership_path": {
-                            **ownership_context,
-                            "source_attribution": attribution_for("gleif_golden_copy"),
-                        },
-                        "source_attribution": attribution_for(concern_list.list_name),
-                    },
+                    evidence=evidence,
                     status=MatchStatus.CANDIDATE_MATCH,
-                    producer="ownership_parent",
+                    producer=producer,
                 )
             )
     return hits
 
 
-def discover_from_ownership(
+def tie_from_ownership(
+    case_id: str,
+    run_id: str,
     declared_affiliations: list[DeclaredAffiliation],
     conn: duckdb.DuckDBPyConnection,
     concern_lists: list[EntityOfConcernList],
@@ -243,19 +246,21 @@ def discover_from_ownership(
     lei_threshold: float = DEFAULT_THRESHOLD,
     concern_threshold: float = DEFAULT_CONCERN_THRESHOLD,
     max_depth: int = DEFAULT_MAX_DEPTH,
-) -> list[OwnershipDiscovery]:
+) -> list[ConcernTie]:
     """For each declared employer, resolve it to a GLEIF LEI, walk to its
     ultimate parent(s), and screen each parent's legal name against the
-    concern lists. `conn` must already have GLEIF loaded (the caller does
-    this via ownership.ingest.load_gleif_level1/2, exactly as enrich_ownership
-    does). Returns one OwnershipDiscovery per parent that produced a
-    concern-list hit -- a parent with no hit is not a finding here."""
+    concern lists. `conn` must already have GLEIF loaded (the caller does this
+    via ownership.ingest.load_gleif_level1/2, exactly as enrich_ownership
+    does). One ConcernTie per parent that produced a concern-list hit --
+    emitted **whether or not** the parent is itself declared, because
+    disclosure is the Sec. 51B.153 question and this is a Sec. 51B.151(b)
+    tie."""
     employers = [
         a
         for a in declared_affiliations
         if (a.activity_kind or "").lower() in ("employment", "hiring")
     ]
-    results: list[OwnershipDiscovery] = []
+    ties: list[ConcernTie] = []
     for employer in employers:
         match = resolve_entity_to_lei(
             conn, employer.affiliation_id, employer.institution_name, lei_threshold
@@ -274,7 +279,7 @@ def discover_from_ownership(
             if row is None:
                 continue
             parent_name, parent_jurisdiction = row
-            ownership_context = {
+            ownership_path = {
                 "declared_employer_name": employer.institution_name,
                 "declared_employer_lei": match.lei,
                 "declared_employer_lei_match_basis": match.match_basis,
@@ -283,14 +288,20 @@ def discover_from_ownership(
                 "chain_truncated": truncated,
             }
             hits = _screen_name_against_concern_lists(
-                parent_name, concern_lists, concern_threshold, ownership_context
+                parent_name,
+                concern_lists,
+                concern_threshold,
+                anchor_entity_id=employer.affiliation_id,
+                matched_field="ownership_ultimate_parent",
+                producer="ownership_parent",
+                ownership_path=ownership_path,
             )
             if not hits:
                 continue
 
-            flags: list[ForeignControlFlag] = []
+            flags: tuple[ForeignControlFlag, ...] = ()
             if parent_jurisdiction and parent_jurisdiction != match.legal_jurisdiction:
-                flags.append(
+                flags = (
                     ForeignControlFlag(
                         entity_id=employer.affiliation_id,
                         entity_lei=match.lei,
@@ -306,26 +317,74 @@ def discover_from_ownership(
                             "source_attribution": attribution_for("gleif_golden_copy"),
                         },
                         status=MatchStatus.CANDIDATE_MATCH,
-                    )
+                    ),
                 )
 
-            results.append(
-                OwnershipDiscovery(
-                    discovered=DiscoveredAffiliation(
-                        source="gleif_ownership",
-                        institution_name=parent_name,
-                        country=parent_jurisdiction or None,
-                        country_on_adversary_list=None,
-                        adversary_list_version=None,
-                        first_observed=None,
-                        last_observed=None,
-                        record_count=1,
-                        role=f"{OWNERSHIP_PARENT_ROLE}:{employer.institution_name}",
-                        source_refs=(match.lei, parent_lei),
-                    ),
-                    declared_employer_name=employer.institution_name,
-                    concern_hits=tuple(hits),
-                    ownership_flags=tuple(flags),
+            ties.append(
+                ConcernTie(
+                    tie_id=str(uuid.uuid4()),
+                    case_id=case_id,
+                    run_id=run_id,
+                    tie_kind=TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT,
+                    anchor_affiliation_id=employer.affiliation_id,
+                    related_finding_id=None,  # an ownership tie has no corresponding finding
+                    concern_entity_name=parent_name,
+                    country=parent_jurisdiction or None,
+                    country_on_adversary_list=None,
+                    adversary_list_version=None,
+                    first_observed=None,
+                    last_observed=None,
+                    record_count=1,
+                    concern_list_evidence=tuple(hits),
+                    ownership_evidence=flags,
                 )
             )
-    return results
+    return ties
+
+
+def ties_from_own_affiliations(
+    case_id: str,
+    run_id: str,
+    discovered_affiliations: list[DiscoveredAffiliation],
+    concern_lists: list[EntityOfConcernList],
+    *,
+    concern_threshold: float = DEFAULT_CONCERN_THRESHOLD,
+) -> list[ConcernTie]:
+    """Screens each of the subject's own discovered affiliations against the
+    concern lists. Emits a ConcernTie(OWN_AFFILIATION_HISTORY) per match --
+    **regardless** of whether that affiliation is also an undisclosed Finding
+    (the both-at-once case, deliberately two artifacts). `related_finding_id`
+    is stamped by the caller (pipeline.reconcile_case) from the
+    DiscoveredAffiliation -> finding_id map; here it is left None."""
+    ties: list[ConcernTie] = []
+    for da in discovered_affiliations:
+        hits = _screen_name_against_concern_lists(
+            da.institution_name,
+            concern_lists,
+            concern_threshold,
+            anchor_entity_id="",
+            matched_field="own_affiliation_history",
+            producer="own_affiliation",
+        )
+        if not hits:
+            continue
+        ties.append(
+            ConcernTie(
+                tie_id=str(uuid.uuid4()),
+                case_id=case_id,
+                run_id=run_id,
+                tie_kind=TieKind.OWN_AFFILIATION_HISTORY,
+                anchor_affiliation_id=None,
+                related_finding_id=None,  # set by reconcile_case
+                concern_entity_name=da.institution_name,
+                country=da.country,
+                country_on_adversary_list=None,
+                adversary_list_version=None,
+                first_observed=da.first_observed,
+                last_observed=da.last_observed,
+                record_count=da.record_count,
+                concern_list_evidence=tuple(hits),
+                ownership_evidence=(),
+            )
+        )
+    return ties

@@ -53,6 +53,7 @@ from entity_screening.common.manifest import (
 )
 from entity_screening.common.schema import (
     CaseState,
+    ConcernTie,
     Finding,
     ForeignControlFlag,
     ResolvedAuthor,
@@ -63,14 +64,15 @@ from entity_screening.common.schema import (
     TopicSimilarityFlag,
 )
 from entity_screening.reconciliation.discover import (
-    discover_from_ownership,
     discover_from_publications,
+    tie_from_ownership,
+    ties_from_own_affiliations,
 )
 from entity_screening.reconciliation.match import RECONCILIATION_THRESHOLD
 from entity_screening.reconciliation.reconcile import (
-    reconcile as reconcile_declaration,
+    discovered_finding_map,
 )
-from entity_screening.reconciliation.reconcile import reconcile_ownership
+from entity_screening.reconciliation.reconcile import reconcile as reconcile_declaration
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.ingestion.dod_1260h import DoD1260HIngester
@@ -661,18 +663,21 @@ def reconcile_case(
     dod_1260h_file: Path | str = DEFAULT_DOD_1260H_FILE,
     opensanctions_file: Path | str | None = None,
     threshold: float = RECONCILIATION_THRESHOLD,
-) -> tuple[ReconciliationManifest, list[Finding]]:
-    """Loads a case's subject + declaration, runs the discovery adapters,
-    diffs the declared set against what public records show, and persists one
-    Finding per unreconciled discrepancy. Current-state per case: re-running
-    replaces the finding set (adjudications and exported files hold the
-    history). Advances the case from DISCOVERY to WORKSHEET.
+) -> tuple[ReconciliationManifest, list[Finding], list[ConcernTie]]:
+    """Loads a case's subject + declaration, runs the discovery adapters, and
+    persists two kinds of observation:
 
-    C2 wires the publication-record discovery path. The ownership path
-    (declared employer -> GLEIF ultimate parent -> concern lists) is added
-    in C3. `works_fixture` short-circuits the live OpenAlex path entirely --
-    the demo subject is synthetic, so its publication record is a fixture,
-    never a real author's works on a fictional name (use-case-01 Section 10).
+    - `Finding`s -- the Sec. 51B.153 omission test (declaration vs record).
+    - `ConcernTie`s -- the Sec. 51B.151(b) tie test: a declared employer's
+      ultimate parent on a concern list, and any of the subject's own
+      discovered affiliations that match a concern list (emitted whether or
+      not that affiliation is also an undisclosed Finding -- the both-at-once
+      case).
+
+    Current-state per case: re-running replaces both sets (adjudications and
+    exported files hold the history). Advances the case from DISCOVERY to
+    WORKSHEET. `works_fixture` short-circuits the live OpenAlex path -- the
+    demo subject is synthetic (use-case-01 Section 10).
     """
     run_id = str(uuid.uuid4())
 
@@ -702,7 +707,7 @@ def reconcile_case(
         )
         discovery_sources = ["openalex"]
 
-        ownership_discoveries: list = []
+        ties: list[ConcernTie] = []
         if gleif_lei_file and gleif_relationships_file:
             run_dir = Path(runs_dir) / "cases" / case_id
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -714,17 +719,33 @@ def reconcile_case(
                 error_log, dod_1260h_file, opensanctions_file
             )
             error_log.close()
-            ownership_discoveries = discover_from_ownership(
-                list(declaration.affiliations), conn, concern_lists
+
+            ties += tie_from_ownership(
+                case_id, run_id, list(declaration.affiliations), conn, concern_lists
             )
-            findings += reconcile_ownership(
-                case_id, run_id, declaration, ownership_discoveries, threshold=threshold
+            ties += ties_from_own_affiliations(
+                case_id, run_id, discovered, concern_lists
             )
             discovery_sources += ["gleif_ownership", "dod_section_1260h"]
             if opensanctions_file:
                 discovery_sources.append("opensanctions")
 
+        # Stamp each own-affiliation tie with the Finding for the same
+        # discovered affiliation (the both-at-once join -- a fact, not a name
+        # match). An ownership tie has no corresponding finding.
+        finding_by_da = discovered_finding_map(findings)
+        ties = [
+            replace(
+                t,
+                related_finding_id=finding_by_da.get(("openalex", t.concern_entity_name)),
+            )
+            if t.tie_kind.value == "own_affiliation_history"
+            else t
+            for t in ties
+        ]
+
         case_store.replace_findings(conn, case_id, findings)
+        case_store.replace_ties(conn, case_id, ties)
 
         if case.state in (CaseState.INTAKE, CaseState.DECLARATION_ASSEMBLY, CaseState.DISCOVERY):
             case_store.save_case(conn, replace(case, state=CaseState.WORKSHEET))
@@ -736,11 +757,12 @@ def reconcile_case(
         run_id=run_id,
         reconciliation_threshold=threshold,
         discovery_sources=discovery_sources,
-        discovered_count=len(discovered) + len(ownership_discoveries),
+        discovered_count=len(discovered),
         finding_count=len(findings),
+        tie_count=len(ties),
     )
     manifest.write(runs_dir)
-    return manifest, findings
+    return manifest, findings, ties
 
 
 def _case_concern_lists(error_log, dod_1260h_file, opensanctions_file):

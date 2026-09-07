@@ -329,6 +329,7 @@ class ReconciliationManifest:
     discovery_sources: list[str] = field(default_factory=list)
     discovered_count: int = 0
     finding_count: int = 0
+    tie_count: int = 0  # Sec. 51B.151(b) concern-tie observations
     # None until the foreign-adversary-country list exists (Section 12 step 4).
     adversary_list_version: str | None = None
     git_commit: str | None = None
@@ -342,6 +343,7 @@ class ReconciliationManifest:
         discovery_sources: list[str],
         discovered_count: int,
         finding_count: int,
+        tie_count: int = 0,
         adversary_list_version: str | None = None,
     ) -> "ReconciliationManifest":
         return cls(
@@ -352,6 +354,7 @@ class ReconciliationManifest:
             discovery_sources=list(discovery_sources),
             discovered_count=discovered_count,
             finding_count=finding_count,
+            tie_count=tie_count,
             adversary_list_version=adversary_list_version,
             git_commit=_git_commit(),
         )

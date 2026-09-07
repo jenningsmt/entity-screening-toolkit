@@ -66,21 +66,11 @@ def _overlaps_temporal_window(
         return False
 
 
-_OWNERSHIP_SOURCES = {"gleif_ownership"}
-
-
 def _source_covers(
     source: DeclarationSource, discovered: DiscoveredAffiliation
 ) -> bool:
     """Does this declaration source's stated scope admit the discovered item."""
     if not source.present:
-        return False
-    if discovered.source in _OWNERSHIP_SOURCES:
-        # An employer's ultimate parent is a fact about corporate structure,
-        # not an affiliation the subject had -- no HB 127 declaration source
-        # (DS-160, passport, CV, the institutional supplemental) asks for it.
-        # So its absence is never a gap in a document that asked; it is
-        # outside every source's scope by nature.
         return False
     if source.scope_kind == ScopeKind.FULL_HISTORY:
         return True
@@ -139,13 +129,11 @@ def build_finding(
     item: DiscoveredAffiliation,
     *,
     threshold: float = RECONCILIATION_THRESHOLD,
-    concern_list_evidence: tuple = (),
-    ownership_evidence: tuple = (),
 ) -> Finding:
     """Assembles one Finding for a discovered affiliation that has no
-    clearing declared match. Shared by both discovery paths so the
-    declaration-search trail and factual classification are computed
-    identically however the discrepancy was found."""
+    clearing declared match: the declaration-search trail, the factual
+    classification, and the nearest declared affiliations that did not
+    clear."""
     declared = list(declaration.affiliations)
     best = best_declared_match(item.institution_name, declared, threshold)
     trail, any_in_scope = _declaration_search_trail(declaration, item)
@@ -169,8 +157,6 @@ def build_finding(
         declaration_search=tuple(trail),
         factual_basis=_classify(any_in_scope, best_confidence),
         nearest_declared=nearest,
-        concern_list_evidence=tuple(concern_list_evidence),
-        ownership_evidence=tuple(ownership_evidence),
     )
 
 
@@ -182,10 +168,10 @@ def reconcile(
     threshold: float = RECONCILIATION_THRESHOLD,
 ) -> list[Finding]:
     """Every discovered affiliation with no clearing declared match becomes a
-    Finding. A discovered affiliation that *does* clear a declared name match
-    is treated as disclosed and produces nothing -- the name match, not the
-    date range, is what establishes 'same affiliation'; a within-affiliation
-    date discrepancy is a weaker signal, out of this slice's scope."""
+    Finding -- the Sec. 51B.153 omission test. A discovered affiliation that
+    *does* clear a declared name match is treated as disclosed and produces
+    nothing here (a concern tie for the same affiliation is a separate
+    matter, emitted by ties_from_own_affiliations regardless)."""
     declared = list(declaration.affiliations)
     findings: list[Finding] = []
     for item in discovered:
@@ -196,38 +182,12 @@ def reconcile(
     return findings
 
 
-def reconcile_ownership(
-    case_id: str,
-    run_id: str,
-    declaration: Declaration,
-    ownership_discoveries,
-    threshold: float = RECONCILIATION_THRESHOLD,
-) -> list[Finding]:
-    """The ownership discovery path: each OwnershipDiscovery is an undisclosed
-    ultimate parent on a concern list. The parent entity itself is never
-    something a declaration form asks about, so its declaration-search trail
-    normally shows every source out of scope -- the finding's weight comes
-    from the concern-list and ownership evidence attached, not from the
-    factual basis (Section 4: the system states the fact, not its
-    importance)."""
-    findings: list[Finding] = []
-    for od in ownership_discoveries:
-        best = best_declared_match(
-            od.discovered.institution_name, list(declaration.affiliations), threshold
-        )
-        if best is not None and best.cleared:
-            # The parent is itself declared somewhere -- still worth a finding
-            # if it is concern-listed, but not an omission; skip in this slice.
-            continue
-        findings.append(
-            build_finding(
-                case_id,
-                run_id,
-                declaration,
-                od.discovered,
-                threshold=threshold,
-                concern_list_evidence=od.concern_hits,
-                ownership_evidence=od.ownership_flags,
-            )
-        )
-    return findings
+def discovered_finding_map(findings: list[Finding]) -> dict[tuple[str, str], str]:
+    """`{(discovered.source, discovered.institution_name): finding_id}` -- how
+    pipeline.reconcile_case pairs an OWN_AFFILIATION_HISTORY ConcernTie with
+    the Finding for the same discovered affiliation (the both-at-once join).
+    `_aggregate_own_affiliations` yields one DiscoveredAffiliation per
+    institution within a run, so this key is unique."""
+    return {
+        (f.discovered.source, f.discovered.institution_name): f.finding_id for f in findings
+    }

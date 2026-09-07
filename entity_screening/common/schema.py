@@ -414,15 +414,21 @@ class FactualBasis(Enum):
 
 @dataclass(frozen=True)
 class Finding:
-    """One discrepancy between the declared set and the discovered record.
+    """One discrepancy between the declared set and the discovered record --
+    the Sec. 51B.153 *omission* test (failure to disclose).
 
     Carries NO severity, risk, priority, score, materiality, tier, weight or
     disposition field -- and neither does any type in its graph
     (DiscoveredAffiliation, DeclarationSearch, NearestDeclared). An
     evaluative claim about a person is not a thing this schema can hold. The
     human's decision lives on a separate WorksheetAction / Adjudication
-    record. _FINDING_GRAPH_ALLOWED_FIELDS below is checked by cli.py
+    record. _OBSERVATION_GRAPH_ALLOWED_FIELDS below is checked by cli.py
     `validate`.
+
+    A Finding no longer carries concern-list / ownership evidence: that is a
+    Sec. 51B.151(b) *tie* matter, a distinct observation type (ConcernTie),
+    not a non-disclosure. See docs/plans/2026-09-06-concern-ties-as-a-
+    distinct-observation.md.
     """
 
     finding_id: str
@@ -432,7 +438,54 @@ class Finding:
     declaration_search: tuple[DeclarationSearch, ...]
     factual_basis: FactualBasis
     nearest_declared: tuple[NearestDeclared, ...]
-    concern_list_evidence: tuple[ScreeningHit, ...] = ()
+
+
+class TieKind(Enum):
+    """How the subject connects to a concern-listed entity -- a factual
+    descriptor of the connection, never an evaluation of it."""
+
+    DECLARED_EMPLOYER_ULTIMATE_PARENT = "declared_employer_ultimate_parent"
+    DECLARED_AFFILIATION_DIRECT = "declared_affiliation_direct"  # a declared institution is itself listed
+    OWN_AFFILIATION_HISTORY = "own_affiliation_history"  # subject's own OpenAlex affiliation matches
+    # CO_AUTHOR_INSTITUTION -- a co-author's institution matching a list; follow-on, not built
+
+
+@dataclass(frozen=True)
+class ConcernTie:
+    """A tie between the subject (or something the subject declared) and a
+    concern-listed entity -- the Sec. 51B.151(b) *background check* test.
+
+    Section 4's fact/judgment boundary applies exactly as it does to Finding,
+    with one statute-specific addition: the type carries NO field asserting
+    that the tie "would prevent the person from being able to maintain the
+    security or integrity" of the research -- Sec. 51B.151(b)'s "would
+    prevent" clause is the analyst's judgment, recorded on a TieAction, never
+    a thing this schema can hold. _OBSERVATION_GRAPH_ALLOWED_FIELDS is
+    checked by cli.py `validate`.
+
+    `anchor_affiliation_id` is the DECLARED affiliation the tie runs from
+    (kinds 1 and 2); None for OWN_AFFILIATION_HISTORY. `related_finding_id`
+    is set when the SAME discovered affiliation also produced a Finding (the
+    both-at-once case) -- a join key stamped at creation, not a name match;
+    always None for an ownership tie (it has no corresponding finding). The
+    traversal path and its truncation status live inside the evidence
+    payloads, not duplicated here.
+    """
+
+    tie_id: str
+    case_id: str
+    run_id: str
+    tie_kind: TieKind
+    anchor_affiliation_id: str | None
+    related_finding_id: str | None
+    concern_entity_name: str
+    country: str | None
+    country_on_adversary_list: bool | None  # None = not yet checked (step 4); never "clear"
+    adversary_list_version: str | None
+    first_observed: str | None
+    last_observed: str | None
+    record_count: int
+    concern_list_evidence: tuple[ScreeningHit, ...]
     ownership_evidence: tuple[ForeignControlFlag, ...] = ()
 
 
@@ -452,6 +505,23 @@ class WorksheetAction:
     bulk action taken across a class of findings in one step."""
 
     finding_id: str
+    action: WorksheetActionKind
+    reason_code: str
+    reason_note: str
+    actor: str
+    recorded_at: str
+    batch_id: str | None = None
+
+
+@dataclass(frozen=True)
+class TieAction:
+    """One analyst disposition of one ConcernTie. Structurally the twin of
+    WorksheetAction but keyed to a `tie_id`, with its own reason-code
+    vocabulary (case/vocab.py:TIE_DISMISS_REASON_CODES) -- `outside_
+    declaration_scope` is meaningful for a discrepancy and meaningless for a
+    tie."""
+
+    tie_id: str
     action: WorksheetActionKind
     reason_code: str
     reason_note: str
@@ -491,11 +561,12 @@ class Certification:
 
 
 # The frozen allowlist behind the fact/judgment boundary. cli.py `validate`
-# asserts that every type in the Finding graph has exactly the fields listed
-# here -- so adding e.g. `risk_tier` to DiscoveredAffiliation fails CI until
-# someone deliberately edits this dict in the same commit and is forced to
-# notice they are widening what the system is allowed to assert.
-_FINDING_GRAPH_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
+# asserts that every observation type (Finding and its graph, ConcernTie and
+# its graph) has exactly the fields listed here -- so adding e.g. `risk_tier`
+# to DiscoveredAffiliation, or `would_prevent_security` to ConcernTie, fails
+# CI until someone deliberately edits this dict in the same commit and is
+# forced to notice they are widening what the system is allowed to assert.
+_OBSERVATION_GRAPH_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
     "Finding": frozenset(
         {
             "finding_id",
@@ -505,6 +576,23 @@ _FINDING_GRAPH_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
             "declaration_search",
             "factual_basis",
             "nearest_declared",
+        }
+    ),
+    "ConcernTie": frozenset(
+        {
+            "tie_id",
+            "case_id",
+            "run_id",
+            "tie_kind",
+            "anchor_affiliation_id",
+            "related_finding_id",
+            "concern_entity_name",
+            "country",
+            "country_on_adversary_list",
+            "adversary_list_version",
+            "first_observed",
+            "last_observed",
+            "record_count",
             "concern_list_evidence",
             "ownership_evidence",
         }
@@ -538,10 +626,12 @@ _FINDING_GRAPH_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
     ),
 }
 
-# Field-name substrings that must never appear on a Finding-graph type: an
+# Field-name substrings that must never appear on an observation type: an
 # evaluative claim about a person. Checked alongside the allowlist so a
-# rename that slips a new field past review still trips on the intent.
-_FORBIDDEN_FINDING_FIELD_TOKENS: tuple[str, ...] = (
+# rename that slips a new field past review still trips on the intent. The
+# last group is Sec. 51B.151(b)'s "would prevent ... security or integrity"
+# conclusion -- the analyst's, never the schema's.
+_FORBIDDEN_OBSERVATION_FIELD_TOKENS: tuple[str, ...] = (
     "severity",
     "risk",
     "priority",
@@ -551,4 +641,7 @@ _FORBIDDEN_FINDING_FIELD_TOKENS: tuple[str, ...] = (
     "weight",
     "disposition",
     "rank",
+    "impair",
+    "prevent",
+    "disqualif",
 )

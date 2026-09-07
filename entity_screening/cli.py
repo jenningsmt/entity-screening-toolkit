@@ -16,8 +16,9 @@ from entity_screening.bibliometric.topic_similarity import CET_CORPUS_FILE, DOD_
 from entity_screening.common import storage
 from entity_screening.common.manifest import RunManifest
 from entity_screening.common.schema import (
-    _FINDING_GRAPH_ALLOWED_FIELDS,
-    _FORBIDDEN_FINDING_FIELD_TOKENS,
+    _FORBIDDEN_OBSERVATION_FIELD_TOKENS,
+    _OBSERVATION_GRAPH_ALLOWED_FIELDS,
+    ConcernTie,
     CoverageBasis,
     Declaration,
     DiscoveredAffiliation,
@@ -149,25 +150,28 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             "output must never be able to assert a confirmed match."
         )
 
-    # The fact/judgment boundary (use-case-01 Section 4): the Finding graph
-    # states observable facts and never evaluates them. Guard the whole graph,
-    # not just Finding's outer shell -- an evaluative field on a nested type
-    # reaches the investigative-file export just as surely.
+    # The fact/judgment boundary (use-case-01 Section 4): the observation types
+    # -- Finding (the Sec. 51B.153 omission test) and ConcernTie (the
+    # Sec. 51B.151(b) tie test) -- state observable facts and never evaluate
+    # them. Guard the whole graph of each, not just the outer shell: an
+    # evaluative field on a nested type reaches the investigative-file export
+    # just as surely.
     from dataclasses import fields as _dc_fields
 
-    _finding_graph_types = {
+    _observation_graph_types = {
         "Finding": Finding,
+        "ConcernTie": ConcernTie,
         "DiscoveredAffiliation": DiscoveredAffiliation,
         "DeclarationSearch": DeclarationSearch,
         "NearestDeclared": NearestDeclared,
     }
-    for type_name, dc in _finding_graph_types.items():
+    for type_name, dc in _observation_graph_types.items():
         actual = {f.name for f in _dc_fields(dc)}
-        allowed = _FINDING_GRAPH_ALLOWED_FIELDS.get(type_name)
+        allowed = _OBSERVATION_GRAPH_ALLOWED_FIELDS.get(type_name)
         if allowed is None:
             problems.append(
-                f"{type_name} is in the Finding graph but has no entry in "
-                "_FINDING_GRAPH_ALLOWED_FIELDS — add one deliberately."
+                f"{type_name} is in an observation graph but has no entry in "
+                "_OBSERVATION_GRAPH_ALLOWED_FIELDS — add one deliberately."
             )
             continue
         if actual != allowed:
@@ -175,20 +179,20 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 f"{type_name}'s fields {sorted(actual)} do not match the frozen "
                 f"allowlist {sorted(allowed)} — the fact/judgment boundary is "
                 "enforced here, so widening what the system may assert about a "
-                "person must be a deliberate edit to _FINDING_GRAPH_ALLOWED_FIELDS "
+                "person must be a deliberate edit to _OBSERVATION_GRAPH_ALLOWED_FIELDS "
                 "in the same commit (use-case-01 Section 4)."
             )
         forbidden = {
             name
             for name in actual
-            for token in _FORBIDDEN_FINDING_FIELD_TOKENS
+            for token in _FORBIDDEN_OBSERVATION_FIELD_TOKENS
             if token in name.lower()
         }
         if forbidden:
             problems.append(
-                f"{type_name} carries evaluative field(s) {sorted(forbidden)} — a "
-                "Finding-graph type may not hold a severity/risk/priority/score/"
-                "materiality/tier/weight/disposition claim about a person."
+                f"{type_name} carries evaluative field(s) {sorted(forbidden)} — an "
+                "observation type may not hold a severity/risk/priority/score/"
+                "materiality/tier/weight/disposition/impair/prevent claim about a person."
             )
 
     # No real PII by construction: Subject / Declaration reject synthetic=False.

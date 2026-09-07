@@ -31,7 +31,7 @@ from entity_screening.common.schema import (
     ScreeningHit,
     WorksheetActionKind,
 )
-from entity_screening.common.schema import _FORBIDDEN_FINDING_FIELD_TOKENS
+from entity_screening.common.schema import _FORBIDDEN_OBSERVATION_FIELD_TOKENS
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 NSF_FILE = str(FIXTURES_DIR / "sample_nsf_awards.json")
@@ -160,24 +160,32 @@ def test_investigative_file_export_contract(tmp_path):
     )
 
     conn = storage.connect(db_path)
-    rows = service.worksheet(conn, "demo").rows
-    for row in rows[:-1]:
+    view = service.worksheet(conn, "demo")
+    # Discrepancy rows: dismiss all but one; certification-required on the last.
+    for row in view.rows[:-1]:
         service.record_action(
             conn, "demo", row.finding.finding_id, WorksheetActionKind.DISMISS,
             "record_error_or_misattribution", "stale", "analyst.a",
         )
+    last = view.rows[-1]
     service.record_action(
-        conn, "demo", rows[-1].finding.finding_id, WorksheetActionKind.CERTIFICATION_REQUIRED,
-        "possible_nondisclosure_for_certification", "ultimate parent on 1260H", "analyst.a",
+        conn, "demo", last.finding.finding_id, WorksheetActionKind.CERTIFICATION_REQUIRED,
+        "possible_nondisclosure_for_certification", "undisclosed affiliation", "analyst.a",
     )
     service.record_certification(
-        conn, "demo", rows[-1].finding.finding_id,
-        "Undisclosed ultimate parent of a declared employer appears on the DoD 1260H list.",
+        conn, "demo", last.finding.finding_id,
+        "Undisclosed affiliation to a foreign institution.",
         "Collaboration was publicly documented and disclosed elsewhere in the packet.",
         "Dr. Department Head",
     )
+    # Concern-tie rows must be actioned too, or the case cannot close.
+    for tie_row in view.tie_rows:
+        service.record_tie_action(
+            conn, "demo", tie_row.tie.tie_id, WorksheetActionKind.ESCALATE,
+            "needs_counterintelligence_referral", "ultimate parent on 1260H", "analyst.a",
+        )
     service.transition(conn, "demo", CaseState.ADJUDICATION)
-    service.record_adjudication(conn, "demo", "One item routed for certification; rest dismissed.", "Proceed with certification on file.", "analyst.a")
+    service.record_adjudication(conn, "demo", "One item routed for certification; a tie escalated.", "Proceed with certification on file.", "analyst.a")
 
     out_path, manifest = export.export_investigative_file(
         conn, "demo", fmt="json", runs_dir=tmp_path / "runs"
@@ -207,28 +215,49 @@ def test_investigative_file_export_contract(tmp_path):
         str(c.value) for row in wb["READ ME -- provenance"].iter_rows() for c in row
     ).lower()
     assert "synthetic" in provenance_text and "not a real finding" in provenance_text
+    # The "Concern ties" sheet sits before "Findings" -- higher-stakes rows first.
+    assert wb.sheetnames.index("Concern ties") < wb.sheetnames.index("Findings")
+    # Header rows render even when a sheet has zero data rows.
+    for name in ("Adjudications", "Certifications", "Concern ties", "Tie actions"):
+        assert wb[name].max_row >= 1
 
-    # --- every finding row carries the full contract ---
+    # --- every finding row carries the discrepancy contract (no evidence now) ---
     assert payload["findings"]
     for finding in payload["findings"]:
         assert finding["discovered"]["institution_name"]
         assert finding["declaration_search"]
         assert finding["factual_basis"]
-        for evidence_list in (finding["concern_list_evidence"], finding["ownership_evidence"]):
-            for ev in evidence_list:
-                attribution = ev["evidence"]["source_attribution"]
-                assert attribution["attribution"], "Section 10: attribution must reach the investigative file"
-                assert attribution["license"], "Section 10: licence must reach the investigative file"
+        assert "concern_list_evidence" not in finding
+        assert "ownership_evidence" not in finding
 
-    # --- no evaluative field anywhere in the serialized Finding graph (Section 4) ---
-    finding_keys = set(_walk_keys(payload["findings"]))
-    for key in finding_keys:
-        for token in _FORBIDDEN_FINDING_FIELD_TOKENS:
-            assert token not in key.lower(), f"evaluative key {key!r} in the exported findings"
+    # --- every concern-tie evidence payload carries attribution + licence (Section 10) ---
+    assert payload["concern_ties"]
+    for tie in payload["concern_ties"]:
+        for ev in list(tie["concern_list_evidence"]) + list(tie["ownership_evidence"]):
+            attribution = ev["evidence"]["source_attribution"]
+            assert attribution["attribution"], "Section 10: attribution must reach the investigative file"
+            assert attribution["license"], "Section 10: licence must reach the investigative file"
+
+    # --- no evaluative field anywhere in the serialized observation graphs (Section 4) ---
+    observation_keys = set(_walk_keys(payload["findings"])) | set(
+        _walk_keys(
+            [
+                {k: v for k, v in t.items() if k != "concern_list_evidence"}
+                for t in payload["concern_ties"]
+            ]
+        )
+    )
+    for key in observation_keys:
+        for token in _FORBIDDEN_OBSERVATION_FIELD_TOKENS:
+            assert token not in key.lower(), f"evaluative key {key!r} in the exported observations"
 
     # --- language discipline: system-generated text only (reason_note / notes are human) ---
     system_text = json.dumps(
-        {k: v for k, v in payload.items() if k not in ("worksheet", "adjudications", "certifications")}
+        {
+            k: v
+            for k, v in payload.items()
+            if k not in ("worksheet", "tie_actions", "adjudications", "certifications")
+        }
     ).lower()
     assert "confirmed" not in system_text
     assert "risk score" not in system_text

@@ -258,14 +258,61 @@ CREATE TABLE IF NOT EXISTS findings (
     discovered JSON,
     declaration_search JSON,
     factual_basis VARCHAR,
-    nearest_declared JSON,
-    concern_list_evidence JSON,
-    ownership_evidence JSON
+    nearest_declared JSON
     -- "Current state per case" like scored_entities: reconcile_case deletes
     -- WHERE case_id = ? before inserting. The immutable history is
     -- adjudications (append-only) plus exported investigative files.
     -- `run_id` cross-references the ReconciliationManifest; it is not a
     -- scoping key.
+    --
+    -- A Finding no longer carries concern_list_evidence / ownership_evidence
+    -- (that is a ConcernTie matter -- see
+    -- docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md). A
+    -- DuckDB file created before that split still has those two columns;
+    -- store.py's INSERT/SELECT name their columns explicitly, so the
+    -- vestigial columns are simply never read or written. No ALTER needed.
+);
+
+-- Sec. 51B.151(b) tie observations -- a distinct row type from a Finding.
+CREATE TABLE IF NOT EXISTS concern_ties (
+    tie_id VARCHAR,
+    case_id VARCHAR,
+    run_id VARCHAR,
+    tie_kind VARCHAR,
+    anchor_affiliation_id VARCHAR,
+    related_finding_id VARCHAR,
+    concern_entity_name VARCHAR,
+    country VARCHAR,
+    country_on_adversary_list BOOLEAN,
+    adversary_list_version VARCHAR,
+    first_observed VARCHAR,
+    last_observed VARCHAR,
+    record_count INTEGER,
+    concern_list_evidence JSON,
+    ownership_evidence JSON
+    -- Current state per case, like findings: replace_ties deletes
+    -- WHERE case_id = ? before inserting.
+);
+
+CREATE TABLE IF NOT EXISTS tie_actions (
+    tie_id VARCHAR,
+    case_id VARCHAR,
+    action VARCHAR,
+    reason_code VARCHAR,
+    reason_note VARCHAR,
+    actor VARCHAR,
+    recorded_at VARCHAR,
+    batch_id VARCHAR
+    -- Append-only history; the latest row per tie_id is the effective action.
+    -- Mirrors worksheet_actions exactly.
+);
+
+-- Tiny key/value table: a demo-fixture version marker so the self-healing
+-- demo case rebuilds itself across a schema/fixture change rather than
+-- serving stale rows from a persistent data volume.
+CREATE TABLE IF NOT EXISTS demo_meta (
+    key VARCHAR PRIMARY KEY,
+    value VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS worksheet_actions (
