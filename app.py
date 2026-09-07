@@ -8,6 +8,12 @@ This is the only visitor-facing view. The corpus-screening batch path
 (docs/requirements.md Section 9c) stays reachable through the CLI and the
 /runs/* API routes, unadvertised -- it is not a second front door here.
 
+The worksheet has two sections, one per statutory test: **discrepancies**
+(Sec. 51B.153, failure to disclose) and **concern ties** (Sec. 51B.151(b),
+the background check). Each has its own disposition control and its own
+reason vocabulary; a case cannot close while any row of either type is
+unactioned.
+
 Run with (two terminals):
     uvicorn entity_screening.api.main:app --reload
     streamlit run app.py
@@ -26,11 +32,11 @@ DEMO_CASE_ID = "demo"
 
 st.title("HB 127 Researcher Screening — case worksheet")
 st.caption(
-    "Portfolio project. Every row below is an **observed discrepancy**, never an "
-    "evaluation: the system states facts about each item and never says whether an "
-    "omission is *substantial* — that judgment is the analyst's. Demo data is "
-    "**synthetic**; no real declaration data is handled (see docs/use-case-01-"
-    "hb127-researcher-screening.md)."
+    "Portfolio project. Every row below is an **observed fact**, never an evaluation: "
+    "the system never says whether an omission is *substantial* or whether a tie "
+    "*would prevent* someone maintaining research security — those judgments are the "
+    "analyst's. Demo data is **synthetic**; no real declaration data is handled "
+    "(see docs/use-case-01-hb127-researcher-screening.md)."
 )
 
 with st.sidebar:
@@ -53,9 +59,9 @@ with st.sidebar:
 
     st.header("Actions")
     st.caption(
-        "Running reconciliation, dispositioning findings, adjudicating and "
-        "certifying are gated on the public demo. Viewing the worksheet and "
-        "exporting the investigative file stay open."
+        "Running reconciliation, dispositioning rows, adjudicating and certifying are "
+        "gated on the public demo. Viewing the worksheet and exporting the "
+        "investigative file stay open."
     )
     action_secret = st.text_input("Action secret (public demo only)", type="password", value="")
     _actions_enabled = (not _gate) or bool(action_secret)
@@ -87,6 +93,8 @@ except requests.RequestException as exc:
 
 DISMISS_CODES = reason_codes["dismiss"]
 ESCALATION_CODES = reason_codes["escalation"]
+TIE_DISMISS_CODES = reason_codes["tie_dismiss"]
+TIE_ESCALATION_CODES = reason_codes["tie_escalation"]
 
 # --- load the worksheet ---------------------------------------------------
 
@@ -95,6 +103,9 @@ try:
 except requests.RequestException as exc:
     st.error(f"Couldn't load case {case_id!r}: {exc}")
     st.stop()
+
+rows = worksheet["rows"]
+tie_rows = worksheet["tie_rows"]
 
 col_a, col_b, col_c = st.columns(3)
 col_a.metric("State", worksheet["state"])
@@ -106,176 +117,276 @@ if st.button("Re-run reconciliation", disabled=not _actions_enabled):
         try:
             result = _post(f"/cases/{case_id}/reconcile", {}, timeout=600).json()
             st.success(
-                f"{result['finding_count']} finding(s) across "
+                f"{result['finding_count']} discrepancy row(s), "
+                f"{result.get('tie_count', 0)} concern tie(s), across "
                 f"{', '.join(result['discovery_sources'])}."
             )
             st.rerun()
         except requests.RequestException as exc:
             st.error(f"Reconciliation failed: {exc}")
 
-st.divider()
-
-rows = worksheet["rows"]
-if not rows:
-    st.info("No findings. Run reconciliation from the button above.")
+if not rows and not tie_rows:
+    st.info("No observations yet. Run reconciliation from the button above.")
     st.stop()
 
+# --- combined closure indicator ---------------------------------------
+
+unactioned_findings = sum(1 for r in rows if r["action"] is None)
+unactioned_ties = sum(1 for r in tie_rows if r["action"] is None)
 st.subheader(
-    f"{len(rows)} discrepancy row(s) — "
+    f"{len(rows)} discrepancy row(s) · {len(tie_rows)} concern-tie row(s) — "
     f"{worksheet['unactioned_count']} unactioned"
 )
 if worksheet["unactioned_count"] > 0:
     st.warning(
-        "The case cannot leave the worksheet until **every** row has an analyst "
-        "action (use-case-01 Section 8's closure rule)."
+        f"The case cannot leave the worksheet until **every** row of both kinds has "
+        f"an analyst action (use-case-01 Section 8's closure rule). "
+        f"Outstanding: {unactioned_findings} discrepancy, {unactioned_ties} concern tie."
     )
 else:
-    st.success("Every row is actioned — the worksheet can close.")
-
-# --- the worksheet table ------------------------------------------------
+    st.success("Every discrepancy and every concern tie is actioned — the worksheet can close.")
 
 BASIS_LABEL = {
     "absent_from_in_scope_source": "gap in an in-scope source",
     "absent_outside_all_source_scopes": "outside every source's scope",
     "partial_match_below_threshold": "partial match to a declared item",
 }
+TIE_KIND_LABEL = {
+    "declared_employer_ultimate_parent": "declared employer's ultimate parent",
+    "declared_affiliation_direct": "a declared institution is itself listed",
+    "own_affiliation_history": "the subject's own affiliation history",
+}
 
-table = pd.DataFrame(
-    [
-        {
-            "finding_id": r["finding"]["finding_id"],
-            "source": r["finding"]["discovered"]["source"],
-            "institution": r["finding"]["discovered"]["institution_name"],
-            "country": r["finding"]["discovered"]["country"] or "—",
-            "observed": " – ".join(
-                x for x in (
-                    r["finding"]["discovered"]["first_observed"],
-                    r["finding"]["discovered"]["last_observed"],
-                ) if x
-            ) or "—",
-            "records": r["finding"]["discovered"]["record_count"],
-            "why it surfaced": BASIS_LABEL.get(
-                r["finding"]["factual_basis"], r["finding"]["factual_basis"]
-            ),
-            "in scope of": ", ".join(
-                s["source_kind"] for s in r["finding"]["declaration_search"] if s["covers_this_item"]
-            ) or "(none)",
-            "concern hit": ", ".join(
-                h["list_name"] for h in r["finding"]["concern_list_evidence"]
-            ) or "—",
-            "action": (r["action"] or {}).get("action", "— unactioned —"),
-            "reason": (r["action"] or {}).get("reason_code", ""),
-            "by": (r["action"] or {}).get("actor", ""),
-        }
-        for r in rows
-    ]
-)
-st.dataframe(table, width="stretch", hide_index=True)
+# map finding_id -> a short label, for cross-referencing ties
+_finding_label = {
+    r["finding"]["finding_id"]: r["finding"]["discovered"]["institution_name"] for r in rows
+}
 
-# --- disposition ------------------------------------------------------
 
-st.subheader("Disposition")
-tab_single, tab_bulk = st.tabs(["One finding", "Bulk (a class at once)"])
-
-with tab_single:
-    labels = {
-        f"{r['finding']['discovered']['institution_name']} "
-        f"({r['finding']['discovered']['source']})": r["finding"]["finding_id"]
-        for r in rows
+def _action_cells(action):
+    action = action or {}
+    return {
+        "action": action.get("action", "— unactioned —"),
+        "reason": action.get("reason_code", ""),
+        "by": action.get("actor", ""),
     }
-    picked = st.selectbox("Finding", list(labels), key="single_pick")
-    fid = labels[picked]
-    finding = next(r["finding"] for r in rows if r["finding"]["finding_id"] == fid)
 
-    with st.expander("Evidence for this finding", expanded=True):
-        st.json(finding)
 
-    action = st.selectbox(
-        "Action",
-        ["dismiss", "request_clarification", "escalate", "certification_required"],
-        key="single_action",
-    )
-    codes = DISMISS_CODES if action == "dismiss" else ESCALATION_CODES
-    code = st.selectbox("Reason code", list(codes), format_func=lambda c: f"{c} — {codes[c]}", key="single_code")
-    note = st.text_area("Reason note (free text — the analyst's own words)", key="single_note")
-    if st.button("Record action", disabled=not _actions_enabled, key="single_btn"):
-        try:
-            _post(
-                f"/cases/{case_id}/findings/{fid}/action",
-                {"action": action, "reason_code": code, "reason_note": note, "actor": actor},
-            )
-            st.success("Recorded.")
-            st.rerun()
-        except requests.RequestException as exc:
-            st.error(f"Failed: {exc}")
-
-with tab_bulk:
-    st.caption(
-        "Select a class — e.g. every 'outside every source's scope' row — and "
-        "disposition it with one reason. One batch, one act, one stated basis."
-    )
-    basis_filter = st.multiselect(
-        "Rows where 'why it surfaced' is",
-        sorted({r["finding"]["factual_basis"] for r in rows}),
-        format_func=lambda b: BASIS_LABEL.get(b, b),
-    )
-    selected = [
-        r["finding"]["finding_id"]
-        for r in rows
-        if not basis_filter or r["finding"]["factual_basis"] in basis_filter
-    ]
-    st.write(f"{len(selected)} row(s) selected.")
-    bulk_action = st.selectbox("Action", ["dismiss", "escalate"], key="bulk_action")
-    bulk_codes = DISMISS_CODES if bulk_action == "dismiss" else ESCALATION_CODES
-    bulk_code = st.selectbox(
-        "Reason code", list(bulk_codes), format_func=lambda c: f"{c} — {bulk_codes[c]}", key="bulk_code"
-    )
-    bulk_note = st.text_area("Reason note", key="bulk_note")
-    if st.button("Apply to the selected class", disabled=not _actions_enabled, key="bulk_btn"):
-        try:
-            _post(
-                f"/cases/{case_id}/worksheet/actions",
-                {
-                    "finding_ids": selected,
-                    "action": bulk_action,
-                    "reason_code": bulk_code,
-                    "reason_note": bulk_note,
-                    "actor": actor,
-                },
-            )
-            st.success(f"Applied to {len(selected)} row(s).")
-            st.rerun()
-        except requests.RequestException as exc:
-            st.error(f"Failed: {exc}")
-
-# --- certification, adjudication, outcome, export --------------------
+# --- Section A: discrepancies -----------------------------------------
 
 st.divider()
-st.subheader("Adjudication and the investigative file")
+st.header("Discrepancies — undisclosed items (§51B.153)")
+st.caption("A discovered affiliation the declaration does not account for. The bar is a *failure to disclose*, not a risk.")
+
+if rows:
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "institution": r["finding"]["discovered"]["institution_name"],
+                    "country": r["finding"]["discovered"]["country"] or "—",
+                    "observed": " – ".join(
+                        x for x in (
+                            r["finding"]["discovered"]["first_observed"],
+                            r["finding"]["discovered"]["last_observed"],
+                        ) if x
+                    ) or "—",
+                    "records": r["finding"]["discovered"]["record_count"],
+                    "why it surfaced": BASIS_LABEL.get(
+                        r["finding"]["factual_basis"], r["finding"]["factual_basis"]
+                    ),
+                    "in scope of": ", ".join(
+                        s["source_kind"]
+                        for s in r["finding"]["declaration_search"]
+                        if s["covers_this_item"]
+                    ) or "(none)",
+                    **_action_cells(r["action"]),
+                }
+                for r in rows
+            ]
+        ),
+        width="stretch",
+        hide_index=True,
+    )
+
+    tab_one, tab_bulk = st.tabs(["One row", "Bulk (a class at once)"])
+    with tab_one:
+        labels = {
+            f"{r['finding']['discovered']['institution_name']}": r["finding"]["finding_id"]
+            for r in rows
+        }
+        picked = st.selectbox("Discrepancy", list(labels), key="f_pick")
+        fid = labels[picked]
+        with st.expander("Evidence (declaration-search trail)", expanded=False):
+            st.json(next(r["finding"] for r in rows if r["finding"]["finding_id"] == fid))
+        f_action = st.selectbox(
+            "Action", ["dismiss", "request_clarification", "escalate", "certification_required"],
+            key="f_action",
+        )
+        f_codes = DISMISS_CODES if f_action == "dismiss" else ESCALATION_CODES
+        f_code = st.selectbox("Reason code", list(f_codes), format_func=lambda c: f"{c} — {f_codes[c]}", key="f_code")
+        f_note = st.text_area("Reason note (the analyst's own words)", key="f_note")
+        if st.button("Record", disabled=not _actions_enabled, key="f_btn"):
+            try:
+                _post(
+                    f"/cases/{case_id}/findings/{fid}/action",
+                    {"action": f_action, "reason_code": f_code, "reason_note": f_note, "actor": actor},
+                )
+                st.rerun()
+            except requests.RequestException as exc:
+                st.error(f"Failed: {exc}")
+    with tab_bulk:
+        st.caption(
+            "Select a class — e.g. every 'outside every source's scope' row (the §6 "
+            "mid-career trap) — and disposition it with one reason. One batch, one act."
+        )
+        basis_filter = st.multiselect(
+            "Rows where 'why it surfaced' is",
+            sorted({r["finding"]["factual_basis"] for r in rows}),
+            format_func=lambda b: BASIS_LABEL.get(b, b),
+        )
+        selected = [
+            r["finding"]["finding_id"]
+            for r in rows
+            if not basis_filter or r["finding"]["factual_basis"] in basis_filter
+        ]
+        st.write(f"{len(selected)} row(s) selected.")
+        b_action = st.selectbox("Action", ["dismiss", "escalate"], key="fb_action")
+        b_codes = DISMISS_CODES if b_action == "dismiss" else ESCALATION_CODES
+        b_code = st.selectbox("Reason code", list(b_codes), format_func=lambda c: f"{c} — {b_codes[c]}", key="fb_code")
+        b_note = st.text_area("Reason note", key="fb_note")
+        if st.button("Apply to the selected class", disabled=not _actions_enabled, key="fb_btn"):
+            try:
+                _post(
+                    f"/cases/{case_id}/worksheet/actions",
+                    {"finding_ids": selected, "action": b_action, "reason_code": b_code,
+                     "reason_note": b_note, "actor": actor},
+                )
+                st.rerun()
+            except requests.RequestException as exc:
+                st.error(f"Failed: {exc}")
+else:
+    st.info("No discrepancy rows.")
+
+# --- Section B: concern ties ----------------------------------------
+
+st.divider()
+st.header("Concern ties — foreign-adversary background check (§51B.151(b))")
+st.caption(
+    "A tie between the subject (or a declared employer) and a concern-listed entity. "
+    "Not a non-disclosure. Whether a tie *would prevent* someone maintaining research "
+    "security is the analyst's call — the system only states the tie."
+)
+
+if tie_rows:
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "how": TIE_KIND_LABEL.get(r["tie"]["tie_kind"], r["tie"]["tie_kind"]),
+                    "concern entity": r["tie"]["concern_entity_name"],
+                    "concern list": ", ".join(h["list_name"] for h in r["tie"]["concern_list_evidence"]),
+                    "confidence": round(
+                        max((h["confidence"] for h in r["tie"]["concern_list_evidence"]), default=0.0), 3
+                    ),
+                    "country": r["tie"]["country"] or "—",
+                    "adversary-list": (
+                        "not yet checked" if r["tie"]["country_on_adversary_list"] is None
+                        else str(r["tie"]["country_on_adversary_list"])
+                    ),
+                    "also an omission": (
+                        _finding_label.get(r["tie"]["related_finding_id"], "—")
+                        if r["tie"]["related_finding_id"] else "—"
+                    ),
+                    **_action_cells(r["action"]),
+                }
+                for r in tie_rows
+            ]
+        ),
+        width="stretch",
+        hide_index=True,
+    )
+
+    tab_t_one, tab_t_bulk = st.tabs(["One tie", "Bulk"])
+    with tab_t_one:
+        t_labels = {r["tie"]["concern_entity_name"]: r["tie"]["tie_id"] for r in tie_rows}
+        t_picked = st.selectbox("Concern tie", list(t_labels), key="t_pick")
+        tid = t_labels[t_picked]
+        _picked_tie = next(r["tie"] for r in tie_rows if r["tie"]["tie_id"] == tid)
+        if _picked_tie["related_finding_id"]:
+            st.info(
+                f"This affiliation is **also flagged as an undisclosed discrepancy** "
+                f"({_finding_label.get(_picked_tie['related_finding_id'], '?')}). "
+                "Dismissing the omission does not dispose of the tie — action both."
+            )
+        with st.expander("Evidence (traversal path, matched entry, attribution)", expanded=False):
+            st.json(_picked_tie)
+        t_action = st.selectbox(
+            "Action", ["dismiss", "request_clarification", "escalate", "certification_required"],
+            key="t_action",
+        )
+        t_codes = TIE_DISMISS_CODES if t_action == "dismiss" else TIE_ESCALATION_CODES
+        t_code = st.selectbox("Reason code", list(t_codes), format_func=lambda c: f"{c} — {t_codes[c]}", key="t_code")
+        t_note = st.text_area("Reason note", key="t_note")
+        if st.button("Record", disabled=not _actions_enabled, key="t_btn"):
+            try:
+                _post(
+                    f"/cases/{case_id}/ties/{tid}/action",
+                    {"action": t_action, "reason_code": t_code, "reason_note": t_note, "actor": actor},
+                )
+                st.rerun()
+            except requests.RequestException as exc:
+                st.error(f"Failed: {exc}")
+    with tab_t_bulk:
+        st.caption("Concern-tie rows are usually few; bulk is a convenience, not the norm.")
+        t_selected = [r["tie"]["tie_id"] for r in tie_rows]
+        tb_action = st.selectbox("Action", ["dismiss", "escalate"], key="tb_action")
+        tb_codes = TIE_DISMISS_CODES if tb_action == "dismiss" else TIE_ESCALATION_CODES
+        tb_code = st.selectbox("Reason code", list(tb_codes), format_func=lambda c: f"{c} — {tb_codes[c]}", key="tb_code")
+        tb_note = st.text_area("Reason note", key="tb_note")
+        if st.button(f"Apply to all {len(t_selected)} concern tie(s)", disabled=not _actions_enabled, key="tb_btn"):
+            try:
+                _post(
+                    f"/cases/{case_id}/ties/actions",
+                    {"tie_ids": t_selected, "action": tb_action, "reason_code": tb_code,
+                     "reason_note": tb_note, "actor": actor},
+                )
+                st.rerun()
+            except requests.RequestException as exc:
+                st.error(f"Failed: {exc}")
+else:
+    st.success("No concern ties for this case.")
+
+# --- certification, close, adjudication, export --------------------
+
+st.divider()
+st.header("Adjudication and the investigative file")
 
 with st.expander("§51B.153 department-head certification (for a disregarded non-disclosure)"):
-    cert_fid = st.selectbox("Finding", list(labels), key="cert_pick")
-    substance = st.text_area("Substance of the failure to disclose", key="cert_substance")
-    reasons = st.text_area("Reasons for disregarding it", key="cert_reasons")
-    head = st.text_input("Department head (or designee)", key="cert_head")
-    if st.button("Record certification", disabled=not _actions_enabled, key="cert_btn"):
-        try:
-            _post(
-                f"/cases/{case_id}/certifications",
-                {
-                    "finding_id": labels[cert_fid],
-                    "substance_of_failure": substance,
-                    "reasons_for_disregarding": reasons,
-                    "department_head": head,
-                },
-            )
-            st.success("Certification recorded — it will appear in the investigative file.")
-        except requests.RequestException as exc:
-            st.error(f"Failed: {exc}")
+    if rows:
+        cert_labels = {r["finding"]["discovered"]["institution_name"]: r["finding"]["finding_id"] for r in rows}
+        cert_pick = st.selectbox("Discrepancy", list(cert_labels), key="cert_pick")
+        substance = st.text_area("Substance of the failure to disclose", key="cert_substance")
+        reasons = st.text_area("Reasons for disregarding it", key="cert_reasons")
+        head = st.text_input("Department head (or designee)", key="cert_head")
+        if st.button("Record certification", disabled=not _actions_enabled, key="cert_btn"):
+            try:
+                _post(
+                    f"/cases/{case_id}/certifications",
+                    {"finding_id": cert_labels[cert_pick], "substance_of_failure": substance,
+                     "reasons_for_disregarding": reasons, "department_head": head},
+                )
+                st.success("Certification recorded — it will appear in the investigative file.")
+            except requests.RequestException as exc:
+                st.error(f"Failed: {exc}")
+    else:
+        st.caption("No discrepancy rows to certify.")
 
-can_close = worksheet["can_close"]
 if worksheet["state"] == "worksheet":
-    if st.button("Close the worksheet → adjudication", disabled=not (_actions_enabled and can_close)):
+    if st.button(
+        "Close the worksheet → adjudication",
+        disabled=not (_actions_enabled and worksheet["can_close"]),
+    ):
         try:
             _post(f"/cases/{case_id}/transition", {"target_state": "adjudication"})
             st.rerun()
@@ -291,7 +402,6 @@ if worksheet["state"] == "adjudication":
                 f"/cases/{case_id}/adjudication",
                 {"assessment": assessment, "recommendation": recommendation, "actor": actor},
             )
-            st.success("Adjudication recorded.")
             st.rerun()
         except requests.RequestException as exc:
             st.error(f"Failed: {exc}")
@@ -320,9 +430,12 @@ st.divider()
 with st.expander("This institution's accumulated dismissal bases (Section 4.1)"):
     try:
         summary = _get("/cases/dismissal-basis-summary").json()
-        if summary["by_reason_code"]:
-            st.dataframe(pd.DataFrame(summary["by_reason_code"]), hide_index=True)
-        else:
-            st.caption("No dismissals recorded yet.")
+        for label, key in (("Discrepancies", "discrepancy"), ("Concern ties", "concern_tie")):
+            st.markdown(f"**{label}**")
+            rows_ = summary[key]["by_reason_code"]
+            if rows_:
+                st.dataframe(pd.DataFrame(rows_), hide_index=True)
+            else:
+                st.caption("None recorded yet.")
     except requests.RequestException as exc:
         st.caption(f"(unavailable: {exc})")
