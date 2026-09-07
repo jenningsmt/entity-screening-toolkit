@@ -60,8 +60,9 @@ and can be re-run later against a newer GLEIF download. So:
   discipline could quietly slip), alongside both reference-corpus files' provenance.
 - **`ReconciliationManifest`** (Use Case 01, HB 127) records one case
   reconciliation: `case_id` (opaque), `run_id`, the discovery sources consulted, the
-  reconciliation threshold, and finding counts. It contains **nothing that identifies
-  the subject** — no name, no date of birth, no passport number. `case_id` is the only
+  reconciliation threshold, and the `finding_count` / `tie_count` (§51B.153
+  discrepancies and §51B.151(b) concern ties respectively). It contains **nothing that
+  identifies the subject** — no name, no date of birth, no passport number. `case_id` is the only
   join key back to the subject, which lives in the `subjects` table with field-level
   sensitivity classification. Same "current state, overwritten on re-run" pattern as
   `GleifSnapshotManifest` — a re-open reconciles again and overwrites it. Written to

@@ -203,15 +203,17 @@ class ScoredEntity:
 # Two structural commitments, both enforced here rather than in documentation:
 #
 #   1. The fact/judgment boundary (use-case doc Section 4). The system states
-#      observable facts about a discrepancy and never evaluates them. The
-#      Finding graph -- Finding and every type it contains -- carries no
-#      severity, risk, priority, score, materiality, tier, weight or
-#      disposition field. _FINDING_GRAPH_ALLOWED_FIELDS below is the frozen
-#      allowlist; cli.py `validate` fails CI if any of these types grows a
-#      field not on it. This is the same mechanism as MatchStatus's single
-#      member, applied to a second kind of assertion -- guarding the whole
-#      graph, not just Finding's outer shell, because an evaluative field
-#      added to DiscoveredAffiliation would reach the export just as surely.
+#      observable facts and never evaluates them. The observation types --
+#      Finding (the Sec. 51B.153 omission test) and ConcernTie (the
+#      Sec. 51B.151(b) tie test) -- and every type in their graphs carry no
+#      severity, risk, priority, score, materiality, tier, weight,
+#      disposition or "would prevent / impair" field.
+#      _OBSERVATION_GRAPH_ALLOWED_FIELDS below is the frozen allowlist;
+#      cli.py `validate` fails CI if any of these types grows a field not on
+#      it. This is the same mechanism as MatchStatus's single member,
+#      applied to two more kinds of assertion -- guarding the whole graph,
+#      not just the outer shell, because an evaluative field added to
+#      DiscoveredAffiliation would reach the export just as surely.
 #
 #   2. No real PII, ever, in this build (use-case doc Section 9,
 #      requirements Section 3). Subject and Declaration reject synthetic=False

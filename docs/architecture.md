@@ -203,46 +203,57 @@ indexes), so cosine similarity is computed directly via DuckDB's
 | `entity_screening/pipeline.py` | Shared orchestration: `run_screening`, `rescore_run`, `enrich_ownership`, `enrich_bibliometric`, `enrich_topic_similarity`, `export_scored_entities` — called by both the CLI and the API |
 | `entity_screening/cli.py` | `run` (full pipeline, calls `pipeline.py` in-process) and `validate` (structural sanity checks) |
 | `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (routes) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) |
-| `entity_screening/case/` | Use Case 01 (HB 127 researcher screening): the case model (`store.py`), worksheet/adjudication/lifecycle operations (`service.py`), the controlled reason-code vocabulary (`vocab.py`), the investigative-file export (`export.py`), and the self-healing demo case (`demo.py`) |
-| `entity_screening/reconciliation/` | The declaration-versus-record diff: discovery adapters (`discover.py` — OpenAlex publications; declared-employer → GLEIF ultimate parent → concern lists), institution-name matching (`match.py`), and the diff itself producing `Finding`s (`reconcile.py`) |
-| `app.py` | Streamlit review UI: thin HTTP client of the API. The **HB 127 case worksheet** is the only visitor-facing view (one row per finding, single + bulk disposition, adjudication, investigative-file export) |
+| `entity_screening/case/` | Use Case 01 (HB 127 researcher screening): the case model (`store.py`), worksheet/adjudication/lifecycle operations (`service.py`), the controlled reason-code vocabularies (`vocab.py` — one set for discrepancies, one for concern ties), the investigative-file export (`export.py`), and the self-healing demo case (`demo.py`) |
+| `entity_screening/reconciliation/` | Two statutory tests: `reconcile.py` produces `Finding`s (the §51B.153 omission test) from `discover.py`'s publication path; `discover.py`'s `tie_from_ownership` / `ties_from_own_affiliations` produce `ConcernTie`s (the §51B.151(b) tie test). `match.py` is the institution-name matcher shared by both |
+| `app.py` | Streamlit review UI: thin HTTP client of the API. The **HB 127 case worksheet** is the only visitor-facing view — two sections (discrepancies, concern ties), each with its own disposition control and reason vocabulary, one closure rule over both |
 
 ## Use Case 01 — HB 127 researcher screening (the case path)
 
 `docs/requirements.md` Section 9c moved the project's primary shape from
 corpus-in/ranked-list-out to **subject-in / worked-worksheet-and-investigative-file-out**.
-The statutory test (Texas HB 127 §51B.153) is a *failure to disclose*, so this is a
-declaration-versus-record reconciliation problem. `docs/use-case-01-hb127-researcher-screening.md`
-is the specification; `docs/plans/2026-09-06-use-case-01-implementation.md` the plan.
+`docs/use-case-01-hb127-researcher-screening.md` is the specification;
+`docs/plans/2026-09-06-use-case-01-implementation.md` and
+`docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md` are the plans.
+
+**Two statutory tests, two observation types.** §51B.153 bars employment on a *failure
+to disclose* a substantial activity — a declaration-versus-record reconciliation, which
+produces a **`Finding`**. §51B.151(b) requires a *background check for ties to a foreign
+adversary* — a separate question, which produces a **`ConcernTie`** (a declared
+employer's ultimate parent on a concern list; the subject's own affiliation history
+matching a concern list). Forcing the second through the first mislabels it (the first
+real export did exactly that). The worksheet carries both row types under one closure
+rule.
 
 ```
   POST /cases (synthetic subject + declaration + coverage basis, recorded at intake)
         │
         ▼
-  pipeline.reconcile_case ──▶ reconciliation/discover.py   (OpenAlex publications;
-        │                     reconciliation/reconcile.py    GLEIF ownership → concern lists)
-        │                            │ Finding (per discrepancy)
-        ▼                            ▼
-  case/store.py (findings, current-state per case)   +   ReconciliationManifest (case_id only)
+  pipeline.reconcile_case ──▶ reconcile.py     ──▶ Finding   (per undisclosed discrepancy)
+        │                     discover.py       ──▶ ConcernTie (per §51B.151(b) tie)
+        ▼
+  case/store.py (findings + concern_ties, current-state per case) + ReconciliationManifest (case_id only)
         │
         ▼
-  GET /cases/{id}/worksheet ──▶ analyst actions (single + bulk), closure rule
+  GET /cases/{id}/worksheet ──▶ analyst actions on BOTH row types (own vocabularies), closure rule
         │
         ▼
   POST /cases/{id}/adjudication  (append-only)  +  /certifications  (§51B.153)
         │
         ▼
-  GET /cases/{id}/investigative-file.json|.xlsx  (redacted by default) + InvestigativeFileManifest
+  GET /cases/{id}/investigative-file.json|.xlsx  (concern_ties before findings; redacted by default)
 ```
 
 **The fact/judgment boundary** (use-case doc Section 4) is enforced the same way the
-`MatchStatus` rule is: `common/schema.py`'s `Finding` and every type in its graph
-(`DiscoveredAffiliation`, `DeclarationSearch`, `NearestDeclared`) carry **no** severity,
-risk, priority, score, materiality, tier, weight or disposition field.
-`_FINDING_GRAPH_ALLOWED_FIELDS` is the frozen per-type allowlist; `cli.py validate`
-fails CI if any of these types grows a field not on it. The analyst's decision lives on
-a separate `WorksheetAction` / `Adjudication` record. `Subject` and `Declaration` reject
-`synthetic=False` in `__post_init__` — this build handles no real declaration data.
+`MatchStatus` rule is: `common/schema.py`'s `Finding` and `ConcernTie`, and every type
+in their graphs (`DiscoveredAffiliation`, `DeclarationSearch`, `NearestDeclared`), carry
+**no** severity, risk, priority, score, materiality, tier, weight, disposition, or
+"would prevent / impair" field. `_OBSERVATION_GRAPH_ALLOWED_FIELDS` is the frozen
+per-type allowlist; `cli.py validate` fails CI if any of these types grows a field not
+on it. The analyst's decision lives on a separate `WorksheetAction` / `TieAction` /
+`Adjudication` record — including the §51B.151(b) "would not prevent" conclusion, which
+is a `TieAction.reason_code` value (the human's call), not a schema field. `Subject` and
+`Declaration` reject `synthetic=False` in `__post_init__` — this build handles no real
+declaration data.
 
 **The batch path is repositioned, not retired.** `pipeline.run_screening` and the
 `/runs/*` routes stay callable for **population re-screening** against updated reference

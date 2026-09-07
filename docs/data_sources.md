@@ -429,10 +429,13 @@ fixtures) uses **real reference data and a wholly synthetic person**
   attached to the fictional name), and the three-node GLEIF ownership chain
   in `gleif_lei.csv` / `gleif_relationships.csv` (see
   `tests/fixtures/demo_case/gleif.NOTICE.md`).
-- **Real:** the DoD Section 1260H list the demo's headline finding matches
+- **Real:** the DoD Section 1260H list the demo's headline observation matches
   against (`entity_screening/screening/data/dod_1260h.json`) — the synthetic
   ownership chain's ultimate parent is named for a real 1260H entity, so the
-  designation the finding rests on is real.
+  designation the observation rests on is real. That observation is a
+  **concern tie** (§51B.151(b)), not a discrepancy (§51B.153) — the employer
+  was declared; the tie is that its ultimate parent is concern-listed
+  (`docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md`).
 
 Replacing the fabricated GLEIF chain with a real extracted one (a real GLEIF
 subsidiary whose real ultimate parent is 1260H-listed) is a binding
