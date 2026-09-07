@@ -21,12 +21,29 @@ Run with (two terminals):
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pandas as pd
 import requests
 import streamlit as st
 
 st.set_page_config(page_title="HB 127 Researcher Screening", layout="wide")
+
+# Pinned to the top of the sidebar, above every other sidebar element, and it
+# survives reruns. Resolve relative to this file, not the working directory --
+# `streamlit run app.py` runs from the repo root locally, the container runs
+# from /app. The asset lives under assets/ (an app-owned path COPY'd into the
+# image) rather than docs/, which is a documentation folder. Absent-file guard
+# so a missing asset can't take the whole page down.
+#
+# The asset is a JPEG on a solid black background (verified: 100% of the image
+# border is near-black), so it cannot be transparent. In dark mode it blends
+# into the sidebar; in light mode it reads as a black block. `size="medium"`
+# keeps that block from dominating the panel. Converting to a transparent PNG
+# is the real fix and a separate decision -- see the commit that added this.
+_LOGO = Path(__file__).resolve().parent / "assets" / "monops-logo.jpeg"
+if _LOGO.exists():
+    st.logo(str(_LOGO), size="medium")
 
 DEMO_CASE_ID = "demo"
 
