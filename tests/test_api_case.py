@@ -20,6 +20,12 @@ def test_demo_case_self_heals_and_shows_a_worked_worksheet(client):
     body = response.json()
     assert body["case_id"] == "demo"
     assert body["state"] == "worksheet"
+
+    # The worksheet must say whose file is open -- the subject fields exist on
+    # the Subject and used to stop before this payload (seam closed 2026-09-07).
+    assert body["subject_display_name"] == "Wei Chen"
+    assert body["subject_id"] == "demo-subject"
+    assert body["subject_synthetic"] is True
     # Two discrepancy rows (openalex) + one concern-tie row.
     assert sorted(r["finding"]["discovered"]["source"] for r in body["rows"]) == ["openalex", "openalex"]
     assert len(body["tie_rows"]) == 1

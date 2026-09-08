@@ -60,14 +60,64 @@ if _LOGO.exists():
 
 DEMO_CASE_ID = "demo"
 
+# Written for a non-specialist evaluating the project, not for a research
+# security practitioner. Open on arrival (expanded=True) but collapsible; it
+# reappears each new session because Streamlit has no cross-session memory, and
+# that is accepted rather than papered over with session_state/query-param
+# machinery. The fact/judgment sentence and the synthetic-data note used to live
+# in a caption under the title -- they are in here now, and the caption is gone,
+# so the point is made once.
+#
+# Rendered BELOW the State/Coverage/Deadline metric row, not above it: the panel
+# height is set by the column width, so at any short viewport an above-metrics
+# panel pushed the "this runs" signal off the first screen. Below the metrics it
+# is still open and unmissable, and the metric row clears the fold everywhere.
+_EXPLAINER = """\
+**What you're looking at**
+
+Texas HB 127 requires public universities to screen prospective foreign
+researchers before hiring, using the passport and visa application (DS-160) the
+applicant submits. The statutory bar is narrow: employment is barred where the
+applicant **failed to disclose** a substantial educational, employment, or
+research activity — not where someone judges them risky. The disqualifying
+condition is an omission. This page works that reconciliation as a case: it
+compares what a researcher declared against public records — publication and
+affiliation history, corporate ownership chains, government concern lists — and
+surfaces every place the declaration doesn't account for what the record shows.
+
+**What it will not do.** It never scores a person, never rules an omission
+"substantial," never says a tie should prevent someone from working as a
+researcher. Those are the analyst's judgments and the law's. The system puts
+facts on the table with their provenance attached — and that boundary is
+enforced in the data model, not just the interface: there is no field capable of
+holding a risk score.
+
+**Reading the worksheet.** Two sections, one per statutory test. *Discrepancies*
+(§51B.153) are items in the record and absent from the declaration, each labeled
+with why it surfaced and which source's scope window it falls in — a DS-160
+covers five years of employment, so an older item is a scope gap, not a
+concealment. *Concern ties* (§51B.151(b)) are links to listed entities,
+including ones no name check would reach: a declared employer whose ultimate
+parent sits on the DoD 1260H list. Every row needs an analyst action and a
+stated reason before the case can close.
+
+**Live versus demo.** The screening queries live sources — publication and
+affiliation history comes from OpenAlex at run time. This public demo
+deliberately doesn't: the case shown is built from bundled fixtures so it
+renders identically for everyone and nobody's clicking fires queries on their
+behalf, and the action controls are locked behind a secret. The live path is the
+same code with the fixtures left out. All demo data is synthetic.
+
+**Scope.** HB 127 researcher screening is one due-diligence workflow; export
+control and conflict-of-interest review are the same shape of problem and are
+the intended next use cases. Case intake and queue routing would come from the
+office's existing workflow rather than being rebuilt here.
+
+*Full specification: docs/use-case-01-hb127-researcher-screening.md.*
+"""
+
 st.title("HB 127 Researcher Screening — case worksheet")
-st.caption(
-    "Portfolio project. Every row below is an **observed fact**, never an evaluation: "
-    "the system never says whether an omission is *substantial* or whether a tie "
-    "*would prevent* someone maintaining research security — those judgments are the "
-    "analyst's. Demo data is **synthetic**; no real declaration data is handled "
-    "(see docs/use-case-01-hb127-researcher-screening.md)."
-)
+_subject_slot = st.empty()  # the subject line -- filled once the worksheet loads
 
 with st.sidebar:
     api_base_url = st.text_input(
@@ -137,10 +187,25 @@ except requests.RequestException as exc:
 rows = worksheet["rows"]
 tie_rows = worksheet["tie_rows"]
 
+# The subject line, rendered back up under the page title (via the placeholder
+# reserved there). An analyst working a queue has to see whose file is open at a
+# glance: display name prominent, subject_id beside it in smaller type. The
+# synthetic marker rides next to the name -- a fabricated person's name shown
+# plainly beside a findings panel is what use-case-01 Section 4 guards against.
+_subj_name = worksheet.get("subject_display_name") or "(subject name unavailable)"
+_subj_id = worksheet.get("subject_id") or "—"
+_subject_md = f"### {_subj_name} &nbsp;:gray-badge[{_subj_id}]"
+if worksheet.get("subject_synthetic"):
+    _subject_md += " &nbsp;:red-badge[⚠ SYNTHETIC — fabricated person]"
+_subject_slot.markdown(_subject_md)
+
 col_a, col_b, col_c = st.columns(3)
 col_a.metric("State", worksheet["state"])
 col_b.metric("Coverage basis", worksheet["coverage_basis"])
 col_c.metric("Statutory deadline", worksheet["statutory_deadline"] or "—")
+
+with st.expander("What am I looking at?", expanded=True):
+    st.markdown(_EXPLAINER)
 
 if st.button("Re-run reconciliation", disabled=not _actions_enabled):
     with st.spinner("Reconciling declaration against public records…"):

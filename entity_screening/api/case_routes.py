@@ -181,8 +181,19 @@ def _action_dto(action) -> dict | None:
 
 def _worksheet_payload(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict:
     view = service.worksheet(conn, case_id)
+    # Whose file is open. subject_id/display_name live on the Subject, not the
+    # Case, so load it -- the same seam docs/2026-09-02-codebase-evaluation.md
+    # flagged elsewhere: the data exists and used to stop before the payload.
+    subject = store.load_subject(conn, view.case.subject_id)
     return {
         "case_id": case_id,
+        "subject_id": view.case.subject_id,
+        "subject_display_name": subject.display_name if subject else None,
+        # Provenance-consistent with the export (case_export line ~111): a name
+        # on a public URL beside a findings panel must carry the marker.
+        "subject_synthetic": bool(
+            view.case.synthetic and (subject.synthetic if subject else True)
+        ),
         "state": view.case.state.value,
         "coverage_basis": view.case.coverage_basis.value,
         "statutory_deadline": (
