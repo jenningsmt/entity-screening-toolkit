@@ -29,26 +29,34 @@ import streamlit as st
 
 st.set_page_config(page_title="HB 127 Researcher Screening", layout="wide")
 
-# Pinned to the top of the sidebar, above every other sidebar element, and it
-# survives reruns. Resolve relative to this file, not the working directory --
-# `streamlit run app.py` runs from the repo root locally, the container runs
-# from /app. The asset lives under assets/ (an app-owned path COPY'd into the
-# image) rather than docs/, which is a documentation folder. Absent-file guard
-# so a missing asset can't take the whole page down.
+# The brand mark, pinned to the very top of the sidebar: this runs before the
+# `with st.sidebar:` block below, so it lands above "API base URL". Rendered
+# with st.sidebar.image(width="stretch") -- full sidebar width -- not st.logo(),
+# whose header mark has no width control and came in ~43px against the 300px
+# sidebar. Dropping st.logo() also drops the mark it shows when the sidebar is
+# collapsed; for a single-view demo that is an acceptable loss, and keeping both
+# would render the logo twice whenever the sidebar is open. width="stretch" is
+# the current API (use_container_width is deprecated for it as of Streamlit 1.6x).
 #
-# The asset is a PNG but NOT transparent -- verified: it is a solid, opaque
-# dark-navy (~#001020) rectangle, alpha 255 everywhere except a couple of
-# anti-aliased corner pixels. That is why the app's theme is now pinned dark
+# Resolve relative to this file, not the working directory -- `streamlit run
+# app.py` runs from the repo root locally, the container runs from /app. The
+# asset lives under assets/ (an app-owned path COPY'd into the image) rather
+# than docs/, a documentation folder. Absent-file guard so a missing asset
+# can't take the whole page down.
+#
+# The asset is a PNG but NOT transparent -- a solid, opaque dark-navy (~#001020)
+# card, 700x390, so at the sidebar's ~240px content width it renders ~134px
+# tall (measured; a deliberate, reviewed size, not an accident). That is why
+# the app's theme is pinned dark
 # (.streamlit/config.toml, base = "dark"): Streamlit's dark sidebar is close
 # enough to ~#001020 that the card blends in. Pinning also makes the demo
 # present the same way for every visitor instead of following their OS
 # preference. A visitor can still switch to light via Settings -> "Choose app
-# theme", and on that light panel the card reads as a dark-navy block --
-# `size="medium"` keeps it from dominating, and a genuinely transparent logo
-# would still be the real fix for that case.
+# theme", and on that light panel the card reads as a dark-navy block -- a
+# genuinely transparent logo would still be the real fix for that case.
 _LOGO = Path(__file__).resolve().parent / "assets" / "monops-logo.png"
 if _LOGO.exists():
-    st.logo(str(_LOGO), size="medium")
+    st.sidebar.image(str(_LOGO), width="stretch")
 
 DEMO_CASE_ID = "demo"
 
