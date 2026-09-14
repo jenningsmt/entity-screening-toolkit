@@ -20,43 +20,21 @@ Run with (two terminals):
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import pandas as pd
 import requests
 import streamlit as st
 
+import ui_common
+
 st.set_page_config(page_title="HB 127 Researcher Screening", layout="wide")
 
-# The brand mark, pinned to the very top of the sidebar: this runs before the
-# `with st.sidebar:` block below, so it lands above "API base URL". Rendered
-# with st.sidebar.image(width="stretch") -- full sidebar width -- not st.logo(),
-# whose header mark has no width control and came in ~43px against the 300px
-# sidebar. Dropping st.logo() also drops the mark it shows when the sidebar is
-# collapsed; for a single-view demo that is an acceptable loss, and keeping both
-# would render the logo twice whenever the sidebar is open. width="stretch" is
-# the current API (use_container_width is deprecated for it as of Streamlit 1.6x).
-#
-# Resolve relative to this file, not the working directory -- `streamlit run
-# app.py` runs from the repo root locally, the container runs from /app. The
-# asset lives under assets/ (an app-owned path COPY'd into the image) rather
-# than docs/, a documentation folder. Absent-file guard so a missing asset
-# can't take the whole page down.
-#
-# The asset is a PNG but NOT transparent -- a solid, opaque dark-navy (~#001020)
-# card, 700x390, so at the sidebar's ~240px content width it renders ~134px
-# tall (measured; a deliberate, reviewed size, not an accident). That is why
-# the app's theme is pinned dark
-# (.streamlit/config.toml, base = "dark"): Streamlit's dark sidebar is close
-# enough to ~#001020 that the card blends in. Pinning also makes the demo
-# present the same way for every visitor instead of following their OS
-# preference. A visitor can still switch to light via Settings -> "Choose app
-# theme", and on that light panel the card reads as a dark-navy block -- a
-# genuinely transparent logo would still be the real fix for that case.
-_LOGO = Path(__file__).resolve().parent / "assets" / "monops-logo.png"
-if _LOGO.exists():
-    st.sidebar.image(str(_LOGO), width="stretch")
+# The brand mark, pinned to the very top of the sidebar: must run before any
+# other `st.sidebar` call, so it lands above "API base URL" once
+# ui_common.render_sidebar_config() runs below. See ui_common.render_logo's
+# docstring / this project's history for the full sizing/theme rationale
+# (why width="stretch" not st.logo(), why the asset is opaque, why the theme
+# is pinned dark) -- unchanged by this refactor, just relocated.
+ui_common.render_logo()
 
 DEMO_CASE_ID = "demo"
 
@@ -108,10 +86,13 @@ renders identically for everyone and nobody's clicking fires queries on their
 behalf, and the action controls are locked behind a secret. The live path is the
 same code with the fixtures left out. All demo data is synthetic.
 
-**Scope.** HB 127 researcher screening is one due-diligence workflow; export
-control and conflict-of-interest review are the same shape of problem and are
-the intended next use cases. Case intake and queue routing would come from the
-office's existing workflow rather than being rebuilt here.
+**Scope.** HB 127 researcher screening is one due-diligence workflow.
+Restricted-party screening — a related but structurally different check (a
+name-against-list match, not a declaration-vs-record diff) — is now its own page,
+reachable from the sidebar switcher. Conflict-of-interest review is the same shape
+of problem as this page and remains an intended next use case. Case intake and
+queue routing would come from the office's existing workflow rather than being
+rebuilt here.
 
 *Full specification: docs/use-case-01-hb127-researcher-screening.md.*
 """
@@ -119,47 +100,22 @@ office's existing workflow rather than being rebuilt here.
 st.title("HB 127 Researcher Screening — case worksheet")
 _subject_slot = st.empty()  # the subject line -- filled once the worksheet loads
 
+cfg = ui_common.render_sidebar_config()
+api_base_url = cfg.api_base_url  # kept as a module-level alias -- read in a few places below
+actor = cfg.actor
+_actions_enabled = cfg.actions_enabled
+
 with st.sidebar:
-    api_base_url = st.text_input(
-        "API base URL", value=os.environ.get("API_BASE_URL", "http://localhost:8000")
-    ).rstrip("/")
-
-    try:
-        _gate = bool(
-            requests.get(f"{api_base_url}/health", timeout=10).json().get("action_gate_enabled")
-        )
-    except requests.RequestException:
-        _gate = False
-
     st.header("Case")
     case_id = st.text_input("Case ID", value=DEMO_CASE_ID)
 
-    st.header("Analyst")
-    actor = st.text_input("Your identifier (recorded on every action)", value="analyst.demo")
-
-    st.header("Actions")
-    st.caption(
-        "Running reconciliation, dispositioning rows, adjudicating and certifying are "
-        "gated on the public demo. Viewing the worksheet and exporting the "
-        "investigative file stay open."
-    )
-    action_secret = st.text_input("Action secret (public demo only)", type="password", value="")
-    _actions_enabled = (not _gate) or bool(action_secret)
-    _headers = {"X-Monops-Action-Secret": action_secret} if action_secret else {}
-    if _gate and not _actions_enabled:
-        st.caption("⚠️ Enter the action secret to enable the gated actions.")
-
 
 def _get(path: str, **params) -> requests.Response:
-    r = requests.get(f"{api_base_url}{path}", params=params or None, timeout=60)
-    r.raise_for_status()
-    return r
+    return ui_common.get(cfg, path, **params)
 
 
 def _post(path: str, payload: dict, timeout: int = 120) -> requests.Response:
-    r = requests.post(f"{api_base_url}{path}", json=payload, timeout=timeout, headers=_headers)
-    r.raise_for_status()
-    return r
+    return ui_common.post(cfg, path, payload, timeout=timeout)
 
 
 try:

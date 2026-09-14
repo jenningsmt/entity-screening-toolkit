@@ -282,3 +282,97 @@ def test_api_reason_codes_endpoint():
     response = client.get("/screening-events/reason-codes")
     assert response.status_code == 200
     assert "needs_resec_determination" in response.json()["escalate"]
+
+
+# --------------------------------------------------------------------------
+# Listing (rps_store.list_events / GET /screening-events) -- the browse-view
+# gap surfaced while designing the Streamlit page, closed before the page
+# was built against it.
+# --------------------------------------------------------------------------
+
+
+def test_list_events_is_reverse_chronological_and_filters_by_trigger(tmp_path):
+    conn = storage.connect(tmp_path / "test.duckdb")
+    for i, (trigger, ts) in enumerate([
+        (ScreeningTrigger.FOREIGN_PERSON_HIRE, "2026-09-14T10:00:00+00:00"),
+        (ScreeningTrigger.PURCHASING_FINANCIAL, "2026-09-14T11:00:00+00:00"),
+        (ScreeningTrigger.VISITING_SCHOLAR, "2026-09-14T12:00:00+00:00"),
+    ]):
+        event = ScreeningEvent(
+            event_id=f"evt-{i}", trigger=trigger, case_id=None,
+            requested_by="analyst.a", requested_at=ts, synthetic=True,
+        )
+        rps_store.save_event(conn, event)
+
+    all_events = rps_store.list_events(conn)
+    assert [e.event_id for e in all_events] == ["evt-2", "evt-1", "evt-0"]  # most recent first
+
+    hires = rps_store.list_events(conn, trigger=ScreeningTrigger.FOREIGN_PERSON_HIRE)
+    assert [e.event_id for e in hires] == ["evt-0"]
+    conn.close()
+
+
+def test_list_events_respects_limit(tmp_path):
+    conn = storage.connect(tmp_path / "test.duckdb")
+    for i in range(3):
+        rps_store.save_event(conn, ScreeningEvent(
+            event_id=f"evt-{i}", trigger=ScreeningTrigger.PURCHASING_FINANCIAL, case_id=None,
+            requested_by="a", requested_at=f"2026-09-14T1{i}:00:00+00:00", synthetic=True,
+        ))
+    assert len(rps_store.list_events(conn, limit=2)) == 2
+    conn.close()
+
+
+def test_api_list_events_endpoint(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    for _ in range(2):
+        client.post("/screening-events/purchasing", json={
+            "requested_by": "procurement.a", "counterparty_name": "Some Vendor LLC",
+        })
+    response = client.get("/screening-events")
+    assert response.status_code == 200
+    events = response.json()["events"]
+    assert len(events) == 2
+    assert set(events[0]) == {"event_id", "trigger", "case_id", "requested_by", "requested_at"}
+
+    filtered = client.get("/screening-events", params={"trigger": "foreign_person_hire"})
+    assert filtered.json()["events"] == []
+
+
+# --------------------------------------------------------------------------
+# Allowlist protection on the screen endpoint (the security gap found while
+# building the Streamlit page -- fixed before the page could exercise it).
+# --------------------------------------------------------------------------
+
+
+def test_screen_endpoint_rejects_a_path_outside_the_allowlist(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    create = client.post("/screening-events/purchasing", json={
+        "requested_by": "procurement.a", "counterparty_name": "Some Vendor LLC",
+    })
+    event_id = create.json()["event_id"]
+
+    monkeypatch.setenv(
+        "MONOPS_DATA_FILE_ALLOWLIST", str(DEMO_OPENSANCTIONS_FILE)
+    )
+    response = client.post(
+        f"/screening-events/{event_id}/screen",
+        json={"opensanctions_file": str(SAMPLE_CSL_FILE)},  # real file, just not allowlisted
+    )
+    assert response.status_code == 400
+
+
+def test_screen_endpoint_accepts_a_path_inside_the_allowlist(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    create = client.post("/screening-events/purchasing", json={
+        "requested_by": "procurement.a", "counterparty_name": "Taiyuan Jinke Semiconductor Technology Co., Ltd.",
+    })
+    event_id = create.json()["event_id"]
+
+    monkeypatch.setenv("MONOPS_DATA_FILE_ALLOWLIST", str(SAMPLE_CSL_FILE))
+    response = client.post(
+        f"/screening-events/{event_id}/screen",
+        json={"opensanctions_file": str(SAMPLE_CSL_FILE)},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["match_count"] == 1

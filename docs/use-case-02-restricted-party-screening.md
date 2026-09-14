@@ -1,10 +1,12 @@
 # Use Case 02 — Restricted-Party Screening (Export Control)
 
-**Status:** Approved and built. Step 5 (restricted-party screening only, per this
-document's own Section 0 scope split) is implemented — see
+**Status:** Approved and built, including a Streamlit UI. Step 5 (restricted-party
+screening only, per this document's own Section 0 scope split) is implemented — see
 `docs/plans/2026-09-14-restricted-party-screening.md` for the approved plan and what
-shipped. This document remains the spec of record for the *why*; read the plan for
-the *what*.
+shipped, and `docs/plans/2026-09-14-restricted-party-screening-ui.md` for the review
+UI (`pages/1_Restricted_Party_Screening.py`, a separate Streamlit page from the
+HB127 case worksheet). This document remains the spec of record for the *why*; read
+the plans for the *what*.
 **Date:** September 14, 2026
 **Scope:** U.S. export control and restricted-party-screening compliance as operated
 by a research security / export control function at a large public research

@@ -48,6 +48,40 @@ def save_event(conn: duckdb.DuckDBPyConnection, event: ScreeningEvent) -> None:
     )
 
 
+def list_events(
+    conn: duckdb.DuckDBPyConnection,
+    trigger: ScreeningTrigger | None = None,
+    limit: int = 50,
+) -> list[ScreeningEvent]:
+    """Reverse-chronological (most recently requested first) -- the browse
+    view a UI needs to find an event without already knowing its event_id.
+    `trigger` narrows to one trigger type when supplied; `limit` bounds a
+    first-cut listing with no cursor paging yet."""
+    if trigger is None:
+        rows = conn.execute(
+            "SELECT event_id, trigger, case_id, requested_by, requested_at, synthetic "
+            "FROM screening_events ORDER BY requested_at DESC LIMIT ?",
+            [limit],
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT event_id, trigger, case_id, requested_by, requested_at, synthetic "
+            "FROM screening_events WHERE trigger = ? ORDER BY requested_at DESC LIMIT ?",
+            [trigger.value, limit],
+        ).fetchall()
+    return [
+        ScreeningEvent(
+            event_id=event_id,
+            trigger=ScreeningTrigger(trigger_value),
+            case_id=case_id,
+            requested_by=requested_by,
+            requested_at=requested_at,
+            synthetic=bool(synthetic),
+        )
+        for event_id, trigger_value, case_id, requested_by, requested_at, synthetic in rows
+    ]
+
+
 def load_event(conn: duckdb.DuckDBPyConnection, event_id: str) -> ScreeningEvent | None:
     row = conn.execute(
         "SELECT event_id, trigger, case_id, requested_by, requested_at, synthetic "

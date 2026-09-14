@@ -19,6 +19,7 @@ import duckdb
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from entity_screening.api.deps import allowed_data_files, check_allowlisted
 from entity_screening.api.deps import db_path as _db_path
 from entity_screening.api.deps import require_action_secret
 from entity_screening.api.deps import runs_dir as _runs_dir
@@ -185,6 +186,32 @@ def get_reason_codes() -> dict:
     return {"dismiss": RPS_DISMISS_REASON_CODES, "escalate": RPS_ESCALATION_REASON_CODES}
 
 
+@router.get("")
+def list_events(trigger: str | None = None, limit: int = 50) -> dict:
+    """Summary fields only (no parties/matches -- GET /{event_id} is the
+    detail call) so a browse view can find an event without already knowing
+    its event_id. Open, not gated, like every other read in this API."""
+    conn = _connect()
+    try:
+        events = rps_store.list_events(
+            conn, trigger=ScreeningTrigger(trigger) if trigger else None, limit=limit
+        )
+    finally:
+        conn.close()
+    return {
+        "events": [
+            {
+                "event_id": e.event_id,
+                "trigger": e.trigger.value,
+                "case_id": e.case_id,
+                "requested_by": e.requested_by,
+                "requested_at": e.requested_at,
+            }
+            for e in events
+        ]
+    }
+
+
 @router.post("/hire")
 def create_hire_event(
     request: HireEventRequest, _s: None = Depends(require_action_secret)
@@ -283,6 +310,7 @@ def create_purchasing_event(
 def screen_event(
     event_id: str, request: ScreenRequest, _s: None = Depends(require_action_secret)
 ) -> dict:
+    check_allowlisted(request.opensanctions_file, allowed_data_files())
     conn = _connect()
     try:
         _event_or_404(conn, event_id)
