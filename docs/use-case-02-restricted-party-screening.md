@@ -1,10 +1,10 @@
 # Use Case 02 — Restricted-Party Screening (Export Control)
 
-**Status:** Draft for review. Research and specification only — no implementation
-plan follows until this is approved, per `docs/use-case-01-hb127-researcher-screening.md`
-§12's step 5 being a one-line placeholder ("export-control and restricted-party
-screening bundled into the same review") rather than a specification. This document
-closes that gap.
+**Status:** Approved and built. Step 5 (restricted-party screening only, per this
+document's own Section 0 scope split) is implemented — see
+`docs/plans/2026-09-14-restricted-party-screening.md` for the approved plan and what
+shipped. This document remains the spec of record for the *why*; read the plan for
+the *what*.
 **Date:** September 14, 2026
 **Scope:** U.S. export control and restricted-party-screening compliance as operated
 by a research security / export control function at a large public research
@@ -281,17 +281,19 @@ own curated list, sourced from OFAC's own program pages, not step 4's file.
   re-verified on a schedule" discipline as `dod_1260h.json` and
   `adversary_countries.json`.
 
-**Likely genuinely new (status not yet verified against a real bulk download — a
-binding check for implementation planning, not resolved here):** whether the **BIS
-Entity List**, **BIS Unverified List**, and **State Department Nonproliferation
-Sanctions/Orders** are already present in OpenSanctions' specific consolidated
-`targets.simple.csv` export this project already downloads, or whether they exist only
-as separate OpenSanctions datasets outside that bundle. OpenSanctions does publish a
-BIS Entity List program page, so the list itself is real and trackable either way —
-what's unverified is whether it's *already* riding along in the file this project
-already has, or needs its own ingestion path (most likely a small, hand-curated
-snapshot mirroring `dod_1260h.json`'s pattern, since the BIS Entity List, like DoD
-1260H, is published as a CFR supplement update, not a live feed).
+**Resolved during implementation planning, against real data, not left open:** the
+**BIS Entity List**, **BIS Unverified List**, and **State Department Nonproliferation
+Sanctions/Orders** are all confirmed present in OpenSanctions' consolidated
+`targets.simple.csv` export this project already downloads — via `us_trade_csl`, the
+U.S. government's own official Consolidated Screening List, itself one of the
+`default` collection's member sources. Downloaded the real `us_trade_csl` file
+directly and inspected its `program_ids` column: `US-BIS-EL`, `US-BIS-UVL`, and
+`US-DOS-ISN` are all present (plus `US-BIS-DPL`, `US-AECA-DEBARRED`, and a bonus
+`US-BIS-MEU` not named above). **No new curated snapshot is needed** — unlike DoD
+1260H or step 4's adversary list, every list this document names already flows
+through the existing `OpenSanctionsList` machinery unmodified. See
+`docs/plans/2026-09-14-restricted-party-screening.md` for the full verification and
+`docs/data_sources.md` for the citation.
 
 **Definitely genuinely new, and explicitly out of scope for this system regardless:**
 jurisdiction determination, ECCN/USML classification, license applications, Technology
@@ -300,28 +302,25 @@ Control Plans, and Acknowledgement-of-Publication/Personnel-Restriction determin
 
 ## 8. Open questions
 
-- **The BIS Entity List / Unverified List / Nonproliferation Sanctions coverage
-  question (§7)** — needs a real download and inspection before any implementation
-  plan claims OpenSanctions already covers all seven lists. The GLEIF-gate and step-4
-  precedent for this project is: verify against the real file, don't assume from a
-  dataset's name.
-- **What "screenable party" should actually look like as a type.** §5 argues against
-  reusing `Case`/`Subject`/`Declaration` verbatim but doesn't propose a replacement —
-  that's implementation-planning work, flagged here so it isn't skipped.
+- ~~**The BIS Entity List / Unverified List / Nonproliferation Sanctions coverage
+  question (§7)**~~ — resolved during implementation planning against the real
+  `us_trade_csl` file; see §7 and `docs/plans/2026-09-14-restricted-party-screening.md`.
+- ~~**What "screenable party" should actually look like as a type.**~~ — resolved:
+  built as `ScreeningEvent`/`ScreeningParty`/`ScreeningMatch`/`ScreeningDisposition`
+  in `entity_screening/screening/rps_schema.py`; see the plan doc for the design.
 - **Whether/how the "affiliated institution/organization going back five years"**
   requirement (TAMU's real practice for Foreign Person hires) maps onto this
   project's existing `DeclaredAffiliation` data, if a hiring-trigger screening reuses
   declaration data already collected for HB 127 rather than asking for it twice.
-- **Whether a disposition-recording type analogous to `WorksheetAction`** (with its
-  own controlled reason vocabulary — "dismissed as coincidental name match,"
-  "escalated to RESEC," "cleared with conditions") is a new type or an extension of
-  the existing one. Likely new: RPS dispositions are RESEC's, not a research-security
-  analyst's, and conflating the two reason vocabularies would blur exactly the
-  role distinction §2 establishes.
-- **Whether OFAC-embargoed-country screening is in step 5's scope at all**, given it's
-  a country check (§6), not a restricted-party name-match — it may belong to its own
-  narrower slice rather than being bundled into "restricted-party screening" by
-  default.
+- ~~**Whether a disposition-recording type analogous to `WorksheetAction`**~~ —
+  resolved: built new, `ScreeningDisposition` with its own `RPS_DISMISS_REASON_CODES`/
+  `RPS_ESCALATION_REASON_CODES` vocabulary (`case/vocab.py`), reusing only
+  `WorksheetActionKind` itself (the dismiss/escalate/etc. action vocabulary, not
+  RPS-specific).
+- **Whether OFAC-embargoed-country screening is in step 5's scope at all** — resolved
+  for this pass: no, explicitly out of scope, documented in code
+  (`screening/rps_schema.py`'s module docstring) and covered by a negative-space test.
+  Still open whether it ever gets its own narrower slice later.
 - **What A&M's real single-visit-triggers-both-processes overlap (§5's Form 5VS
   finding) implies for sequencing.** If a visiting-scholar case already exists in this
   system for HB 127, does an RPS check attach to that same case, or does it stay a

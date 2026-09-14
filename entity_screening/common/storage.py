@@ -358,6 +358,53 @@ CREATE TABLE IF NOT EXISTS case_outcomes (
     -- Append-only; the latest row is the effective outcome. A re-opened case
     -- that reaches Outcome again appends a new row, the prior one intact.
 );
+
+-- Restricted-party screening (RPS) -- Use Case 02, step 5. A deliberately
+-- separate table family from the case tables above, not a reuse of them --
+-- see entity_screening/screening/rps_schema.py's module docstring for why.
+-- Row marshalling lives in entity_screening/screening/rps_store.py.
+
+CREATE TABLE IF NOT EXISTS screening_events (
+    event_id VARCHAR PRIMARY KEY,
+    trigger VARCHAR,
+    case_id VARCHAR,       -- display-only join key to an HB127 case; may be NULL
+    requested_by VARCHAR,
+    requested_at VARCHAR,
+    synthetic BOOLEAN
+);
+
+CREATE TABLE IF NOT EXISTS screening_parties (
+    party_id VARCHAR PRIMARY KEY,
+    event_id VARCHAR,
+    kind VARCHAR,
+    name VARCHAR,
+    country VARCHAR,       -- captured for display/evidence only; never a screening gate, see rps_schema.py
+    role_in_event VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS screening_matches (
+    match_id VARCHAR PRIMARY KEY,
+    party_id VARCHAR,
+    matched_variant VARCHAR,
+    list_name VARCHAR,
+    confidence DOUBLE,
+    evidence JSON,
+    status VARCHAR
+    -- Current state per event: rps_store.replace_matches deletes every
+    -- match for the event's parties before inserting, mirroring
+    -- replace_findings/replace_ties.
+);
+
+CREATE TABLE IF NOT EXISTS screening_dispositions (
+    match_id VARCHAR,
+    action VARCHAR,
+    reason_code VARCHAR,
+    reason_note VARCHAR,
+    actor VARCHAR,
+    recorded_at VARCHAR
+    -- Append-only history; the latest row per match_id is the effective
+    -- disposition. Mirrors worksheet_actions/tie_actions.
+);
 """
 
 

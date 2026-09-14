@@ -33,6 +33,12 @@ from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DO
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.screening.adversary_list import load_adversary_list
 from entity_screening.screening.lists import registered_lists
+from entity_screening.screening.rps_schema import (
+    RPS_OBSERVATION_ALLOWED_FIELDS,
+    ScreeningEvent,
+    ScreeningMatch,
+    ScreeningTrigger,
+)
 from entity_screening.screening.section_117 import LIST_NAME as SECTION_117_LIST_NAME
 from entity_screening.screening.section_117 import DEFAULT_INSTITUTION_THRESHOLD
 from entity_screening.scoring.rubric import STOCK_RUBRIC, rubric_from_dict
@@ -196,6 +202,40 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 "materiality/tier/weight/disposition/impair/prevent claim about a person."
             )
 
+    # Same guard, extended to restricted-party screening (use-case-02 Section
+    # 3) -- kept as RPS's own allowlist in screening/rps_schema.py rather than
+    # merged into _OBSERVATION_GRAPH_ALLOWED_FIELDS above, since common/schema.py
+    # does not import from screening/ (see that module's docstring).
+    for type_name, dc in {"ScreeningMatch": ScreeningMatch}.items():
+        actual = {f.name for f in _dc_fields(dc)}
+        allowed = RPS_OBSERVATION_ALLOWED_FIELDS.get(type_name)
+        if allowed is None:
+            problems.append(
+                f"{type_name} is in the RPS observation graph but has no entry in "
+                "RPS_OBSERVATION_ALLOWED_FIELDS — add one deliberately."
+            )
+            continue
+        if actual != allowed:
+            problems.append(
+                f"{type_name}'s fields {sorted(actual)} do not match the frozen "
+                f"allowlist {sorted(allowed)} — the fact/judgment boundary is "
+                "enforced here, so widening what RPS may assert about a party "
+                "must be a deliberate edit to RPS_OBSERVATION_ALLOWED_FIELDS "
+                "in the same commit (use-case-02 Section 3)."
+            )
+        forbidden = {
+            name
+            for name in actual
+            for token in _FORBIDDEN_OBSERVATION_FIELD_TOKENS
+            if token in name.lower()
+        }
+        if forbidden:
+            problems.append(
+                f"{type_name} carries evaluative field(s) {sorted(forbidden)} — an "
+                "RPS observation type may not hold a severity/risk/priority/score/"
+                "materiality/tier/weight/disposition/impair/prevent claim."
+            )
+
     # No real PII by construction: Subject / Declaration reject synthetic=False.
     for pii_type in (Subject, Declaration):
         try:
@@ -223,6 +263,25 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 "must make a real subject unrepresentable, not merely discouraged "
                 "(use-case-01 Section 9)."
             )
+
+    # Same guard, extended to RPS's ScreeningEvent (use-case-02 Section 3).
+    try:
+        ScreeningEvent(
+            event_id="x",
+            trigger=ScreeningTrigger.PURCHASING_FINANCIAL,
+            case_id=None,
+            requested_by="x",
+            requested_at="x",
+            synthetic=False,
+        )
+    except ValueError:
+        pass
+    else:
+        problems.append(
+            "ScreeningEvent(synthetic=False) was accepted — this build must make "
+            "a real screening event unrepresentable, not merely discouraged "
+            "(use-case-01 Section 9, extended to RPS)."
+        )
 
     expected_lists = {"opensanctions_consolidated", "dod_section_1260h"}
     missing_lists = expected_lists - registered_lists().keys()

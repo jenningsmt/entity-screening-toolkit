@@ -445,6 +445,69 @@ class AdversaryListManifest:
 
 
 @dataclass
+class ScreeningEventManifest:
+    """Provenance for one restricted-party-screening event (Use Case 02,
+    step 5). Same "current state, per-event, overwritten on re-screen"
+    pattern as ReconciliationManifest -- re-screening an event overwrites
+    this. Records `event_id` (opaque) and nothing else identifying any
+    party's real name, matching ReconciliationManifest's own case_id-only
+    discipline (use-case-01 Section 9).
+
+    No new curated-snapshot manifest is needed here the way
+    AdversaryListManifest was for step 4 -- RPS reuses the existing
+    OpenSanctions consolidated data unmodified (confirmed during this
+    feature's planning against the real `us_trade_csl` source, see
+    docs/plans/2026-09-14-restricted-party-screening.md). This manifest is
+    provenance for *when* that existing data was consulted, not a new
+    list's derivation.
+    """
+
+    event_id: str
+    screened_at: str
+    opensanctions_snapshot_date: str | None
+    party_count: int = 0
+    match_count: int = 0
+    git_commit: str | None = None
+
+    @classmethod
+    def create(
+        cls,
+        event_id: str,
+        opensanctions_snapshot_date: str | None,
+        party_count: int,
+        match_count: int,
+    ) -> "ScreeningEventManifest":
+        return cls(
+            event_id=event_id,
+            screened_at=datetime.now(timezone.utc).isoformat(),
+            opensanctions_snapshot_date=opensanctions_snapshot_date,
+            party_count=party_count,
+            match_count=match_count,
+            git_commit=_git_commit(),
+        )
+
+    def event_dir(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        path = Path(base) / "screening-events" / self.event_id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def write(self, base: Path | str = DEFAULT_RUNS_DIR) -> Path:
+        out_path = self.event_dir(base) / "manifest.json"
+        out_path.write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
+        return out_path
+
+    @classmethod
+    def load(cls, path: Path | str) -> "ScreeningEventManifest":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(**data)
+
+
+@dataclass
 class InvestigativeFileManifest:
     """One immutable record per investigative-file export (Sec. 51B.153's
     named output artifact). Same per-call immutability as ExportManifest --

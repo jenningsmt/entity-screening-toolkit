@@ -443,3 +443,10 @@ def get_ownership_chain(
 from entity_screening.api.case_routes import router as case_router  # noqa: E402
 
 app.include_router(case_router)
+
+# --- Use Case 02 (restricted-party screening) -------------------------------
+# A deliberately separate router/object graph from the case routes above --
+# see entity_screening/screening/rps_schema.py's module docstring for why.
+from entity_screening.api.rps_routes import router as rps_router  # noqa: E402
+
+app.include_router(rps_router)

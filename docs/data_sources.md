@@ -69,6 +69,27 @@ each source's terms.
   of redistribution per the CC BY-NC 4.0 terms above. See
   `tests/fixtures/demo_opensanctions_targets.NOTICE.md` for the full "changes
   indicated" record the license requires.
+- **Restricted-party screening (Use Case 02, step 5) reuses this data unmodified —
+  confirmed against a real download, not assumed.** OpenSanctions' `default`
+  collection (the same one `targets.simple.csv` bulk-exports) includes `us_trade_csl`
+  — the U.S. government's own official Consolidated Screening List (Commerce/State/
+  Treasury). Downloaded the real `us_trade_csl` targets file directly
+  (`data.opensanctions.org/datasets/latest/us_trade_csl/targets.simple.csv`, 24,204
+  rows, 2026-09-14) and inspected its `program_ids` column: `US-BIS-DPL` (BIS Denied
+  Persons List), `US-BIS-EL` (BIS Entity List), `US-BIS-UVL` (BIS Unverified List),
+  `US-BIS-MEU` (BIS Military End-User List), `US-AECA-DEBARRED` (State Dept AECA
+  Debarred Parties), and `US-DOS-ISN` (State Dept Nonproliferation Sanctions) are all
+  present, alongside the already-separately-confirmed OFAC SDN List and State Dept
+  Foreign Terrorist Organizations list. All seven restricted-party lists named in
+  `docs/use-case-02-restricted-party-screening.md` §1 are accounted for through this
+  existing `OpenSanctionsList` path — no new curated list or ingestion code was
+  needed, unlike DoD 1260H below or the foreign-adversary-country list. The project's
+  bundled demo fixture (above) already carries 22 real CSL-sourced rows by chance,
+  including a genuine BIS Entity List entry — also confirmed, not assumed. See
+  `docs/plans/2026-09-14-restricted-party-screening.md` for the full verification and
+  `entity_screening/screening/rps_schema.py` / `rps_screen.py` for the explicit
+  boundary: this reuse covers name-against-entity-list matching only, never OFAC's
+  embargoed-country screening (a structurally different, unimplemented check).
 
 ### DoD Section 1260H list (Chinese military companies)
 - **Provider:** U.S. Department of Defense, under Section 1260H of the William M.

@@ -109,6 +109,46 @@ TIE_ESCALATION_REASON_CODES: dict[str, str] = {
 }
 
 
+# --------------------------------------------------------------------------
+# Restricted-party-screening (RPS) vocabularies -- Use Case 02, step 5.
+# A ScreeningMatch's disposition is RESEC's call, not a research-security
+# analyst's -- its own reason vocabulary, not TIE_*'s, keeps the two roles'
+# accumulated dispositions from being conflated in aggregate reporting.
+# --------------------------------------------------------------------------
+
+RPS_DISMISS_REASON_CODES: dict[str, str] = {
+    "coincidental_name_match": (
+        "The name match is to a different, unrelated person or organization "
+        "than the restricted-party-list entry (the same 'Chinese Academy of "
+        "Sciences' / 'Ordnance Science' shape ConcernTie's "
+        "'misidentified_entity' guards against)."
+    ),
+    "delisted_or_no_longer_current": (
+        "The restricted-party-list entry has since been removed or the "
+        "designation is no longer current as of the snapshot date consulted."
+    ),
+    "known_and_previously_reviewed": (
+        "This party was screened in a prior event and its disposition is on "
+        "record."
+    ),
+    "other": "A basis not covered above; see the note.",
+}
+
+RPS_ESCALATION_REASON_CODES: dict[str, str] = {
+    "needs_resec_determination": (
+        "The match survived secondary review and requires an export control "
+        "officer's determination (TAMU's own described RPS procedure -- "
+        "docs/use-case-02-restricted-party-screening.md Section 4)."
+    ),
+    "needs_supervisor_review": "Beyond the screener's authority to dispose of alone.",
+    "needs_party_clarification": (
+        "Cannot be dispositioned without additional identifying detail from "
+        "the requesting department."
+    ),
+    "other": "See the note.",
+}
+
+
 def is_valid_reason_code(action: str, reason_code: str) -> bool:
     if action == "dismiss":
         return reason_code in DISMISS_REASON_CODES
@@ -119,3 +159,9 @@ def is_valid_tie_reason_code(action: str, reason_code: str) -> bool:
     if action == "dismiss":
         return reason_code in TIE_DISMISS_REASON_CODES
     return reason_code in TIE_ESCALATION_REASON_CODES
+
+
+def is_valid_rps_reason_code(action: str, reason_code: str) -> bool:
+    if action == "dismiss":
+        return reason_code in RPS_DISMISS_REASON_CODES
+    return reason_code in RPS_ESCALATION_REASON_CODES
