@@ -205,7 +205,7 @@ indexes), so cosine similarity is computed directly via DuckDB's
 | `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (batch routes) + `case_routes.py` (Use Case 01) + `rps_routes.py` (Use Case 02, step 5) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) + `deps.py` (shared action-secret gate and path resolution `case_routes.py`/`rps_routes.py` both reuse without importing `main.py`, which would be circular; also the data-file allowlist helpers `rps_routes.py` uses — `case_routes.py` never accepts a caller-supplied file path at all, so it has no need of them) |
 | `entity_screening/case/` | Use Case 01 (HB 127 researcher screening): the case model (`store.py`), worksheet/adjudication/lifecycle operations (`service.py`), the controlled reason-code vocabularies (`vocab.py` — discrepancies, concern ties, and restricted-party-screening dispositions, three separate sets), the investigative-file export (`export.py`), and the self-healing demo case (`demo.py`) |
 | `entity_screening/reconciliation/` | Two statutory tests: `reconcile.py` produces `Finding`s (the §51B.153 omission test) from `discover.py`'s publication path; `discover.py`'s `tie_from_ownership` / `ties_from_own_affiliations` produce `ConcernTie`s (the §51B.151(b) tie test). `match.py` is the institution-name matcher shared by both |
-| `app.py` + `ui_common.py` + `pages/` | Streamlit review UI: thin HTTP clients of the API, two separate visitor-facing views. `app.py` is the **HB 127 case worksheet** — two sections (discrepancies, concern ties), each with its own disposition control and reason vocabulary, one closure rule over both. `pages/1_Restricted_Party_Screening.py` is the **restricted-party-screening** view (Use Case 02) — a separate Streamlit page (auto-discovered from `pages/`), deliberately not a section of `app.py`, mirroring `rps_schema.py`'s object-graph separation in the UI. `ui_common.py` factors the sidebar config (API base URL, actor, action-secret gate) and HTTP helpers both pages share |
+| `app.py` + `ui_common.py` + `pages/` | Streamlit review UI: thin HTTP clients of the API, two separate visitor-facing views. `app.py` is a thin **router** — `st.set_page_config()`, then `ui_common.render_navigation()` (logo + the two nav buttons, via `st.navigation()`/`st.Page()`, replacing classic `pages/` filename auto-discovery so nav labels are explicit and the switcher can be styled/positioned), then `pg.run()`. `pages/0_HB127_Case_Worksheet.py` is the **HB 127 case worksheet** (the default page) — two sections (discrepancies, concern ties), each with its own disposition control and reason vocabulary, one closure rule over both. `pages/1_Restricted_Party_Screening.py` is the **restricted-party-screening** view (Use Case 02) — deliberately a separate page, not a section of the worksheet, mirroring `rps_schema.py`'s object-graph separation in the UI. `ui_common.py` factors the logo, the nav-button rendering, the sidebar config (API base URL, actor, action-secret gate), and HTTP helpers both pages share — see `docs/plans/2026-09-14-sidebar-navigation.md` |
 
 ## Use Case 01 — HB 127 researcher screening (the case path)
 
@@ -338,9 +338,14 @@ uvicorn entity_screening.api.main:app --reload
 streamlit run app.py   # in a second terminal
 ```
 
-`streamlit run app.py` still launches both views: Streamlit auto-discovers
-`pages/1_Restricted_Party_Screening.py` and adds it to the sidebar page switcher —
-no separate command for the restricted-party-screening page.
+`streamlit run app.py` still launches both views — `app.py` is a thin router
+(`ui_common.render_navigation()`) that registers `pages/0_HB127_Case_Worksheet.py`
+(default) and `pages/1_Restricted_Party_Screening.py` via `st.navigation()`/
+`st.Page()` and renders them as two styled buttons under the logo, rather than
+relying on Streamlit's classic `pages/`-directory auto-discovery (which derives
+each label from its filename and pins a plain-link switcher above everything
+else, with no supported way to move or restyle it). No separate command for the
+restricted-party-screening page.
 
 **Or via Docker Compose (two containers, wired together):**
 

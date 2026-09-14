@@ -33,6 +33,7 @@ that's worth its own note in the file or a follow-up plan, not a silent rewrite.
 | 2026-09-14 | [Step 4 -- foreign-adversary-country list ingester](2026-09-14-foreign-adversary-list-ingester.md) | Built (DNI-ATA path only; gubernatorial path ships empty) |
 | 2026-09-14 | [Step 5 -- restricted-party screening](2026-09-14-restricted-party-screening.md) | Built (OFAC-embargoed-country screening explicitly out of scope) |
 | 2026-09-14 | [Streamlit UI for restricted-party screening](2026-09-14-restricted-party-screening-ui.md) | Built (a separate `pages/` view from the HB127 worksheet; also closed a data-file-allowlist gap found while building it) |
+| 2026-09-14 | [Sidebar navigation -- real labels, positioned as buttons under the logo](2026-09-14-sidebar-navigation.md) | Built (migrated to `st.navigation()`; also found and fixed an `on_click`-callback `switch_page` bug during verification) |
 
 **Known gap in this log:** the V2/Epic C plan (GLEIF ownership graph + foreign-control
 flagging, built in commit `3c07677`) was approved via plan mode but never copied here —

@@ -8,8 +8,9 @@ direct engine imports, everything shown here arrived over HTTP.
 added to app.py.** entity_screening/screening/rps_schema.py's own module
 docstring states RPS is "a deliberately separate object graph" from the
 HB127 case model; this file is that separation showing up in the UI too.
-Streamlit auto-discovers this page from pages/ into the sidebar switcher --
-no change to how app.py itself runs.
+Reached via app.py's router (ui_common.render_navigation) -- no change to
+this page's own content from that migration, beyond no longer rendering the
+logo itself (the router renders it exactly once, before the nav buttons).
 
 Run alongside app.py (same API, same two terminals):
     uvicorn entity_screening.api.main:app --reload
@@ -25,7 +26,6 @@ import ui_common
 
 st.set_page_config(page_title="Restricted-Party Screening", layout="wide")
 
-ui_common.render_logo()
 cfg = ui_common.render_sidebar_config(actor_default="analyst.demo")
 
 st.title("Restricted-party screening")

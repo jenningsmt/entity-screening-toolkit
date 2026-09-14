@@ -43,8 +43,9 @@ python -m entity_screening.cli run \
 pytest
 ```
 
-Interactive review UI — the HB 127 case worksheet (two processes; the Streamlit app is
-a thin client of the API, not a direct pipeline caller):
+Interactive review UI — the HB 127 case worksheet and restricted-party screening,
+switchable from the sidebar (two processes; the Streamlit app is a thin client of the
+API, not a direct pipeline caller):
 
 ```
 uvicorn entity_screening.api.main:app --reload
