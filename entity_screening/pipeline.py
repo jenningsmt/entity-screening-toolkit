@@ -86,6 +86,10 @@ from entity_screening.ownership.ingest import load_gleif_level1, load_gleif_leve
 from entity_screening.ownership.match import resolve_entity_to_lei
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.resolution.normalize import normalize_for_matching
+from entity_screening.screening.adversary_list import (
+    DEFAULT_DATA_FILE as DEFAULT_ADVERSARY_LIST_FILE,
+)
+from entity_screening.screening.adversary_list import load_adversary_list
 from entity_screening.screening.lists import DoD1260HList, OpenSanctionsList
 from entity_screening.screening.screen import screen_entity
 from entity_screening.screening.section_117 import (
@@ -662,6 +666,7 @@ def reconcile_case(
     gleif_relationships_file: Path | str | None = None,
     dod_1260h_file: Path | str = DEFAULT_DOD_1260H_FILE,
     opensanctions_file: Path | str | None = None,
+    adversary_list_file: Path | str = DEFAULT_ADVERSARY_LIST_FILE,
     threshold: float = RECONCILIATION_THRESHOLD,
 ) -> tuple[ReconciliationManifest, list[Finding], list[ConcernTie]]:
     """Loads a case's subject + declaration, runs the discovery adapters, and
@@ -693,11 +698,14 @@ def reconcile_case(
                 f"Case {case_id!r} has no subject/declaration recorded -- intake is incomplete."
             )
 
+        adversary_list = load_adversary_list(adversary_list_file)
+
         hiring_institution = _hiring_institution_name(declaration)
         discovered = discover_from_publications(
             subject.display_name,
             hiring_institution,
             list(declaration.affiliations),
+            adversary_list,
             contact_email=contact_email,
             fetch=fetch,
             works_fixture=works_fixture,
@@ -705,7 +713,7 @@ def reconcile_case(
         findings = reconcile_declaration(
             case_id, run_id, declaration, discovered, threshold=threshold
         )
-        discovery_sources = ["openalex"]
+        discovery_sources = ["openalex", "foreign_adversary_countries"]
 
         ties: list[ConcernTie] = []
         if gleif_lei_file and gleif_relationships_file:
@@ -721,7 +729,8 @@ def reconcile_case(
             error_log.close()
 
             ties += tie_from_ownership(
-                case_id, run_id, list(declaration.affiliations), conn, concern_lists
+                case_id, run_id, list(declaration.affiliations), conn, concern_lists,
+                adversary_list,
             )
             ties += ties_from_own_affiliations(
                 case_id, run_id, discovered, concern_lists
@@ -760,6 +769,7 @@ def reconcile_case(
         discovered_count=len(discovered),
         finding_count=len(findings),
         tie_count=len(ties),
+        adversary_list_version=adversary_list.list_version,
     )
     manifest.write(runs_dir)
     return manifest, findings, ties

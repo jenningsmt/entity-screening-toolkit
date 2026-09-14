@@ -1,6 +1,6 @@
 # Use Case 01 — HB 127 Foreign Researcher Screening
 
-**Status:** User and workflow definition. The vertical slice from Section 12 (subject, declaration, reconciliation worksheet, adjudication, investigative-file export, across the publication and ownership discovery paths) is **built** — see `docs/plans/2026-09-06-use-case-01-implementation.md` and `docs/architecture.md`. Step 4 (the foreign-adversary-country list ingester) and steps 5–6 are not yet built.
+**Status:** User and workflow definition. The vertical slice from Section 12 (subject, declaration, reconciliation worksheet, adjudication, investigative-file export, across the publication and ownership discovery paths) is **built** — see `docs/plans/2026-09-06-use-case-01-implementation.md` and `docs/architecture.md`. Step 4 (the foreign-adversary-country list ingester) is **built** — see `docs/plans/2026-09-14-foreign-adversary-list-ingester.md`. Steps 5–6 are not yet built.
 **Date:** September 5, 2026
 **Scope:** Texas HB 127 (89th Legislature) screening of researchers and research-support personnel, as it would be operated by a research security office in a large public university system — Texas A&M System institutions used as the concrete reference throughout.
 
@@ -166,7 +166,7 @@ Reference data the declaration is reconciled against. All public; all already in
 | OpenSanctions | Restricted-party and PEP matching; also carries all seven "Seven Sons" universities | §51B.151(b) (tie) | Built (Epic D) |
 | DoD Section 1260H | Chinese military companies | §51B.151(b) (tie) | Built (Epic D) |
 | NSF Award Search | Prior U.S. federal funding by PI name — **repurposed from input corpus to discovery source** | §51B.153 (omission) | Built, needs repointing |
-| Foreign adversary list | §51B.001 country determination — one attribute on a tie, cited to the list version | §51B.151(b) | **New** — derived from the three most recent DNI Annual Threat Assessments plus gubernatorial designations |
+| Foreign adversary list | §51B.001 country determination — one attribute on a tie, cited to the list version | §51B.151(b) | Built (step 4) — derived from the three most recent DNI Annual Threat Assessments; the gubernatorial-designation path ships empty (`docs/plans/2026-09-14-foreign-adversary-list-ingester.md`) |
 
 **Two notes on the discovery sources.**
 
@@ -247,7 +247,7 @@ The demo case produces **two discrepancy rows** (undisclosed affiliations to Bei
 - **How "substantial" settles in practice.** Tracked deliberately as §4.1 rather than resolved.
 - **Where the research security office sits in a system.** §51B.153 places the duty on "the chief administrative officer of an institution of higher education." The A&M System comprises eleven universities and eight state agencies; whether that means nineteen offices, a shared service, or something between is a real architectural question (single-tenant vs. multi-tenant) and is currently unknown.
 - **Turnaround expectations.** A&M's published visiting-scholar process states no timeline. The statutory deadline is an event ("before offering... or granting"), not a duration, so the operative constraint is the host's hiring date.
-- **The adversary-country list must be derived and verified** against the three most recent DNI Annual Threat Assessments before it is used for anything, including the demo.
+- ~~**The adversary-country list must be derived and verified**~~ — resolved: `docs/plans/2026-09-14-foreign-adversary-list-ingester.md`. Still open: whether/when a real Texas gubernatorial §51B.001(B) designation appears, which would populate the currently-empty gubernatorial path.
 
 ---
 
@@ -258,7 +258,7 @@ Bundling with export control and COI review is the eventual goal; sequencing kee
 1. `Subject`, `Declaration`, `DeclaredAffiliation`, and the case shell
 2. Reconciliation engine and the worksheet, across **two** discovery paths: declared affiliation vs. publication record, and declared employer vs. ownership chain / concern lists. Epics C and D are already built — this is wiring, not new matching logic
 3. Adjudication, §51B.153 certification, investigative-file export
-4. Foreign-adversary list ingester — genuinely new work (acquisition and verification against three DNI Annual Threat Assessments); see the coverage note below
+4. Foreign-adversary list ingester — **built** (`docs/plans/2026-09-14-foreign-adversary-list-ingester.md`): acquisition and verification against the three most recent DNI Annual Threat Assessments, wired into all three discovery call sites; the gubernatorial-designation path ships empty by deliberate decision, not oversight. See the coverage note below
 5. Export-control and restricted-party screening bundled into the same review (A&M performs these together today)
 6. COI and NSPM-33 disclosure reuse
 

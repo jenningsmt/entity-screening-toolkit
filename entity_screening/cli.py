@@ -31,6 +31,7 @@ from entity_screening.common.schema import (
 from entity_screening.common.attribution import attribution_for
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
+from entity_screening.screening.adversary_list import load_adversary_list
 from entity_screening.screening.lists import registered_lists
 from entity_screening.screening.section_117 import LIST_NAME as SECTION_117_LIST_NAME
 from entity_screening.screening.section_117 import DEFAULT_INSTITUTION_THRESHOLD
@@ -233,6 +234,22 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
     if not DEFAULT_DOD_1260H_FILE.exists():
         problems.append(f"Missing bundled DoD 1260H curated list: {DEFAULT_DOD_1260H_FILE}")
+
+    try:
+        adversary_list = load_adversary_list()
+    except Exception as exc:
+        problems.append(f"Foreign-adversary-country list failed to load: {exc}")
+    else:
+        for code, citations in adversary_list.countries.items():
+            if len(code) != 2 or not code.isalpha() or not code.isupper():
+                problems.append(
+                    f"Foreign-adversary-country list entry {code!r} is not a valid "
+                    "ISO 3166-1 alpha-2 code."
+                )
+            if not citations:
+                problems.append(
+                    f"Foreign-adversary-country list entry {code!r} has no citations."
+                )
 
     # Finding 6: every source a hit can be tagged against needs an attribution
     # entry (common/attribution.py) or its license/caveat silently doesn't

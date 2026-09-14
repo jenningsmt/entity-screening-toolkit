@@ -21,6 +21,7 @@ from entity_screening.common.schema import (
 )
 from entity_screening.pipeline import reconcile_case
 from entity_screening.reconciliation.discover import discover_from_publications
+from entity_screening.screening.adversary_list import load_adversary_list
 from entity_screening.reconciliation.match import (
     RECONCILIATION_THRESHOLD,
     best_declared_match,
@@ -165,7 +166,9 @@ def test_a_low_shared_word_match_is_a_stark_omission_not_a_partial():
 
 def test_discover_from_publications_aggregates_the_fixture():
     works = json.loads((FIXTURES / "works_fixture.json").read_text())["works"]
-    discovered = discover_from_publications("Wei Chen", "Texas A&M University", [], works_fixture=works)
+    discovered = discover_from_publications(
+        "Wei Chen", "Texas A&M University", [], load_adversary_list(), works_fixture=works
+    )
     by_name = {d.institution_name: d for d in discovered}
     assert set(by_name) == {
         "University of Texas at Austin",

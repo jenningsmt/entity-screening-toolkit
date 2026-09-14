@@ -39,6 +39,7 @@ from entity_screening.resolution.matcher import (
     is_candidate_match,
     score_pair,
 )
+from entity_screening.screening.adversary_list import AdversaryCountryList
 from entity_screening.screening.lists import EntityOfConcernList
 
 PUBLICATION_ROLE = "publication_affiliation"
@@ -51,7 +52,7 @@ def _year(value: str | None) -> str | None:
 
 
 def _aggregate_own_affiliations(
-    works: list[dict], author_ids: set[str]
+    works: list[dict], author_ids: set[str], adversary_list: AdversaryCountryList
 ) -> list[DiscoveredAffiliation]:
     """Groups the subject's own per-paper institutional affiliations into one
     DiscoveredAffiliation per institution, with the observed date range and
@@ -93,8 +94,8 @@ def _aggregate_own_affiliations(
                 source="openalex",
                 institution_name=name,
                 country=agg["country"],
-                country_on_adversary_list=None,  # set in step 4, never inferred here
-                adversary_list_version=None,
+                country_on_adversary_list=adversary_list.contains(agg["country"]),
+                adversary_list_version=adversary_list.list_version,
                 first_observed=years[0] if years else None,
                 last_observed=years[-1] if years else None,
                 record_count=len(agg["work_ids"]),
@@ -113,6 +114,7 @@ def discover_from_publications(
     subject_display_name: str,
     hiring_institution_name: str,
     declared_affiliations: list[DeclaredAffiliation],  # unused here; kept for a symmetric signature
+    adversary_list: AdversaryCountryList,
     *,
     contact_email: str | None = None,
     fetch: FetchFn | None = None,
@@ -140,7 +142,7 @@ def discover_from_publications(
         }
         explicit.discard(None)
         return _aggregate_own_affiliations(
-            works_fixture, explicit or author_ids
+            works_fixture, explicit or author_ids, adversary_list
         )
 
     institution = resolve_openalex_institution_by_name(
@@ -170,7 +172,7 @@ def discover_from_publications(
                 author.openalex_author_id, contact_email=contact_email, fetch=fetch
             )
         )
-    return _aggregate_own_affiliations(all_works, author_ids)
+    return _aggregate_own_affiliations(all_works, author_ids, adversary_list)
 
 
 # --------------------------------------------------------------------------
@@ -242,6 +244,7 @@ def tie_from_ownership(
     declared_affiliations: list[DeclaredAffiliation],
     conn: duckdb.DuckDBPyConnection,
     concern_lists: list[EntityOfConcernList],
+    adversary_list: AdversaryCountryList,
     *,
     lei_threshold: float = DEFAULT_THRESHOLD,
     concern_threshold: float = DEFAULT_CONCERN_THRESHOLD,
@@ -330,8 +333,8 @@ def tie_from_ownership(
                     related_finding_id=None,  # an ownership tie has no corresponding finding
                     concern_entity_name=parent_name,
                     country=parent_jurisdiction or None,
-                    country_on_adversary_list=None,
-                    adversary_list_version=None,
+                    country_on_adversary_list=adversary_list.contains(parent_jurisdiction),
+                    adversary_list_version=adversary_list.list_version,
                     first_observed=None,
                     last_observed=None,
                     record_count=1,
@@ -355,7 +358,14 @@ def ties_from_own_affiliations(
     **regardless** of whether that affiliation is also an undisclosed Finding
     (the both-at-once case, deliberately two artifacts). `related_finding_id`
     is stamped by the caller (pipeline.reconcile_case) from the
-    DiscoveredAffiliation -> finding_id map; here it is left None."""
+    DiscoveredAffiliation -> finding_id map; here it is left None.
+
+    No `adversary_list` parameter here -- `country_on_adversary_list`/
+    `adversary_list_version` below are inherited from each `da`, already
+    resolved by `discover_from_publications`/`_aggregate_own_affiliations`
+    against the same list; re-deriving them from a second parameter would be
+    a redundant lookup that could only ever agree or silently disagree with
+    the value already sitting on `da`."""
     ties: list[ConcernTie] = []
     for da in discovered_affiliations:
         hits = _screen_name_against_concern_lists(
@@ -378,8 +388,11 @@ def ties_from_own_affiliations(
                 related_finding_id=None,  # set by reconcile_case
                 concern_entity_name=da.institution_name,
                 country=da.country,
-                country_on_adversary_list=None,
-                adversary_list_version=None,
+                # Inherited from the DiscoveredAffiliation `da` itself, not a
+                # second independent lookup -- `_aggregate_own_affiliations`
+                # already resolved this against the same adversary_list.
+                country_on_adversary_list=da.country_on_adversary_list,
+                adversary_list_version=da.adversary_list_version,
                 first_observed=da.first_observed,
                 last_observed=da.last_observed,
                 record_count=da.record_count,

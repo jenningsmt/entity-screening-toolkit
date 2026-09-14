@@ -1,0 +1,50 @@
+{
+  "source_dataset": "foreign_adversary_countries",
+  "legal_basis": "Texas Education Code Section 51B.001(4)",
+  "legal_basis_text": "\"Foreign adversary\" means a country: (A) identified by the United States Director of National Intelligence as a country that poses a risk to the national security of the United States in at least one of the three most recent Annual Threat Assessments of the U.S. Intelligence Community issued pursuant to Section 108B, National Security Act of 1947 (50 U.S.C. Section 3043b); or (B) designated by the governor after consultation with the director of the Department of Public Safety.",
+  "list_version": "2026-09-14",
+  "derived_at": "2026-09-14",
+  "provenance": "Path A (DNI Annual Threat Assessments): derived by reading the actual unclassified PDFs of the three most recent ATAs (2024, 2025, 2026) as of the derivation date -- not from a secondary summary. The 2024 and 2025 editions each carry a dedicated state-actor chapter naming China, Russia, Iran, and North Korea as subsections. The 2026 edition dropped that chapter structure (reorganized around themes) but names the same four countries explicitly in its REGIONAL CHALLENGES section: \"China, Russia, Iran, and North Korea view the U.S. as a strategic competitor and potential adversary...\" (p.19) and \"Selective cooperation among China, Russia, Iran, and North Korea...\" (p.20). Decision, made once and recorded here rather than re-litigated per case: this framing satisfies Sec. 51B.001(A)'s 'identified... as posing a national security risk' on the same footing as 2024/2025's literal chapter titles. Path B (gubernatorial designation): Sec. 51B.001(B) has no statutory publication or recordation requirement -- confirmed by reading HB 127's enrolled bill text directly. Texas Executive Order GA-48 (Nov. 2024) names six entities (China/HK/Macau, Cuba, Iran, North Korea, Russia, the Maduro regime/Venezuela) but predates HB 127's Sept. 1, 2025 effective date and was issued under separate authority for an unrelated stated purpose (cybersecurity/travel/procurement), not as a Sec. 51B.001(B) designation -- decision, made once: not used. A targeted search for any gubernatorial designation issued after HB 127's effective date that cites Sec. 51B.001(B) directly found none. Two secondary sources disagreed with each other in that search: one legal-analysis source names the same four DNI-ATA countries; a student newspaper (Daily Toreador, Sept. 17, 2025) attributes a six-country list 'to the bill' that this session's own direct reading of the enrolled bill text does not support (the statute itself hardcodes no country list). Recorded as a checked dead end, not a silent gap. Path B therefore ships empty -- every country below carries only a dni_ata basis, no gubernatorial entries -- see docs/plans/2026-09-14-foreign-adversary-list-ingester.md for the full research record.",
+  "countries": [
+    {
+      "iso_code": "CN",
+      "name": "China",
+      "basis": ["dni_ata"],
+      "citations": [
+        {"kind": "dni_ata", "year": 2024, "title": "2024 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2024-Unclassified-Report.pdf", "page": 7, "note": "\"STATE ACTORS\" chapter, China subsection"},
+        {"kind": "dni_ata", "year": 2025, "title": "2025 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf", "page": 9, "note": "\"MAJOR STATE ACTORS\" chapter, China subsection"},
+        {"kind": "dni_ata", "year": 2026, "title": "2026 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.odni.gov/files/ODNI/documents/assessments/ATA-2026-Unclassified-Report.pdf", "page": 19, "note": "named in REGIONAL CHALLENGES framing statement; see provenance note on the 2026-framing decision"}
+      ]
+    },
+    {
+      "iso_code": "RU",
+      "name": "Russia",
+      "basis": ["dni_ata"],
+      "citations": [
+        {"kind": "dni_ata", "year": 2024, "title": "2024 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2024-Unclassified-Report.pdf", "page": 14, "note": "\"STATE ACTORS\" chapter, Russia subsection"},
+        {"kind": "dni_ata", "year": 2025, "title": "2025 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf", "page": 16, "note": "\"MAJOR STATE ACTORS\" chapter, Russia subsection"},
+        {"kind": "dni_ata", "year": 2026, "title": "2026 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.odni.gov/files/ODNI/documents/assessments/ATA-2026-Unclassified-Report.pdf", "page": 19, "note": "named in REGIONAL CHALLENGES framing statement; see provenance note on the 2026-framing decision"}
+      ]
+    },
+    {
+      "iso_code": "IR",
+      "name": "Iran",
+      "basis": ["dni_ata"],
+      "citations": [
+        {"kind": "dni_ata", "year": 2024, "title": "2024 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2024-Unclassified-Report.pdf", "page": 18, "note": "\"STATE ACTORS\" chapter, Iran subsection"},
+        {"kind": "dni_ata", "year": 2025, "title": "2025 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf", "page": 22, "note": "\"MAJOR STATE ACTORS\" chapter, Iran subsection"},
+        {"kind": "dni_ata", "year": 2026, "title": "2026 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.odni.gov/files/ODNI/documents/assessments/ATA-2026-Unclassified-Report.pdf", "page": 19, "note": "named in REGIONAL CHALLENGES framing statement; see provenance note on the 2026-framing decision"}
+      ]
+    },
+    {
+      "iso_code": "KP",
+      "name": "North Korea",
+      "basis": ["dni_ata"],
+      "citations": [
+        {"kind": "dni_ata", "year": 2024, "title": "2024 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://archive.dni.gov/files/ODNI/documents/assessments/ATA-2024-Unclassified-Report.pdf", "page": 21, "note": "\"STATE ACTORS\" chapter, North Korea subsection"},
+        {"kind": "dni_ata", "year": 2025, "title": "2025 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.dni.gov/files/ODNI/documents/assessments/ATA-2025-Unclassified-Report.pdf", "page": 26, "note": "\"MAJOR STATE ACTORS\" chapter, North Korea subsection"},
+        {"kind": "dni_ata", "year": 2026, "title": "2026 Annual Threat Assessment of the U.S. Intelligence Community", "url": "https://www.odni.gov/files/ODNI/documents/assessments/ATA-2026-Unclassified-Report.pdf", "page": 19, "note": "named in REGIONAL CHALLENGES framing statement; see provenance note on the 2026-framing decision"}
+      ]
+    }
+  ]
+}

@@ -380,6 +380,70 @@ class ReconciliationManifest:
         return cls(**data)
 
 
+@dataclass(frozen=True)
+class AdversaryListManifest:
+    """Describes the foreign-adversary-country list (Texas Education Code
+    Sec. 51B.001(4), use-case-01 Section 12 step 4): list version, ATA-year
+    derivation, gubernatorial designations, source URLs -- the shape reserved
+    for this in `docs/plans/2026-09-06-use-case-01-implementation.md` Section
+    4.6.
+
+    Unlike GleifSnapshotManifest, this is not written per-run: the adversary
+    list is a static, hand-curated bundled artifact (see
+    `screening/adversary_list.py`'s module docstring), not a live per-run
+    download, the same reason `dod_1260h.json` has no per-run manifest of its
+    own either. Instead this is loaded *from* the curated JSON's own
+    provenance block via `from_adversary_list`, giving the rest of the
+    codebase (export, worksheet UI, docs) one typed place to read the
+    derivation from.
+    """
+
+    list_version: str
+    derived_at: str
+    dni_ata_years: tuple[int, ...]
+    dni_ata_sources: tuple[dict[str, Any], ...]
+    gubernatorial_designations: tuple[dict[str, Any], ...] = ()
+
+    @classmethod
+    def from_adversary_list(cls, adversary_list: Any) -> "AdversaryListManifest":
+        """`adversary_list` is a `screening.adversary_list.AdversaryCountryList`
+        (not imported here -- `common/` stays a leaf package with no
+        dependency on `screening/`, matching every other module in this
+        file); only its `list_version`/`derived_at`/`countries` attributes
+        are read, structurally."""
+        dni_sources: dict[tuple[str, int], dict[str, Any]] = {}
+        gubernatorial: list[dict[str, Any]] = []
+        for citations in adversary_list.countries.values():
+            for citation in citations:
+                if citation.get("kind") == "dni_ata":
+                    key = (citation.get("title", ""), citation.get("year", 0))
+                    dni_sources.setdefault(
+                        key,
+                        {
+                            "year": citation.get("year"),
+                            "title": citation.get("title"),
+                            "url": citation.get("url"),
+                        },
+                    )
+                elif citation.get("kind") == "gubernatorial":
+                    if citation not in gubernatorial:
+                        gubernatorial.append(citation)
+        years = tuple(sorted({src["year"] for src in dni_sources.values() if src["year"]}))
+        sources = tuple(
+            dni_sources[key] for key in sorted(dni_sources, key=lambda k: k[1])
+        )
+        return cls(
+            list_version=adversary_list.list_version,
+            derived_at=adversary_list.derived_at,
+            dni_ata_years=years,
+            dni_ata_sources=sources,
+            gubernatorial_designations=tuple(gubernatorial),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 @dataclass
 class InvestigativeFileManifest:
     """One immutable record per investigative-file export (Sec. 51B.153's

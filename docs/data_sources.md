@@ -95,6 +95,55 @@ each source's terms.
   Being on this list is a DoD designation under Section 1260H, not a sanction, export
   control, or other legal restriction in itself.
 
+### Foreign-adversary-country list (Use Case 01, step 4)
+
+- **Provider:** two independent sourcing mechanisms under Texas Education Code Sec.
+  51B.001(4) — (A) the DNI's Annual Threat Assessments (ATAs) of the U.S. Intelligence
+  Community, and (B) a Texas gubernatorial designation after consulting the DPS
+  director.
+- **License:** U.S. Government work (the ATAs) — not subject to copyright in the
+  United States (17 U.S.C. § 105).
+- **How it's derived — Path A (built):** a small, hand-curated, annually-re-verified
+  static list (`entity_screening/screening/data/adversary_countries.json`), the same
+  pattern as DoD 1260H above, not a live feed or an automated PDF parser. **Verified
+  against a real, direct reading of all three current-window ATAs, not a secondary
+  summary:** the 2024 ("STATE ACTORS" chapter, p.7) and 2025 ("MAJOR STATE ACTORS"
+  chapter, p.9) editions each carry a dedicated state-actor chapter naming China,
+  Russia, Iran, and North Korea. The 2026 edition dropped that chapter structure
+  entirely — a real, load-bearing finding, not a footnote: a derivation method that
+  only parsed TOC chapter headings would have silently produced nothing for the most
+  recent of the three documents in the window. The same four countries still appear
+  explicitly in the 2026 edition's REGIONAL CHALLENGES section (p.19–20): *"China,
+  Russia, Iran, and North Korea view the U.S. as a strategic competitor and potential
+  adversary..."* **Decision, made once and cited here rather than re-litigated per
+  case:** this framing satisfies Sec. 51B.001(A)'s "identified... as posing a national
+  security risk" on the same footing as 2024/2025's literal chapter titles. Exact
+  titles/URLs/page numbers per country are in the curated JSON's own `citations`.
+- **How it's derived — Path B (ships empty):** Sec. 51B.001(B) has no statutory
+  publication or recordation requirement — confirmed by reading HB 127's enrolled bill
+  text directly, not assumed. The closest real artifact, Texas Executive Order GA-48
+  (Nov. 2024, naming six entities including Cuba and Venezuela), predates HB 127's
+  Sept. 1, 2025 effective date and was issued under separate authority for an
+  unrelated stated purpose — **decision: not used.** A targeted search for any
+  post-effective-date gubernatorial designation citing Sec. 51B.001(B) directly found
+  none; two secondary sources disagreed with each other in that search (one naming the
+  same four DNI-ATA countries, a student newspaper attributing a six-country claim "to
+  the bill" that this project's own direct reading of the statute does not support) —
+  recorded as a checked dead end in the curated JSON's `provenance` field, not a
+  silent gap. The mechanism to add a `gubernatorial` citation later is built; none
+  ship today.
+- **Known limitation:** the 2026 ATA's structural break from 2024/2025 means this list
+  cannot be safely re-derived by an unattended script against next year's ATA — each
+  re-derivation needs a human to re-read the new document and re-verify citations, the
+  same operational discipline as DoD 1260H's annual re-curation above.
+- **Known limitation:** "known-difficult" collision risk noted during derivation —
+  distinguishing a document's explicit state-actor framing from incidental country
+  mentions elsewhere in the same ATA (e.g. Venezuela and Cuba appear repeatedly in all
+  three ATAs' Western Hemisphere sections, but never in the dedicated state-actor
+  framing the derivation relies on) is a judgment call, not a mechanical string match —
+  see `docs/plans/2026-09-14-foreign-adversary-list-ingester.md` for the full research
+  record.
+
 ### GLEIF Golden Copy (Level 1 LEI-CDF + Level 2 RR-CDF)
 - **Provider:** Global Legal Entity Identifier Foundation (GLEIF).
 - **License:** CC0 1.0 Universal (public domain) — no attribution legally required,
