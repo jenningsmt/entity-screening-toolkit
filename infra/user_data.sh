@@ -53,6 +53,9 @@ cp "$APP_DIR/infra/placeholder/index.html" /var/www/monops-placeholder/index.htm
 if [ -f "$APP_DIR/assets/monops-logo.png" ]; then
     cp "$APP_DIR/assets/monops-logo.png" /var/www/monops-placeholder/monops-logo.png
 fi
+if [ -f "$APP_DIR/assets/monops-project-overview.pdf" ]; then
+    cp "$APP_DIR/assets/monops-project-overview.pdf" /var/www/monops-placeholder/monops-project-overview.pdf
+fi
 # Workstream 2e: keep the demo out of search indexes and casual scrapers.
 # Host-wide by nature (one robots.txt per origin) -- revisit this, not add a
 # second one, if a real site ever lands at the apex. Hygiene only, not
