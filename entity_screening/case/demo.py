@@ -33,16 +33,20 @@ DEMO_CASE_ID = "demo"
 
 # Bumped whenever the demo fixtures OR the shape of what reconciliation
 # produces changes, so a persistent data volume rebuilds the demo case
-# instead of serving stale rows. v2: concern ties split out of Finding
+# instead of serving stale rows.
+# v2: concern ties split out of Finding
 # (docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md).
-DEMO_FIXTURE_VERSION = 2
+# v3: GLEIF fixture's ultimate parent replaced with a real, GLEIF-verified
+# record on the real DoD 1260H list (docs/plans/2026-09-14-close-gleif-
+# verification-gate.md); the declared subsidiary/employer stays fabricated.
+DEMO_FIXTURE_VERSION = 3
 
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "demo_case"
 
-# Fabricated three-node ownership chain -- see tests/fixtures/demo_case/gleif.NOTICE.md.
-# The ultimate parent's name is that of a real DoD Section 1260H entity, so
-# the concern-list match is against real reference data; only the GLEIF graph
-# is synthetic.
+# Hybrid two-node ownership chain -- see tests/fixtures/demo_case/gleif.NOTICE.md.
+# The fabricated subsidiary/employer row and its edge are invented; the
+# ultimate parent row is a real, GLEIF-verified LEI record whose legal name is
+# a genuine match against a real DoD Section 1260H entity.
 DEMO_GLEIF_LEI_FILE = _FIXTURES_DIR / "gleif_lei.csv"
 DEMO_GLEIF_RELATIONSHIPS_FILE = _FIXTURES_DIR / "gleif_relationships.csv"
 

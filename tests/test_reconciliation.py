@@ -207,7 +207,7 @@ def test_reconcile_case_end_to_end_against_the_demo_fixtures(tmp_path):
     assert len(ties) == 1
     (tie,) = ties
     assert tie.tie_kind.value == "declared_employer_ultimate_parent"
-    assert tie.concern_entity_name == "Aviation Industry Corporation of China Ltd."
+    assert tie.concern_entity_name == "NIO INC."
     assert [h.list_name for h in tie.concern_list_evidence] == ["dod_section_1260h"]
     assert tie.related_finding_id is None  # an ownership tie has no corresponding finding
 
@@ -264,7 +264,7 @@ def test_ownership_tie_is_emitted_even_when_the_parent_is_itself_declared(tmp_pa
         sources=decl.sources,
         affiliations=decl.affiliations
         + (
-            DA("demo-aff-avic", "demo-cv", "Aviation Industry Corporation of China Ltd.",
+            DA("demo-aff-avic", "demo-cv", "NIO INC.",
                "CN", "consultant", "2020", "2021", "employment"),
         ),
     )
@@ -280,7 +280,7 @@ def test_ownership_tie_is_emitted_even_when_the_parent_is_itself_declared(tmp_pa
         gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
     # The parent being declared does not suppress the Sec. 51B.151(b) tie.
-    assert any(t.concern_entity_name == "Aviation Industry Corporation of China Ltd." for t in ties)
+    assert any(t.concern_entity_name == "NIO INC." for t in ties)
 
 
 def test_both_at_once_produces_one_finding_and_one_tie_joined_by_id(tmp_path):
@@ -309,7 +309,7 @@ def test_both_at_once_produces_one_finding_and_one_tie_joined_by_id(tmp_path):
                         "institutions": [
                             {
                                 "id": "https://openalex.org/SYNTH-I-AVIC",
-                                "display_name": "Aviation Industry Corporation of China Ltd.",
+                                "display_name": "NIO INC.",
                                 "country_code": "CN",
                             }
                         ],
@@ -328,11 +328,11 @@ def test_both_at_once_produces_one_finding_and_one_tie_joined_by_id(tmp_path):
         gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
 
-    avic_findings = [f for f in findings if "Aviation Industry" in f.discovered.institution_name]
+    nio_findings = [f for f in findings if "NIO" in f.discovered.institution_name]
     own_ties = [t for t in ties if t.tie_kind.value == "own_affiliation_history"]
-    assert len(avic_findings) == 1
+    assert len(nio_findings) == 1
     assert len(own_ties) == 1
-    assert own_ties[0].related_finding_id == avic_findings[0].finding_id
+    assert own_ties[0].related_finding_id == nio_findings[0].finding_id
 
 
 def test_reconcile_case_is_current_state_not_append(tmp_path):

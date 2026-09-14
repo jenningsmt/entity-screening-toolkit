@@ -57,7 +57,7 @@ def test_demo_concern_tie_is_the_ownership_parent_on_the_real_1260h_list(client)
     assert len(tie_rows) == 1
     tie = tie_rows[0]["tie"]
     assert tie["tie_kind"] == "declared_employer_ultimate_parent"
-    assert tie["concern_entity_name"] == "Aviation Industry Corporation of China Ltd."
+    assert tie["concern_entity_name"] == "NIO INC."
     assert [h["list_name"] for h in tie["concern_list_evidence"]] == ["dod_section_1260h"]
     assert tie["related_finding_id"] is None
     # Section 10 licence NFR reaches the tie evidence.

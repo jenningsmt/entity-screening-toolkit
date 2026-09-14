@@ -39,20 +39,22 @@ REDACTION_MARKER = {"_redacted": True, "_reason": "field-level sensitive (use-ca
 
 # The synthetic marker must survive to the export, not just the screen. The
 # investigative file is the artifact designed to leave the system -- a
-# downloaded JSON/XLSX that names a real concern-listed company in a
-# fabricated ownership chain, with no provenance marker, is the one output
-# here that could be mistaken for a real finding about a real company. The
-# Streamlit banner protects the screen; this protects the file.
+# downloaded JSON/XLSX that names a real concern-listed company connected by
+# an invented edge to a fabricated subsidiary, with no provenance marker, is
+# the one output here that could be mistaken for a real finding about a real
+# company. The Streamlit banner protects the screen; this protects the file.
 PROVENANCE_NOTICE = (
     "SYNTHETIC DEMONSTRATION DATA -- NOT A REAL FINDING ABOUT ANY REAL PERSON "
     "OR COMPANY. This build handles no real declaration data (use-case-01 "
-    "Section 9); the subject and their declaration are fabricated in full. "
-    "Named entities in the evidence may be real organisations whose concern-list "
-    "designations are real, but any corporate ownership chain shown here that "
-    "connects the fabricated subject to such an entity is itself a fabricated "
-    "fixture (LEIs prefixed 'SYNTH...'; see tests/fixtures/demo_case/"
-    "gleif.NOTICE.md). Do not treat this file, in whole or in part, as a "
-    "screening determination."
+    "Section 9); the subject and their declaration are fabricated in full, "
+    "including their declared employer's own corporate identity (a fabricated "
+    "GLEIF LEI record; LEIs prefixed 'SYNTH...'). Named entities further up an "
+    "ownership chain may be real organisations whose GLEIF LEI records and "
+    "concern-list designations are real, extracted from a real GLEIF Golden "
+    "Copy download (see tests/fixtures/demo_case/gleif.NOTICE.md) -- only the "
+    "edge connecting the fabricated subsidiary to that real parent is "
+    "invented. Do not treat this file, in whole or in part, as a screening "
+    "determination."
 )
 
 

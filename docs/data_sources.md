@@ -426,21 +426,42 @@ fixtures) uses **real reference data and a wholly synthetic person**
   subject "Wei Chen"), `declaration.json` (a structured affiliation list,
   not a DS-160 replica), `works_fixture.json` (a clearly-labelled fabricated
   OpenAlex-shaped works list — no real author's publication record is
-  attached to the fictional name), and the three-node GLEIF ownership chain
-  in `gleif_lei.csv` / `gleif_relationships.csv` (see
+  attached to the fictional name), and the fabricated subsidiary row and
+  edge in `gleif_lei.csv` / `gleif_relationships.csv` (see
   `tests/fixtures/demo_case/gleif.NOTICE.md`).
 - **Real:** the DoD Section 1260H list the demo's headline observation matches
-  against (`entity_screening/screening/data/dod_1260h.json`) — the synthetic
-  ownership chain's ultimate parent is named for a real 1260H entity, so the
-  designation the observation rests on is real. That observation is a
-  **concern tie** (§51B.151(b)), not a discrepancy (§51B.153) — the employer
-  was declared; the tie is that its ultimate parent is concern-listed
+  against (`entity_screening/screening/data/dod_1260h.json`), and — as of
+  `docs/plans/2026-09-14-close-gleif-verification-gate.md` — the ultimate
+  parent's own GLEIF LEI record too (`gleif_lei.csv`'s second row: LEI
+  `549300JBU4TV5OCKJV96`, legal name "NIO INC.", Cayman Islands, ACTIVE).
+  That observation is a **concern tie** (§51B.151(b)), not a discrepancy
+  (§51B.153) — the employer was declared; the tie is that its ultimate
+  parent is concern-listed
   (`docs/plans/2026-09-06-concern-ties-as-a-distinct-observation.md`).
 
-Replacing the fabricated GLEIF chain with a real extracted one (a real GLEIF
-subsidiary whose real ultimate parent is 1260H-listed) is a binding
-real-data check in `docs/plans/2026-09-06-use-case-01-implementation.md`,
-pending a live GLEIF download.
+**Real-data verification (closes the binding check in
+`docs/plans/2026-09-06-use-case-01-implementation.md`):** a live GLEIF
+Golden Copy download (Sept 14, 2026 snapshot: 3,429,553 Level 1 rows,
+259,543 ACTIVE Level 2 relationship rows) was scored against all 214 real
+DoD 1260H entities/aliases with `resolution/matcher.py:score_pair`. Eight
+real GLEIF entities matched a real 1260H entity at confidence 1.0 — Baidu,
+Alibaba, China National Chemical, CNOOC, China Mobile, China Communications
+Construction, and NIO — confirming a fully-real subsidiary→parent chain was
+available (NIO Inc. → its real Hong Kong subsidiary NIO Nextev Limited,
+`549300M7QP1IAPEG1K62`). **The fully-real chain was deliberately not used**:
+`docs/plans/2026-09-14-close-gleif-verification-gate.md` records the
+decision to keep the declared employer/subsidiary fabricated rather than
+name a specific real company as the fictional subject's employer, using the
+Sept 6 plan's documented fallback instead (a fabricated subsidiary row whose
+edge points at the real parent). The real parent row above, and the
+production `reconciliation/discover.py:tie_from_ownership` path against it,
+were verified end-to-end before this fixture shipped; Mike additionally
+re-verified both candidate LEIs directly against GLEIF's own search
+interface. A known-difficult false-positive collision surfaced in the same
+pass, worth recording alongside the Apple Inc./Apple Ltd. case below: the
+real, unrelated US-listed "CoStar Group, Inc." also matched 1260H's
+"Costar Group Co., Ltd." at confidence 1.0 — a coincidental name collision,
+not usable as a real chain.
 
 ## Sources reserved for V3
 
