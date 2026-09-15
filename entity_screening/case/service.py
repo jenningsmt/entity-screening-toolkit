@@ -25,10 +25,15 @@ from datetime import datetime, timezone
 import duckdb
 
 from entity_screening.case import store
-from entity_screening.case.vocab import is_valid_reason_code, is_valid_tie_reason_code
+from entity_screening.case.vocab import (
+    is_valid_coi_reason_code,
+    is_valid_reason_code,
+    is_valid_tie_reason_code,
+)
 from entity_screening.common.schema import (
     Adjudication,
     Case,
+    CaseKind,
     CaseState,
     Certification,
     ConcernTie,
@@ -125,10 +130,22 @@ def record_action(
     actor: str,
     batch_id: str | None = None,
 ) -> WorksheetAction:
-    if not is_valid_reason_code(action.value, reason_code):
+    case = store.load_case(conn, case_id)
+    if case is None:
+        raise ValueError(f"Unknown case_id: {case_id!r}")
+    # dismiss vocab is shared across case kinds (case/vocab.py); only the
+    # escalation vocab differs, since a COI case has no Sec. 51B.153
+    # department-head certification path.
+    validate = (
+        is_valid_coi_reason_code
+        if case.case_kind == CaseKind.COI_ANNUAL_DISCLOSURE
+        else is_valid_reason_code
+    )
+    if not validate(action.value, reason_code):
         raise ValueError(
             f"reason_code {reason_code!r} is not in the controlled vocabulary for "
-            f"action {action.value!r} (see entity_screening/case/vocab.py)."
+            f"action {action.value!r} on a {case.case_kind.value!r} case "
+            f"(see entity_screening/case/vocab.py)."
         )
     known = {f.finding_id for f in store.load_findings(conn, case_id)}
     if finding_id not in known:

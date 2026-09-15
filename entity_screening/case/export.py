@@ -97,7 +97,7 @@ def build_investigative_file(
     if case is None:
         raise ValueError(f"Unknown case_id: {case_id!r}")
     subject = store.load_subject(conn, case.subject_id)
-    declaration = store.load_declaration_for_subject(conn, case.subject_id)
+    declaration = store.load_declaration(conn, case.declaration_id)
     findings = store.load_findings(conn, case_id)
     ties = store.load_ties(conn, case_id)
     effective = store.effective_actions(conn, case_id)
@@ -115,9 +115,10 @@ def build_investigative_file(
         },
         "case": {
             "case_id": case.case_id,
+            "case_kind": case.case_kind.value,
             "trigger": case.trigger,
             "access_scope": case.access_scope,
-            "coverage_basis": case.coverage_basis.value,
+            "coverage_basis": case.coverage_basis.value if case.coverage_basis else None,
             "statutory_deadline": case.statutory_deadline.isoformat()
             if case.statutory_deadline
             else None,
@@ -127,7 +128,9 @@ def build_investigative_file(
         "subject": {
             "subject_id": subject.subject_id if subject else None,
             "display_name": subject.display_name if subject else None,
-            "coverage_basis": subject.coverage_basis.value if subject else None,
+            "coverage_basis": (
+                subject.coverage_basis.value if subject and subject.coverage_basis else None
+            ),
             "classified_fields": (
                 REDACTION_MARKER
                 if (redact or subject is None)

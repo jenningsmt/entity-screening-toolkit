@@ -234,6 +234,18 @@ class CoverageBasis(Enum):
     FOREIGN_ADVERSARY_TIE = "151a2"  # foreign-adversary affiliation, or >=1yr employment/training
 
 
+class CaseKind(Enum):
+    """Which disclosure regime a `Case` belongs to. Added for step 6 (annual
+    COI/Outside-Interest disclosure reuse, docs/use-case-03-coi-annual-
+    disclosure-reuse.md) so the shared worksheet/adjudication engine can pick
+    the right escalation-reason vocabulary (case/vocab.py) without inferring
+    it from `coverage_basis` being absent. Defaults to the original HB-127
+    kind so every pre-existing call site is unaffected."""
+
+    HB127_RESEARCHER_SCREENING = "hb127_researcher_screening"
+    COI_ANNUAL_DISCLOSURE = "coi_annual_disclosure"
+
+
 class CaseState(Enum):
     """The case lifecycle (use-case doc Section 5). A case must reach CLOSED
     before an offer is made or access is granted."""
@@ -256,11 +268,16 @@ class Subject:
     `synthetic` must be True: this build never handles real declaration data
     (use-case doc Section 9). The guard is in __post_init__ so a real subject
     is unrepresentable, not merely discouraged.
+
+    `coverage_basis` is `None` for a subject who has never had an HB-127 case
+    opened for them (e.g. a subject known only through an annual COI
+    disclosure cycle, step 6) -- `CoverageBasis` names a specific HB 127
+    Sec. 51B.151(a) limb and has no member that applies otherwise.
     """
 
     subject_id: str
     display_name: str
-    coverage_basis: CoverageBasis
+    coverage_basis: CoverageBasis | None
     synthetic: bool
     classified_fields: dict[str, Any]
 
@@ -339,15 +356,32 @@ class Declaration:
 class Case:
     """One case: one subject, one triggering event, one deadline, one file.
     `statutory_deadline` is a first-class field, captured at intake, not a
-    note -- the case must reach CLOSED before that date (use-case doc
-    Section 5)."""
+    note -- the case must reach CLOSED before that date for an HB-127 case
+    (use-case doc Section 5); for a step-6 COI case it holds the annual
+    disclosure cycle's due date instead, a regulatory rather than statutory
+    deadline, but the same field shape.
+
+    `declaration_id` names the exact `Declaration` this case reconciles
+    against -- set once at case creation (deterministically,
+    `f"{case_id}-declaration"`, never supplied by a caller) and read from
+    directly by reconciliation/export, rather than derived by looking up
+    "the" declaration for `subject_id` after the fact. That derived lookup
+    (`case_store.load_declaration_for_subject`) is ambiguous once a subject
+    can have more than one declaration over time -- exactly what an annual
+    COI disclosure cycle means -- so a case must name its own.
+
+    `coverage_basis` is `None` for a non-HB-127 case (see `CaseKind`); HB 127
+    Sec. 51B.151(a) has no limb for an annual COI disclosure.
+    """
 
     case_id: str
     subject_id: str
+    declaration_id: str
     trigger: str
     access_scope: str
-    coverage_basis: CoverageBasis
+    coverage_basis: CoverageBasis | None
     synthetic: bool
+    case_kind: CaseKind = CaseKind.HB127_RESEARCHER_SCREENING
     state: CaseState = CaseState.INTAKE
     statutory_deadline: date | None = None
     office_id: str = "default"  # single-tenant for now; a later multi-tenant filter, not a migration

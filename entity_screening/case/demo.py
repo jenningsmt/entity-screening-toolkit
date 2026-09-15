@@ -20,6 +20,7 @@ import duckdb
 from entity_screening.case import store
 from entity_screening.common.schema import (
     Case,
+    CaseKind,
     CaseState,
     CoverageBasis,
     DeclaredAffiliation,
@@ -31,6 +32,13 @@ from entity_screening.common.schema import (
 
 DEMO_CASE_ID = "demo"
 
+# Step 6: a second, annual COI/Outside-Interest disclosure cycle for the SAME
+# synthetic subject as DEMO_CASE_ID -- the end-to-end proof that
+# Case.declaration_id disambiguates two declarations for one subject rather
+# than the two colliding (docs/plans/2026-09-15-step-6-coi-annual-disclosure-
+# reuse.md).
+DEMO_COI_CASE_ID = "demo-coi"
+
 # Bumped whenever the demo fixtures OR the shape of what reconciliation
 # produces changes, so a persistent data volume rebuilds the demo case
 # instead of serving stale rows.
@@ -39,7 +47,9 @@ DEMO_CASE_ID = "demo"
 # v3: GLEIF fixture's ultimate parent replaced with a real, GLEIF-verified
 # record on the real DoD 1260H list (docs/plans/2026-09-14-close-gleif-
 # verification-gate.md); the declared subsidiary/employer stays fabricated.
-DEMO_FIXTURE_VERSION = 3
+# v4: Case.declaration_id/case_kind added, coverage_basis made optional, and
+# the demo-coi second disclosure cycle added (step 6).
+DEMO_FIXTURE_VERSION = 4
 
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "demo_case"
 
@@ -104,6 +114,10 @@ def demo_case_exists(conn: duckdb.DuckDBPyConnection) -> bool:
     return store.load_case(conn, DEMO_CASE_ID) is not None
 
 
+def demo_coi_case_exists(conn: duckdb.DuckDBPyConnection) -> bool:
+    return store.load_case(conn, DEMO_COI_CASE_ID) is not None
+
+
 _DEMO_CASE_TABLES = (
     "findings",
     "concern_ties",
@@ -128,12 +142,50 @@ def build_demo_case(conn: duckdb.DuckDBPyConnection) -> Case:
     case = Case(
         case_id=DEMO_CASE_ID,
         subject_id=subject.subject_id,
+        declaration_id=declaration.declaration_id,
         trigger="Visiting scholar appointment, Division of Research review (Form 5VS + HB 127)",
         access_scope="Research data and lab information systems",
         coverage_basis=subject.coverage_basis,
         synthetic=True,
+        case_kind=CaseKind.HB127_RESEARCHER_SCREENING,
         state=CaseState.INTAKE,
         statutory_deadline=date(2026, 10, 1),
+    )
+    store.save_subject(conn, subject)
+    store.save_declaration(conn, declaration)
+    store.save_case(conn, case)
+    return case
+
+
+def build_demo_coi_case(conn: duckdb.DuckDBPyConnection) -> Case:
+    """Step 6's demo: a second, annual COI/Outside-Interest disclosure cycle
+    for the SAME synthetic subject as DEMO_CASE_ID, with its own Declaration
+    (`coi_declaration.json`) whose TYPE_ENUMERATION scope (outside
+    employment/board/consulting/foreign-government-affiliation) doesn't
+    admit a bare publication-affiliation role at all -- so every
+    OpenAlex-discovered institution not independently cleared by name
+    (Nanjing University included, deliberately not declared here) surfaces
+    as a genuine, scope-bounded discrepancy, a larger and independently
+    derived set from DEMO_CASE_ID's own two. Idempotent, same pattern as
+    build_demo_case."""
+    for table in _DEMO_CASE_TABLES:
+        conn.execute(f"DELETE FROM {table} WHERE case_id = ?", [DEMO_COI_CASE_ID])
+    subject = _subject_from_fixture(_load("subject.json"))
+    declaration = _declaration_from_fixture(_load("coi_declaration.json"))
+    case = Case(
+        case_id=DEMO_COI_CASE_ID,
+        subject_id=subject.subject_id,
+        declaration_id=declaration.declaration_id,
+        trigger=(
+            "Annual Outside-Interest disclosure, TAMU System Regulation 15.01.03 "
+            "(Financial Conflicts of Interest in Sponsored Research), FY2027"
+        ),
+        access_scope="N/A -- annual compliance certification, not an access-granting decision",
+        coverage_basis=None,
+        synthetic=True,
+        case_kind=CaseKind.COI_ANNUAL_DISCLOSURE,
+        state=CaseState.INTAKE,
+        statutory_deadline=date(2027, 1, 31),
     )
     store.save_subject(conn, subject)
     store.save_declaration(conn, declaration)

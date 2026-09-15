@@ -106,6 +106,40 @@ def test_a_stale_demo_case_is_rebuilt_when_the_fixture_version_moves(client, tmp
     conn.close()
 
 
+def test_demo_coi_case_is_a_second_independent_cycle_for_the_same_subject(client):
+    """Step 6: demo-coi is a SEPARATE Case/Declaration for the SAME subject
+    (demo-subject) as the HB-127 demo case. Its declaration doesn't declare
+    Nanjing University, and its TYPE_ENUMERATION scope doesn't admit any
+    bare publication-affiliation role -- so its discrepancy set is larger
+    than, and independently derived from, the HB-127 case's own two. This is
+    the end-to-end proof that Case.declaration_id actually disambiguates two
+    cycles for one subject rather than colliding."""
+    hb127 = client.get("/cases/demo/worksheet").json()
+    coi = client.get("/cases/demo-coi/worksheet").json()
+
+    assert coi["case_id"] == "demo-coi"
+    assert coi["subject_id"] == hb127["subject_id"] == "demo-subject"
+    assert coi["case_kind"] == "coi_annual_disclosure"
+    assert hb127["case_kind"] == "hb127_researcher_screening"
+    assert coi["coverage_basis"] is None
+    assert hb127["coverage_basis"] is not None
+
+    coi_names = {r["finding"]["discovered"]["institution_name"] for r in coi["rows"]}
+    hb127_names = {r["finding"]["discovered"]["institution_name"] for r in hb127["rows"]}
+    assert coi_names == {
+        "Beijing Institute of Technology", "Zhejiang University", "Nanjing University",
+    }
+    assert hb127_names == {"Beijing Institute of Technology", "Zhejiang University"}
+    assert all(
+        r["finding"]["factual_basis"] == "absent_outside_all_source_scopes"
+        for r in coi["rows"]
+    )
+
+    # The GLEIF ownership-chain tie re-fires independently for this case too.
+    assert len(coi["tie_rows"]) == 1
+    assert coi["tie_rows"][0]["tie"]["concern_entity_name"] == "NIO INC."
+
+
 def test_demo_investigative_file_export_carries_the_synthetic_marker(client):
     """The demo export names a real DoD 1260H company in a fabricated
     ownership chain. Downloaded from a public URL, it must carry its own

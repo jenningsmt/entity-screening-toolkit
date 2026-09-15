@@ -149,6 +149,25 @@ RPS_ESCALATION_REASON_CODES: dict[str, str] = {
 }
 
 
+# --------------------------------------------------------------------------
+# COI annual-disclosure vocabularies -- Use Case 03, step 6. `dismiss` reuses
+# DISMISS_REASON_CODES unmodified (already statute-agnostic factual bases);
+# only escalation needs its own set, since ESCALATION_REASON_CODES'
+# `possible_nondisclosure_for_certification` routes to a Sec. 51B.153
+# department-head certification that does not exist for a COI case.
+# --------------------------------------------------------------------------
+
+COI_ESCALATION_REASON_CODES: dict[str, str] = {
+    "needs_supervisor_review": "Beyond the analyst's authority to dispose of alone.",
+    "needs_subject_clarification": "Cannot be dispositioned without input from the subject.",
+    "needs_coi_committee_referral": (
+        "Appears to meet the institution's conflict-of-interest threshold; routed "
+        "to the COI committee for a management-plan decision."
+    ),
+    "other": "See the note.",
+}
+
+
 def is_valid_reason_code(action: str, reason_code: str) -> bool:
     if action == "dismiss":
         return reason_code in DISMISS_REASON_CODES
@@ -165,3 +184,9 @@ def is_valid_rps_reason_code(action: str, reason_code: str) -> bool:
     if action == "dismiss":
         return reason_code in RPS_DISMISS_REASON_CODES
     return reason_code in RPS_ESCALATION_REASON_CODES
+
+
+def is_valid_coi_reason_code(action: str, reason_code: str) -> bool:
+    if action == "dismiss":
+        return reason_code in DISMISS_REASON_CODES
+    return reason_code in COI_ESCALATION_REASON_CODES

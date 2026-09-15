@@ -36,6 +36,7 @@ import duckdb
 from entity_screening.common.schema import (
     Adjudication,
     Case,
+    CaseKind,
     CaseState,
     Certification,
     ConcernTie,
@@ -71,7 +72,7 @@ def save_subject(conn: duckdb.DuckDBPyConnection, subject: Subject) -> None:
         [
             subject.subject_id,
             subject.display_name,
-            subject.coverage_basis.value,
+            subject.coverage_basis.value if subject.coverage_basis is not None else None,
             subject.synthetic,
             json.dumps(subject.classified_fields, default=str),
         ],
@@ -90,7 +91,7 @@ def load_subject(conn: duckdb.DuckDBPyConnection, subject_id: str) -> Subject | 
     return Subject(
         subject_id=subject_id,
         display_name=display_name,
-        coverage_basis=CoverageBasis(coverage_basis),
+        coverage_basis=CoverageBasis(coverage_basis) if coverage_basis is not None else None,
         synthetic=bool(synthetic),
         classified_fields=json.loads(classified_fields),
     )
@@ -201,17 +202,31 @@ def load_declaration_for_subject(
 # --------------------------------------------------------------------------
 
 
+_CASE_COLUMNS = (
+    "case_id, subject_id, declaration_id, trigger, access_scope, coverage_basis, "
+    "synthetic, case_kind, state, statutory_deadline, office_id"
+)
+
+
 def save_case(conn: duckdb.DuckDBPyConnection, case: Case) -> None:
+    """Columns are named explicitly (not `INSERT INTO cases VALUES (...)`) so
+    a DuckDB file created before declaration_id/case_kind existed still
+    works: ALTER TABLE ADD COLUMN appends new columns at the end of the
+    physical row layout, not wherever this tuple lists them, and a
+    positional INSERT would silently misalign every value on such a file
+    (the same reason replace_findings/replace_ties name their columns)."""
     conn.execute("DELETE FROM cases WHERE case_id = ?", [case.case_id])
     conn.execute(
-        "INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO cases ({_CASE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             case.case_id,
             case.subject_id,
+            case.declaration_id,
             case.trigger,
             case.access_scope,
-            case.coverage_basis.value,
+            case.coverage_basis.value if case.coverage_basis is not None else None,
             case.synthetic,
+            case.case_kind.value,
             case.state.value,
             case.statutory_deadline,
             case.office_id,
@@ -221,8 +236,7 @@ def save_case(conn: duckdb.DuckDBPyConnection, case: Case) -> None:
 
 def load_case(conn: duckdb.DuckDBPyConnection, case_id: str) -> Case | None:
     row = conn.execute(
-        "SELECT case_id, subject_id, trigger, access_scope, coverage_basis, synthetic, "
-        "state, statutory_deadline, office_id FROM cases WHERE case_id = ?",
+        f"SELECT {_CASE_COLUMNS} FROM cases WHERE case_id = ?",
         [case_id],
     ).fetchone()
     if row is None:
@@ -230,10 +244,12 @@ def load_case(conn: duckdb.DuckDBPyConnection, case_id: str) -> Case | None:
     (
         case_id,
         subject_id,
+        declaration_id,
         trigger,
         access_scope,
         coverage_basis,
         synthetic,
+        case_kind,
         state,
         statutory_deadline,
         office_id,
@@ -241,10 +257,12 @@ def load_case(conn: duckdb.DuckDBPyConnection, case_id: str) -> Case | None:
     return Case(
         case_id=case_id,
         subject_id=subject_id,
+        declaration_id=declaration_id,
         trigger=trigger,
         access_scope=access_scope,
-        coverage_basis=CoverageBasis(coverage_basis),
+        coverage_basis=CoverageBasis(coverage_basis) if coverage_basis is not None else None,
         synthetic=bool(synthetic),
+        case_kind=CaseKind(case_kind),
         state=CaseState(state),
         statutory_deadline=(
             statutory_deadline

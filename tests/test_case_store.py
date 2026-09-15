@@ -12,6 +12,7 @@ from entity_screening.common import storage
 from entity_screening.common.schema import (
     Adjudication,
     Case,
+    CaseKind,
     CaseState,
     Certification,
     ConcernTie,
@@ -90,10 +91,12 @@ def _case() -> Case:
     return Case(
         case_id="case-1",
         subject_id="subj-1",
+        declaration_id="decl-1",
         trigger="visiting scholar appointment",
         access_scope="research data, lab systems",
         coverage_basis=CoverageBasis.FOREIGN_ADVERSARY_TIE,
         synthetic=True,
+        case_kind=CaseKind.HB127_RESEARCHER_SCREENING,
         state=CaseState.INTAKE,
         statutory_deadline=date(2026, 10, 1),
     )
@@ -216,6 +219,52 @@ def test_concern_ties_round_trip_and_are_current_state(tmp_path):
     loaded = store.load_ties(conn, "case-1")
     assert len(loaded) == 1
     assert loaded[0] == _tie()
+    conn.close()
+
+
+def test_two_declarations_for_one_subject_are_disambiguated_by_case(tmp_path):
+    """Step 6's recurrence fix: a subject can have more than one Declaration
+    over time (one per annual disclosure cycle). Each Case must resolve back
+    to its OWN declaration via Case.declaration_id, not an arbitrary one
+    picked by load_declaration_for_subject's un-ordered .fetchone()."""
+    conn = _conn(tmp_path)
+    store.save_subject(conn, _subject())
+
+    decl_1 = _declaration()
+    decl_2 = Declaration(
+        declaration_id="decl-2",
+        subject_id="subj-1",
+        synthetic=True,
+        sources=(),
+        affiliations=(),
+    )
+    store.save_declaration(conn, decl_1)
+    store.save_declaration(conn, decl_2)
+
+    case_1 = _case()
+    case_2 = Case(
+        case_id="case-2",
+        subject_id="subj-1",
+        declaration_id="decl-2",
+        trigger="Annual Outside-Interest disclosure, FY2027",
+        access_scope="N/A -- annual compliance certification",
+        coverage_basis=None,
+        synthetic=True,
+        case_kind=CaseKind.COI_ANNUAL_DISCLOSURE,
+        state=CaseState.INTAKE,
+    )
+    store.save_case(conn, case_1)
+    store.save_case(conn, case_2)
+
+    loaded_1 = store.load_case(conn, "case-1")
+    loaded_2 = store.load_case(conn, "case-2")
+    assert store.load_declaration(conn, loaded_1.declaration_id) == decl_1
+    assert store.load_declaration(conn, loaded_2.declaration_id) == decl_2
+    assert store.load_declaration(conn, loaded_1.declaration_id) != store.load_declaration(
+        conn, loaded_2.declaration_id
+    )
+    assert loaded_2.coverage_basis is None
+    assert loaded_2.case_kind == CaseKind.COI_ANNUAL_DISCLOSURE
     conn.close()
 
 

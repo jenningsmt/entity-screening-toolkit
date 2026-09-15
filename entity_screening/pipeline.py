@@ -692,7 +692,7 @@ def reconcile_case(
         if case is None:
             raise ValueError(f"Unknown case_id: {case_id!r}")
         subject = case_store.load_subject(conn, case.subject_id)
-        declaration = case_store.load_declaration_for_subject(conn, case.subject_id)
+        declaration = case_store.load_declaration(conn, case.declaration_id)
         if subject is None or declaration is None:
             raise ValueError(
                 f"Case {case_id!r} has no subject/declaration recorded -- intake is incomplete."

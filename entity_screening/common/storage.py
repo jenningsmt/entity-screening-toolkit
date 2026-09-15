@@ -242,10 +242,12 @@ CREATE TABLE IF NOT EXISTS declarations (
 CREATE TABLE IF NOT EXISTS cases (
     case_id VARCHAR PRIMARY KEY,
     subject_id VARCHAR,
+    declaration_id VARCHAR,
     trigger VARCHAR,
     access_scope VARCHAR,
     coverage_basis VARCHAR,
     synthetic BOOLEAN,
+    case_kind VARCHAR,
     state VARCHAR,
     statutory_deadline DATE,
     office_id VARCHAR
@@ -422,6 +424,22 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     # existed came from screen_entity, the only producer that existed then.
     conn.execute("ALTER TABLE screening_hits ADD COLUMN IF NOT EXISTS producer VARCHAR")
     conn.execute("UPDATE screening_hits SET producer = 'direct_name' WHERE producer IS NULL")
+    # Step 6: cases.declaration_id/case_kind added so a Case names its own
+    # Declaration instead of deriving it by (ambiguous) subject_id lookup.
+    # Every pre-existing case was created before either column existed, so
+    # every one of them is an HB-127 case whose declaration followed the
+    # same f"{case_id}-declaration" convention every creation call site still
+    # uses today (case_routes.py, case/demo.py) -- the backfill recovers
+    # exactly that value, not a guess.
+    conn.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS declaration_id VARCHAR")
+    conn.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_kind VARCHAR")
+    conn.execute(
+        "UPDATE cases SET declaration_id = case_id || '-declaration' "
+        "WHERE declaration_id IS NULL"
+    )
+    conn.execute(
+        "UPDATE cases SET case_kind = 'hb127_researcher_screening' WHERE case_kind IS NULL"
+    )
     _migrate_drop_ownership_flags_primary_key(conn)
     return conn
 

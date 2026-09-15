@@ -1,6 +1,6 @@
 # Use Case 01 — HB 127 Foreign Researcher Screening
 
-**Status:** User and workflow definition. The vertical slice from Section 12 (subject, declaration, reconciliation worksheet, adjudication, investigative-file export, across the publication and ownership discovery paths) is **built** — see `docs/plans/2026-09-06-use-case-01-implementation.md` and `docs/architecture.md`. Step 4 (the foreign-adversary-country list ingester) is **built** — see `docs/plans/2026-09-14-foreign-adversary-list-ingester.md`. Step 5 (restricted-party screening) is **built** — see `docs/use-case-02-restricted-party-screening.md` and `docs/plans/2026-09-14-restricted-party-screening.md`. Step 6 is not yet built.
+**Status:** User and workflow definition. The vertical slice from Section 12 (subject, declaration, reconciliation worksheet, adjudication, investigative-file export, across the publication and ownership discovery paths) is **built** — see `docs/plans/2026-09-06-use-case-01-implementation.md` and `docs/architecture.md`. Step 4 (the foreign-adversary-country list ingester) is **built** — see `docs/plans/2026-09-14-foreign-adversary-list-ingester.md`. Step 5 (restricted-party screening) is **built** — see `docs/use-case-02-restricted-party-screening.md` and `docs/plans/2026-09-14-restricted-party-screening.md`. Step 6 (annual COI/Outside-Interest disclosure reuse — narrower than this document's original "COI and NSPM-33" framing, see `docs/use-case-03-coi-annual-disclosure-reuse.md` §0) is **built** — see `docs/plans/2026-09-15-step-6-coi-annual-disclosure-reuse.md`.
 **Date:** September 5, 2026
 **Scope:** Texas HB 127 (89th Legislature) screening of researchers and research-support personnel, as it would be operated by a research security office in a large public university system — Texas A&M System institutions used as the concrete reference throughout.
 
@@ -260,7 +260,18 @@ Bundling with export control and COI review is the eventual goal; sequencing kee
 3. Adjudication, §51B.153 certification, investigative-file export
 4. Foreign-adversary list ingester — **built** (`docs/plans/2026-09-14-foreign-adversary-list-ingester.md`): acquisition and verification against the three most recent DNI Annual Threat Assessments, wired into all three discovery call sites; the gubernatorial-designation path ships empty by deliberate decision, not oversight. See the coverage note below
 5. Restricted-party screening — **built** (`docs/use-case-02-restricted-party-screening.md`, `docs/plans/2026-09-14-restricted-party-screening.md`): a deliberately separate object graph (`ScreeningEvent`/`ScreeningParty`/`ScreeningMatch`/`ScreeningDisposition`, `entity_screening/screening/rps_*.py`) covering the Foreign Person hire, visiting scholar, and purchasing/financial triggers, reusing the existing `OpenSanctionsList` matching machinery unmodified. Export-control jurisdiction/classification/licensing — the other half of what "export control" colloquially names — is explicitly and permanently out of scope (a RESEC judgment call, not a fact this system states); OFAC-embargoed-country screening is also explicitly out of scope for this pass, documented rather than silently absent
-6. COI and NSPM-33 disclosure reuse
+6. Annual COI/Outside-Interest disclosure reuse — **built**
+   (`docs/use-case-03-coi-annual-disclosure-reuse.md`,
+   `docs/plans/2026-09-15-step-6-coi-annual-disclosure-reuse.md`): narrower than this
+   line originally read. NSPM-33's own federal disclosure forms (Biographical Sketch
+   + Current & Pending Support) are a differently-shaped, proposal-triggered artifact
+   and stay explicitly out of scope; what's reused is the real annual institutional
+   financial-COI disclosure cycle (TAMU System Regulation 15.01.03), which is
+   affiliation-shaped like a §51B.152 declaration. Required two small, real
+   generalizations beyond a pure rename: `Case` gained its own `declaration_id` (a
+   subject can now have more than one `Declaration` over time — one per disclosure
+   cycle — where previously only one was ever assumed) and `coverage_basis` became
+   optional (a COI case has no HB 127 §51B.151(a) limb).
 
 **Why two discovery paths in step 2, not one.** Not primarily for the demo. A `Finding` designed against a single kind of evidence will need reshaping when the second kind arrives, and by then the worksheet, adjudication and export are built on top of it. Two structurally different discovery paths flowing through one `Finding` into one worksheet is the architectural test worth running inside the slice, while reshaping is still cheap. It also lets the slice carry §10's primary demo observation.
 
@@ -268,4 +279,18 @@ Bundling with export control and COI review is the eventual goal; sequencing kee
 
 **Coverage is an intake input, not a derived conclusion.** Deferring the adversary list to step 4 means the slice cannot determine automatically whether a subject falls under §51B.151. That is correct rather than a gap: whether a person is subject to screening is a legal determination, not an observable fact, and §4's principle says the system does not make those. The triggering basis — foreign national without permanent residency, or declared foreign-adversary affiliation or employment — is recorded at intake by the person opening the case, who already knows it. Step 4 adds the ability to *corroborate* a recorded basis and to flag a country as adversary-listed with the list version cited; it never converts that into a coverage determination of its own.
 
-**Step 6 is nearly free and worth stating now:** an annual conflict-of-interest disclosure is structurally identical to a §51B.152 declaration — a self-reported affiliation set to be reconciled against the record. The same engine serves NSPM-33 disclosure verification with no new matching logic. That is the argument for bundling, and it is why the reconciliation engine should be built against a general `Declaration`, not against a DS-160.
+**Step 6 turned out mostly, not entirely, free — recorded here rather than left as an
+unqualified claim.** An annual conflict-of-interest disclosure (specifically, the
+*financial*-COI cycle a real institution like TAMU runs under System Regulation
+15.01.03, not NSPM-33's own federal per-proposal disclosure forms — see
+`docs/use-case-03-coi-annual-disclosure-reuse.md` §0) is structurally identical to a
+§51B.152 declaration — a self-reported affiliation set reconciled against the
+record — and `Declaration`/`reconciliation/reconcile.py` needed no changes to serve
+it: no new matching logic, exactly as predicted. What wasn't free: a `Case` had only
+ever been built to reference one `Declaration` implicitly (by looking up "the"
+declaration for a subject after the fact), which silently assumed a subject never has
+more than one — true for a one-shot HB-127 case, false the moment a disclosure
+recurs annually. Fixed with an explicit `Case.declaration_id`, set once at creation.
+`coverage_basis` also needed to become optional, since a COI case has no HB 127
+§51B.151(a) limb to name. Both were small and mechanical, not new matching logic —
+but "nearly free" undersold them.

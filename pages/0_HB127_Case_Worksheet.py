@@ -85,10 +85,12 @@ same code with the fixtures left out. All demo data is synthetic.
 **Scope.** HB 127 researcher screening is one due-diligence workflow.
 Restricted-party screening — a related but structurally different check (a
 name-against-list match, not a declaration-vs-record diff) — is now its own page,
-reachable from the sidebar switcher. Conflict-of-interest review is the same shape
-of problem as this page and remains an intended next use case. Case intake and
-queue routing would come from the office's existing workflow rather than being
-rebuilt here.
+reachable from the sidebar switcher. Annual conflict-of-interest disclosure review
+runs on this same page and this same engine: type a COI case's ID (the bundled demo
+is `demo-coi`) into the Case ID box above to see one — the "Coverage basis" metric
+reads N/A for it, since HB 127's §51B.151(a) has no limb for an annual disclosure
+cycle. Case intake and queue routing would come from the office's existing workflow
+rather than being rebuilt here.
 
 *Full specification: docs/use-case-01-hb127-researcher-screening.md.*
 """
@@ -125,6 +127,7 @@ except requests.RequestException as exc:
 
 DISMISS_CODES = reason_codes["dismiss"]
 ESCALATION_CODES = reason_codes["escalation"]
+COI_ESCALATION_CODES = reason_codes["coi_escalation"]
 TIE_DISMISS_CODES = reason_codes["tie_dismiss"]
 TIE_ESCALATION_CODES = reason_codes["tie_escalation"]
 
@@ -138,6 +141,10 @@ except requests.RequestException as exc:
 
 rows = worksheet["rows"]
 tie_rows = worksheet["tie_rows"]
+# Only escalation vocab differs by case kind (case/vocab.py: a COI case has
+# no Sec. 51B.153 department-head certification path); dismiss is shared.
+_is_coi_case = worksheet.get("case_kind") == "coi_annual_disclosure"
+_escalation_codes = COI_ESCALATION_CODES if _is_coi_case else ESCALATION_CODES
 
 # The subject line, rendered back up under the page title (via the placeholder
 # reserved there). An analyst working a queue has to see whose file is open at a
@@ -153,7 +160,10 @@ _subject_slot.markdown(_subject_md)
 
 col_a, col_b, col_c = st.columns(3)
 col_a.metric("State", worksheet["state"])
-col_b.metric("Coverage basis", worksheet["coverage_basis"])
+col_b.metric(
+    "Coverage basis",
+    worksheet["coverage_basis"] or "N/A — annual disclosure, not an HB-127 case",
+)
 col_c.metric("Statutory deadline", worksheet["statutory_deadline"] or "—")
 
 with st.expander("What am I looking at?", expanded=True):
@@ -270,7 +280,7 @@ if rows:
             "Action", ["dismiss", "request_clarification", "escalate", "certification_required"],
             key="f_action",
         )
-        f_codes = DISMISS_CODES if f_action == "dismiss" else ESCALATION_CODES
+        f_codes = DISMISS_CODES if f_action == "dismiss" else _escalation_codes
         f_code = st.selectbox("Reason code", list(f_codes), format_func=lambda c: f"{c} — {f_codes[c]}", key="f_code")
         f_note = st.text_area("Reason note (the analyst's own words)", key="f_note")
         if st.button("Record", disabled=not _actions_enabled, key="f_btn"):
@@ -299,7 +309,7 @@ if rows:
         ]
         st.write(f"{len(selected)} row(s) selected.")
         b_action = st.selectbox("Action", ["dismiss", "escalate"], key="fb_action")
-        b_codes = DISMISS_CODES if b_action == "dismiss" else ESCALATION_CODES
+        b_codes = DISMISS_CODES if b_action == "dismiss" else _escalation_codes
         b_code = st.selectbox("Reason code", list(b_codes), format_func=lambda c: f"{c} — {b_codes[c]}", key="fb_code")
         b_note = st.text_area("Reason note", key="fb_note")
         if st.button("Apply to the selected class", disabled=not _actions_enabled, key="fb_btn"):

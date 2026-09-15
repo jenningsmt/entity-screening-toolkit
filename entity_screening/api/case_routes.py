@@ -23,6 +23,7 @@ from entity_screening.api.deps import runs_dir as _runs_dir
 from entity_screening.case import demo, export as case_export, service, store
 from entity_screening.case.service import CaseStateError
 from entity_screening.case.vocab import (
+    COI_ESCALATION_REASON_CODES,
     DISMISS_REASON_CODES,
     ESCALATION_REASON_CODES,
     TIE_DISMISS_REASON_CODES,
@@ -31,6 +32,7 @@ from entity_screening.case.vocab import (
 from entity_screening.common import storage
 from entity_screening.common.schema import (
     Case,
+    CaseKind,
     CaseState,
     CoverageBasis,
     DeclaredAffiliation,
@@ -72,7 +74,8 @@ class CreateCaseRequest(BaseModel):
     case_id: str
     subject_id: str
     subject_display_name: str
-    coverage_basis: str  # "151a1" | "151a2"
+    coverage_basis: str | None = None  # "151a1" | "151a2"; None for a non-HB-127 case
+    case_kind: str = "hb127_researcher_screening"
     synthetic: bool = True
     classified_fields: dict[str, Any] = {}
     trigger: str
@@ -136,14 +139,20 @@ def _connect() -> duckdb.DuckDBPyConnection:
 
 
 def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
-    """Builds and reconciles the demo case on first access -- fixtures only,
-    no live network call. Rebuilds it whenever DEMO_FIXTURE_VERSION has moved
-    past what a persistent data volume last recorded, so a schema/fixture
-    change (e.g. concern ties split out of Finding) does not leave stale rows
-    behind. Idempotent: build_demo_case replaces, and reconcile_case is
+    """Builds and reconciles both demo cases (the HB-127 case and step 6's
+    second, annual-COI-disclosure-cycle case for the same synthetic subject)
+    on first access -- fixtures only, no live network call. Rebuilds them
+    whenever DEMO_FIXTURE_VERSION has moved past what a persistent data
+    volume last recorded, so a schema/fixture change (e.g. concern ties split
+    out of Finding) does not leave stale rows behind. Idempotent:
+    build_demo_case/build_demo_coi_case replace, and reconcile_case is
     current-state."""
     version = str(demo.DEMO_FIXTURE_VERSION)
-    if demo.demo_case_exists(conn) and store.demo_meta_get(conn, "fixture_version") == version:
+    if (
+        demo.demo_case_exists(conn)
+        and demo.demo_coi_case_exists(conn)
+        and store.demo_meta_get(conn, "fixture_version") == version
+    ):
         return
     demo.build_demo_case(conn)
     pipeline.reconcile_case(
@@ -154,11 +163,20 @@ def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
         gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
         gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
+    demo.build_demo_coi_case(conn)
+    pipeline.reconcile_case(
+        demo.DEMO_COI_CASE_ID,
+        db_path=_db_path(),
+        runs_dir=_runs_dir(),
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
     store.demo_meta_set(conn, "fixture_version", version)
 
 
 def _load_case_or_404(conn: duckdb.DuckDBPyConnection, case_id: str) -> Case:
-    if case_id == demo.DEMO_CASE_ID:
+    if case_id in (demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID):
         _ensure_demo_case_exists(conn)
     case = store.load_case(conn, case_id)
     if case is None:
@@ -195,7 +213,8 @@ def _worksheet_payload(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict:
             view.case.synthetic and (subject.synthetic if subject else True)
         ),
         "state": view.case.state.value,
-        "coverage_basis": view.case.coverage_basis.value,
+        "case_kind": view.case.case_kind.value,
+        "coverage_basis": view.case.coverage_basis.value if view.case.coverage_basis else None,
         "statutory_deadline": (
             view.case.statutory_deadline.isoformat()
             if view.case.statutory_deadline
@@ -232,6 +251,9 @@ def reason_codes() -> dict:
         "escalation": ESCALATION_REASON_CODES,
         "tie_dismiss": TIE_DISMISS_REASON_CODES,
         "tie_escalation": TIE_ESCALATION_REASON_CODES,
+        # COI (step 6) shares "dismiss" with HB-127; only escalation differs
+        # (case/vocab.py: no Sec. 51B.153 certification path for a COI case).
+        "coi_escalation": COI_ESCALATION_REASON_CODES,
     }
 
 
@@ -276,12 +298,15 @@ def create_case(
         subject = Subject(
             subject_id=request.subject_id,
             display_name=request.subject_display_name,
-            coverage_basis=CoverageBasis(request.coverage_basis),
+            coverage_basis=(
+                CoverageBasis(request.coverage_basis) if request.coverage_basis else None
+            ),
             synthetic=request.synthetic,
             classified_fields=request.classified_fields,
         )
+        declaration_id = f"{request.case_id}-declaration"
         declaration = Declaration(
-            declaration_id=f"{request.case_id}-declaration",
+            declaration_id=declaration_id,
             subject_id=request.subject_id,
             synthetic=request.synthetic,
             sources=tuple(
@@ -311,13 +336,20 @@ def create_case(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    try:
+        case_kind = CaseKind(request.case_kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     case = Case(
         case_id=request.case_id,
         subject_id=request.subject_id,
+        declaration_id=declaration_id,
         trigger=request.trigger,
         access_scope=request.access_scope,
         coverage_basis=subject.coverage_basis,
         synthetic=request.synthetic,
+        case_kind=case_kind,
         state=CaseState.DECLARATION_ASSEMBLY,
         statutory_deadline=(
             date.fromisoformat(request.statutory_deadline)
@@ -347,7 +379,7 @@ def reconcile(
         _load_case_or_404(conn, case_id)
     finally:
         conn.close()
-    is_demo = case_id == demo.DEMO_CASE_ID
+    is_demo = case_id in (demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID)
     manifest, findings, ties = pipeline.reconcile_case(
         case_id,
         db_path=_db_path(),

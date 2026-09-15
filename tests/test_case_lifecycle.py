@@ -40,6 +40,24 @@ def _demo_conn(tmp_path):
     return storage.connect(db_path)
 
 
+def _demo_coi_conn(tmp_path):
+    """Step 6's second demo cycle -- the same synthetic subject, a different
+    Case/Declaration (case_kind=COI_ANNUAL_DISCLOSURE)."""
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    demo.build_demo_coi_case(conn)
+    conn.close()
+    reconcile_case(
+        demo.DEMO_COI_CASE_ID,
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+    return storage.connect(db_path)
+
+
 def _action_all_findings(conn):
     for row in service.worksheet(conn, "demo").rows:
         service.record_action(
@@ -126,6 +144,38 @@ def test_reason_code_must_be_in_the_controlled_vocabulary(tmp_path):
             conn, "demo", fid, WorksheetActionKind.DISMISS, "not_substantial_enough", "", "a"
         )
     conn.close()
+
+
+def test_escalation_vocabulary_is_selected_by_case_kind(tmp_path):
+    """A COI case has no Sec. 51B.153 department-head certification path, so
+    it must reject that HB-127-only escalation code and accept its own
+    (case/vocab.py:COI_ESCALATION_REASON_CODES); an HB-127 case is the
+    reverse."""
+    hb127_conn = _demo_conn(tmp_path / "hb127")
+    fid = service.worksheet(hb127_conn, "demo").rows[0].finding.finding_id
+    service.record_action(
+        hb127_conn, "demo", fid, WorksheetActionKind.ESCALATE,
+        "possible_nondisclosure_for_certification", "n/a", "analyst.a",
+    )
+    with pytest.raises(ValueError):
+        service.record_action(
+            hb127_conn, "demo", fid, WorksheetActionKind.ESCALATE,
+            "needs_coi_committee_referral", "n/a", "analyst.a",
+        )
+    hb127_conn.close()
+
+    coi_conn = _demo_coi_conn(tmp_path / "coi")
+    coi_fid = service.worksheet(coi_conn, demo.DEMO_COI_CASE_ID).rows[0].finding.finding_id
+    with pytest.raises(ValueError):
+        service.record_action(
+            coi_conn, demo.DEMO_COI_CASE_ID, coi_fid, WorksheetActionKind.ESCALATE,
+            "possible_nondisclosure_for_certification", "n/a", "analyst.a",
+        )
+    service.record_action(
+        coi_conn, demo.DEMO_COI_CASE_ID, coi_fid, WorksheetActionKind.ESCALATE,
+        "needs_coi_committee_referral", "n/a", "analyst.a",
+    )
+    coi_conn.close()
 
 
 def test_adjudication_is_append_only_and_reopening_keeps_the_prior_one(tmp_path):

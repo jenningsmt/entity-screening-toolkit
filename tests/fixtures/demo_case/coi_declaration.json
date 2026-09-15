@@ -1,0 +1,50 @@
+{
+  "_note": "SYNTHETIC step-6 demo: a second, annual COI/Outside-Interest disclosure cycle for the SAME synthetic subject (demo-subject / 'Wei Chen') as the HB-127 case in declaration.json -- proves Case.declaration_id disambiguates two declarations for one subject rather than colliding (the recurrence gap step 6 fixes; see docs/plans/2026-09-15-step-6-coi-annual-disclosure-reuse.md). Models TAMU System Regulation 15.01.03 (Financial Conflicts of Interest in Sponsored Research), not TAMU's separate Conflict-of-Commitment rule. The declared subsidiary employer is kept here (unlike Nanjing University) specifically so the GLEIF ownership-chain ConcernTie re-fires independently for this case too, proving the shared engine reruns per case rather than being a one-shot. This source's TYPE_ENUMERATION scope (outside-employment/board/consulting/foreign-government-affiliation) does not admit a bare 'publication_affiliation' role at all, so EVERY OpenAlex-discovered institution not independently cleared by declared name (Nanjing University included, deliberately not declared here) surfaces as a genuine, scope-bounded discrepancy (ABSENT_OUTSIDE_ALL_SOURCE_SCOPES) -- a larger, independently-derived discrepancy set than the HB-127 case's own two (Beijing Institute of Technology, Zhejiang University), not a 'gotcha' omission.",
+  "declaration_id": "demo-coi-declaration",
+  "subject_id": "demo-subject",
+  "synthetic": true,
+  "sources": [
+    {
+      "source_id": "demo-coi-outside-interest",
+      "kind": "coi_outside_interest_disclosure",
+      "present": true,
+      "scope_kind": "type_enumeration",
+      "scope_descriptor": {
+        "types": ["outside_employment", "board_membership", "consulting", "foreign_government_affiliation"],
+        "cycle": "FY2027"
+      }
+    }
+  ],
+  "affiliations": [
+    {
+      "affiliation_id": "demo-coi-aff-tamu",
+      "source_id": "demo-coi-outside-interest",
+      "institution_name": "Texas A&M University",
+      "country": "US",
+      "role": "associate professor",
+      "start_date": "2026-02-01",
+      "end_date": null,
+      "activity_kind": "employment"
+    },
+    {
+      "affiliation_id": "demo-coi-aff-utaustin",
+      "source_id": "demo-coi-outside-interest",
+      "institution_name": "University of Texas at Austin",
+      "country": "US",
+      "role": "postdoctoral researcher",
+      "start_date": "2019-09-01",
+      "end_date": "2025-12-31",
+      "activity_kind": "employment"
+    },
+    {
+      "affiliation_id": "demo-coi-aff-subsidiary",
+      "source_id": "demo-coi-outside-interest",
+      "institution_name": "Nanjing Zhongke Robotics Co., Ltd.",
+      "country": "CN",
+      "role": "research engineer",
+      "start_date": "2016-07-01",
+      "end_date": "2019-01-31",
+      "activity_kind": "employment"
+    }
+  ]
+}

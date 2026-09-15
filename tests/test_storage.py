@@ -24,6 +24,60 @@ def test_connect_creates_schema(tmp_path):
     } <= tables
 
 
+def test_cases_table_migrates_declaration_id_and_case_kind_on_an_old_file(tmp_path):
+    """Step 6 added declaration_id/case_kind to `cases`. ALTER TABLE ADD
+    COLUMN appends new columns at the END of a pre-existing table's physical
+    row layout, not wherever case/store.py's tuple lists them -- so
+    save_case/load_case must address columns by name, never by raw position,
+    or every value silently misaligns on a file created before this
+    migration existed. Reproduces that exact scenario: a DuckDB file with the
+    OLD 9-column `cases` table (no declaration_id/case_kind at all), a row
+    inserted the old way, then storage.connect() (which runs the migration)
+    followed by a real case_store round trip."""
+    import duckdb
+
+    from entity_screening.case import store as case_store
+    from entity_screening.common.schema import CaseKind, CaseState, CoverageBasis
+
+    db_path = tmp_path / "old.duckdb"
+    old_conn = duckdb.connect(str(db_path))
+    old_conn.execute(
+        """
+        CREATE TABLE cases (
+            case_id VARCHAR PRIMARY KEY,
+            subject_id VARCHAR,
+            trigger VARCHAR,
+            access_scope VARCHAR,
+            coverage_basis VARCHAR,
+            synthetic BOOLEAN,
+            state VARCHAR,
+            statutory_deadline DATE,
+            office_id VARCHAR
+        )
+        """
+    )
+    old_conn.execute(
+        "INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ["old-case", "old-subj", "visiting scholar", "lab systems", "151a2",
+         True, "intake", datetime.date(2026, 10, 1), "default"],
+    )
+    old_conn.close()
+
+    conn = storage.connect(db_path)  # runs the declaration_id/case_kind migration
+    migrated = case_store.load_case(conn, "old-case")
+    assert migrated.declaration_id == "old-case-declaration"
+    assert migrated.case_kind == CaseKind.HB127_RESEARCHER_SCREENING
+    assert migrated.coverage_basis == CoverageBasis.FOREIGN_ADVERSARY_TIE
+
+    # A fresh save/load on the same (migrated) table must not misalign.
+    from dataclasses import replace
+    updated = replace(migrated, state=CaseState.WORKSHEET)
+    case_store.save_case(conn, updated)
+    reloaded = case_store.load_case(conn, "old-case")
+    assert reloaded == updated
+    conn.close()
+
+
 def test_same_entity_id_can_recur_across_different_runs(tmp_path):
     """entity_id is a deterministic hash of the normalized name, so the same
     real-world entity legitimately produces the same entity_id in two
