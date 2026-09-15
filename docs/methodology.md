@@ -210,8 +210,12 @@ and can be re-run later against a newer GLEIF download. So:
   (Epic E) with the Seven Sons universities covered via OpenSanctions (no dedicated
   list — see `docs/data_sources.md`), and semantic ranking of PIs' real papers
   against real DoD/CET critical-technology reference corpora. Epic J (LLM-grounded
-  explanations) remains a deliberately deferred, V3-adjacent follow-up
-  (`docs/requirements.md` Section 9a) and is not reflected in any run's results.
+  explanations, `docs/requirements.md` Section 9a) is now built, but against the case
+  worksheet's `Finding`/`ConcernTie` observations (`entity_screening/explanation/`),
+  not the batch award-screening pipeline this section otherwise describes — a run's
+  `ScoredEntity`/export output carries no explanation and none is planned for it; the
+  batch pipeline's `ScreeningHit` shares the same evidence shape Epic J was built
+  against, but wiring it in is deferred as UI/route work, not a design gap.
 - **Topic-similarity flags are advisory only and never appear in an export file.**
   `TopicSimilarityFlag` carries no `MatchStatus`, is never read by
   `scoring/score.py`, and — unlike screening hits and ownership flags — is not

@@ -42,6 +42,8 @@ from entity_screening.common.schema import (
     Subject,
     WorksheetActionKind,
 )
+from entity_screening.explanation import service as explanation_service
+from entity_screening.explanation.schema import MatchExplanation, ObservationKind
 
 router = APIRouter(prefix="/cases", tags=["hb127-case"])
 
@@ -138,6 +140,23 @@ def _connect() -> duckdb.DuckDBPyConnection:
     return storage.connect(_db_path())
 
 
+def _demo_no_synthesis_call(request: dict) -> object:
+    """Epic J's demo-build fixture callable: always returns an ungrounded,
+    no-citation response, deterministically, so the bundled public demo's
+    explanations ship recitation-only by construction and never depend on a
+    live Claude API call or a credential. Recitation-only is documented as a
+    complete, valid explanation (explanation/schema.py), not a stand-in for
+    one -- this is a deliberate choice to keep the public demo's explanations
+    100% real (fully templated from real evidence, no fabricated "sample" LLM
+    output shipped as if it were genuine), not a corner cut. Anyone running
+    this with a real ANTHROPIC_API_KEY against a non-demo case gets the real
+    synthesis step; see docs/plans/<date>-epic-j-evidence-grounded-
+    explanation.md."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(content=[SimpleNamespace(type="text", text="", citations=[])])
+
+
 def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
     """Builds and reconciles both demo cases (the HB-127 case and step 6's
     second, annual-COI-disclosure-cycle case for the same synthetic subject)
@@ -146,7 +165,10 @@ def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
     volume last recorded, so a schema/fixture change (e.g. concern ties split
     out of Finding) does not leave stale rows behind. Idempotent:
     build_demo_case/build_demo_coi_case replace, and reconcile_case is
-    current-state."""
+    current-state. Also pre-generates (and caches) every finding/tie's
+    explanation using the no-network fixture above -- so a visitor clicking
+    "Explain this match" on a demo case always hits the cache, never a live
+    call (Epic J)."""
     version = str(demo.DEMO_FIXTURE_VERSION)
     if (
         demo.demo_case_exists(conn)
@@ -172,6 +194,24 @@ def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
         gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
         gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
+    for demo_case_id in (demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID):
+        case = store.load_case(conn, demo_case_id)
+        subject = store.load_subject(conn, case.subject_id)
+        synthetic = bool(case.synthetic and (subject.synthetic if subject else True))
+        findings = store.load_findings(conn, demo_case_id)
+        ties = store.load_ties(conn, demo_case_id)
+        for f in findings:
+            explanation_service.explain(
+                conn, ObservationKind.FINDING, f, demo_case_id,
+                [o for o in findings if o.finding_id != f.finding_id] + list(ties),
+                synthetic=synthetic, call=_demo_no_synthesis_call,
+            )
+        for t in ties:
+            explanation_service.explain(
+                conn, ObservationKind.CONCERN_TIE, t, demo_case_id,
+                [o for o in ties if o.tie_id != t.tie_id] + list(findings),
+                synthetic=synthetic, call=_demo_no_synthesis_call,
+            )
     store.demo_meta_set(conn, "fixture_version", version)
 
 
@@ -404,6 +444,89 @@ def get_worksheet(case_id: str) -> dict:
     try:
         _load_case_or_404(conn, case_id)
         return _worksheet_payload(conn, case_id)
+    finally:
+        conn.close()
+
+
+def _explanation_dto(explanation: MatchExplanation) -> dict:
+    return {
+        "explanation_id": explanation.explanation_id,
+        "observation_kind": explanation.observation_kind.value,
+        "observation_id": explanation.observation_id,
+        "case_id": explanation.case_id,
+        "recitation": explanation.recitation,
+        "synthesis_sentence": explanation.synthesis_sentence,
+        "citations": [
+            {"cited_text": c.cited_text, "start_char": c.start_char, "end_char": c.end_char}
+            for c in explanation.citations
+        ],
+        "model": explanation.model,
+        "prompt_version": explanation.prompt_version,
+        "generated_at": explanation.generated_at,
+        "synthetic": explanation.synthetic,
+    }
+
+
+def _explain(conn: duckdb.DuckDBPyConnection, case_id: str, observation_kind: ObservationKind, observation_id: str) -> dict:
+    """Shared by the finding/tie explanation routes below: loads the case's
+    full finding+tie set once, picks out the requested observation as the
+    primary subject and everything else in the case as context for the one
+    allowed synthesis sentence (explanation/generate.py), and gates the
+    real, costed external call behind the same action secret every mutating
+    route already uses -- unlike every other GET-shaped route in this file,
+    this one is not free to call repeatedly."""
+    case = _load_case_or_404(conn, case_id)
+    findings = store.load_findings(conn, case_id)
+    ties = store.load_ties(conn, case_id)
+
+    if observation_kind is ObservationKind.FINDING:
+        primary = next((f for f in findings if f.finding_id == observation_id), None)
+        context = [f for f in findings if f.finding_id != observation_id] + list(ties)
+    else:
+        primary = next((t for t in ties if t.tie_id == observation_id), None)
+        context = [t for t in ties if t.tie_id != observation_id] + list(findings)
+    if primary is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown {observation_kind.value} {observation_id!r} in case {case_id!r}",
+        )
+
+    subject = store.load_subject(conn, case.subject_id)
+    synthetic = bool(case.synthetic and (subject.synthetic if subject else True))
+
+    try:
+        explanation = explanation_service.explain(
+            conn, observation_kind, primary, case_id, context, synthetic=synthetic
+        )
+    except Exception as exc:  # the live Claude API is a real external dependency
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Explanation generation failed (the Claude API call, or its "
+                f"credentials, may be unavailable): {exc}"
+            ),
+        )
+    return _explanation_dto(explanation)
+
+
+@router.post("/{case_id}/findings/{finding_id}/explanation")
+def post_finding_explanation(
+    case_id: str, finding_id: str, _s: None = Depends(require_action_secret)
+) -> dict:
+    conn = _connect()
+    try:
+        return _explain(conn, case_id, ObservationKind.FINDING, finding_id)
+    finally:
+        conn.close()
+
+
+@router.post("/{case_id}/ties/{tie_id}/explanation")
+def post_tie_explanation(
+    case_id: str, tie_id: str, _s: None = Depends(require_action_secret)
+) -> dict:
+    conn = _connect()
+    try:
+        return _explain(conn, case_id, ObservationKind.CONCERN_TIE, tie_id)
     finally:
         conn.close()
 

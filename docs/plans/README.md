@@ -35,6 +35,7 @@ that's worth its own note in the file or a follow-up plan, not a silent rewrite.
 | 2026-09-14 | [Streamlit UI for restricted-party screening](2026-09-14-restricted-party-screening-ui.md) | Built (a separate `pages/` view from the HB127 worksheet; also closed a data-file-allowlist gap found while building it) |
 | 2026-09-14 | [Sidebar navigation -- real labels, positioned as buttons under the logo](2026-09-14-sidebar-navigation.md) | Built (migrated to `st.navigation()`; also found and fixed an `on_click`-callback `switch_page` bug during verification) |
 | 2026-09-15 | [Step 6 -- annual COI/Outside-Interest disclosure reuse](2026-09-15-step-6-coi-annual-disclosure-reuse.md) | Built (narrower than the original "COI and NSPM-33" framing -- NSPM-33's own federal disclosure forms stay out of scope; `Case.declaration_id` and optional `coverage_basis` were the two real generalizations "nearly free" undersold) |
+| 2026-09-15 | [Epic J -- evidence-grounded explanation generation](2026-09-15-epic-j-evidence-grounded-explanation.md) | Built (recitation is fully templated; the one allowed synthesis sentence is verified by citation grounding + a forbidden-lexicon check before it can ever be persisted; the real-model CI guard landed in its own workflow file, not inside `ci.yml` -- see the plan file's own Implementation note) |
 
 **Known gap in this log:** the V2/Epic C plan (GLEIF ownership graph + foreign-control
 flagging, built in commit `3c07677`) was approved via plan mode but never copied here —

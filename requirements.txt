@@ -24,6 +24,12 @@ openpyxl
 fastapi
 uvicorn[standard]
 
+# Epic J -- evidence-grounded explanation generation. Only
+# entity_screening/explanation/generate.py imports this, and only inside
+# _default_anthropic_call -- every other code path (including the whole
+# test suite except test_explanation_real_model.py) never reaches it.
+anthropic
+
 # Testing (httpx2 required by starlette.testclient as of starlette 1.6 —
 # plain httpx is deprecated there and triggers a warning on every test run)
 pytest

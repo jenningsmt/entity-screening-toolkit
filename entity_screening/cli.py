@@ -29,6 +29,12 @@ from entity_screening.common.schema import (
     Subject,
 )
 from entity_screening.common.attribution import attribution_for
+from entity_screening.explanation.schema import (
+    EXPLANATION_ALLOWED_FIELDS,
+    Citation,
+    MatchExplanation,
+    ObservationKind,
+)
 from entity_screening.ingestion.dod_1260h import DEFAULT_DATA_FILE as DEFAULT_DOD_1260H_FILE
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 from entity_screening.screening.adversary_list import load_adversary_list
@@ -235,6 +241,71 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 "RPS observation type may not hold a severity/risk/priority/score/"
                 "materiality/tier/weight/disposition/impair/prevent claim."
             )
+
+    # Same guard, extended to Epic J (explanation/schema.py) -- its own
+    # allowlist for the same reason RPS's is separate: common/schema.py does
+    # not import from explanation/.
+    for type_name, dc in {
+        "MatchExplanation": MatchExplanation,
+        "Citation": Citation,
+    }.items():
+        actual = {f.name for f in _dc_fields(dc)}
+        allowed = EXPLANATION_ALLOWED_FIELDS.get(type_name)
+        if allowed is None:
+            problems.append(
+                f"{type_name} is in the Epic J explanation graph but has no entry "
+                "in EXPLANATION_ALLOWED_FIELDS — add one deliberately."
+            )
+            continue
+        if actual != allowed:
+            problems.append(
+                f"{type_name}'s fields {sorted(actual)} do not match the frozen "
+                f"allowlist {sorted(allowed)} — the fact/judgment boundary is "
+                "enforced here, so widening what an explanation may assert must "
+                "be a deliberate edit to EXPLANATION_ALLOWED_FIELDS in the same "
+                "commit."
+            )
+        forbidden = {
+            name
+            for name in actual
+            for token in _FORBIDDEN_OBSERVATION_FIELD_TOKENS
+            if token in name.lower()
+        }
+        if forbidden:
+            problems.append(
+                f"{type_name} carries evaluative field(s) {sorted(forbidden)} — an "
+                "explanation type may not hold a severity/risk/priority/score/"
+                "materiality/tier/weight/disposition/impair/prevent field. (The "
+                "content-level guarantee for synthesis_sentence itself is enforced "
+                "in MatchExplanation.__post_init__, not by this field-name check.)"
+            )
+
+    # MatchExplanation must make a non-conforming synthesis sentence
+    # unrepresentable, the same "unrepresentable, not merely discouraged"
+    # guard as Subject/Declaration's synthetic=False rejection below.
+    try:
+        MatchExplanation(
+            explanation_id="x",
+            observation_kind=ObservationKind.FINDING,
+            observation_id="x",
+            case_id="x",
+            recitation="x",
+            synthesis_sentence="this appears concerning",
+            citations=(Citation(cited_text="x", start_char=0, end_char=1),),
+            evidence_hash="x",
+            model="x",
+            prompt_version="x",
+            generated_at="x",
+            synthetic=True,
+        )
+    except ValueError:
+        pass
+    else:
+        problems.append(
+            "MatchExplanation accepted a synthesis_sentence containing forbidden "
+            "vocabulary ('concerning') — this must be unrepresentable, not merely "
+            "discouraged (explanation/lexicon.py)."
+        )
 
     # No real PII by construction: Subject / Declaration reject synthetic=False.
     for pii_type in (Subject, Declaration):

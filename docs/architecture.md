@@ -8,8 +8,9 @@ dedicated list), plus the semantic topic-similarity layer against real DoD/CET
 critical-technology reference corpora originally deferred out of V3 (Section 9a's
 DuckDB VSS proposal) — see `docs/requirements.md` Section 12 for the phased roadmap
 and `docs/plans/2026-09-01-vss-topic-similarity-layer.md` for that layer's own plan.
-Epic J (LLM-grounded explanations) remains a deliberately deferred, V3-adjacent
-follow-up, not part of any currently-scheduled phase.
+Epic J (LLM-grounded explanations) is now built (`entity_screening/explanation/`,
+`docs/plans/2026-09-15-epic-j-evidence-grounded-explanation.md`) against the HB127/COI
+case worksheet's `Finding`/`ConcernTie` observations.
 
 ## Two ways in: the CLI and the API
 
@@ -205,6 +206,7 @@ indexes), so cosine similarity is computed directly via DuckDB's
 | `entity_screening/api/` | FastAPI layer over `pipeline.py` — `main.py` (batch routes) + `case_routes.py` (Use Case 01) + `rps_routes.py` (Use Case 02, step 5) + `dto.py` (HTTP request/response models, kept separate from `common/schema.py`'s internal engine model) + `deps.py` (shared action-secret gate and path resolution `case_routes.py`/`rps_routes.py` both reuse without importing `main.py`, which would be circular; also the data-file allowlist helpers `rps_routes.py` uses — `case_routes.py` never accepts a caller-supplied file path at all, so it has no need of them) |
 | `entity_screening/case/` | Use Case 01 (HB 127 researcher screening): the case model (`store.py`), worksheet/adjudication/lifecycle operations (`service.py`), the controlled reason-code vocabularies (`vocab.py` — discrepancies, concern ties, and restricted-party-screening dispositions, three separate sets), the investigative-file export (`export.py`), and the self-healing demo case (`demo.py`) |
 | `entity_screening/reconciliation/` | Two statutory tests: `reconcile.py` produces `Finding`s (the §51B.153 omission test) from `discover.py`'s publication path; `discover.py`'s `tie_from_ownership` / `ties_from_own_affiliations` produce `ConcernTie`s (the §51B.151(b) tie test). `match.py` is the institution-name matcher shared by both |
+| `entity_screening/explanation/` | Epic J — evidence-grounded explanation generation over `Finding`/`ConcernTie`: fully templated recitation (`skeletons.py`, no LLM call), the one allowed generative step (`generate.py` — a real Claude call behind an injectable `call` parameter, citation-grounded via the API's own document-citation feature), a forbidden-vocabulary check on generated prose (`lexicon.py`, the free-text analog of `common/schema.py`'s `_FORBIDDEN_OBSERVATION_FIELD_TOKENS`), and idempotent caching (`service.py`/`store.py`, keyed by observation id + evidence hash) |
 | `app.py` + `ui_common.py` + `pages/` | Streamlit review UI: thin HTTP clients of the API, two separate visitor-facing views. `app.py` is a thin **router** — `st.set_page_config()`, then `ui_common.render_navigation()` (logo + the two nav buttons, via `st.navigation()`/`st.Page()`, replacing classic `pages/` filename auto-discovery so nav labels are explicit and the switcher can be styled/positioned), then `pg.run()`. `pages/0_HB127_Case_Worksheet.py` is the **HB 127 case worksheet** (the default page) — two sections (discrepancies, concern ties), each with its own disposition control and reason vocabulary, one closure rule over both. `pages/1_Restricted_Party_Screening.py` is the **restricted-party-screening** view (Use Case 02) — deliberately a separate page, not a section of the worksheet, mirroring `rps_schema.py`'s object-graph separation in the UI. `ui_common.py` factors the logo, the nav-button rendering, the sidebar config (API base URL, actor, action-secret gate), and HTTP helpers both pages share — see `docs/plans/2026-09-14-sidebar-navigation.md` |
 
 ## Use Case 01 — HB 127 researcher screening (the case path)

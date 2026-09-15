@@ -49,7 +49,10 @@ DEMO_COI_CASE_ID = "demo-coi"
 # verification-gate.md); the declared subsidiary/employer stays fabricated.
 # v4: Case.declaration_id/case_kind added, coverage_basis made optional, and
 # the demo-coi second disclosure cycle added (step 6).
-DEMO_FIXTURE_VERSION = 4
+# v5: every finding/tie now gets a pre-generated, cached MatchExplanation
+# (Epic J) as part of the demo build, so a visitor's first "Explain this
+# match" click never triggers a live Claude API call.
+DEMO_FIXTURE_VERSION = 5
 
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "demo_case"
 

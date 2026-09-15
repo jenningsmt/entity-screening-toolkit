@@ -75,6 +75,18 @@ including ones no name check would reach: a declared employer whose ultimate
 parent sits on the DoD 1260H list. Every row needs an analyst action and a
 stated reason before the case can close.
 
+**Explanations.** Each row has an "Explain this match" expander — a short,
+evidence-grounded write-up of that discrepancy or tie. Most of it is templated
+text built directly from the same fields shown in the Evidence panel; at most
+one sentence is genuinely LLM-generated, and only when it can be verified two
+ways before it's ever shown: every claim in it must resolve back to a citation
+in the underlying evidence, and it must contain none of a forbidden-vocabulary
+list (no "concerning," "suspicious," "clearly indicates" — evaluative language,
+not fact). A sentence that fails either check is dropped, not shown with a
+caveat — the row still gets its full templated explanation either way. The
+bundled demo's explanations are recitation-only by design, so the public demo
+never depends on a live, paid model call.
+
 **Live versus demo.** The screening queries live sources — publication and
 affiliation history comes from OpenAlex at run time. This public demo
 deliberately doesn't: the case shown is built from bundled fixtures so it
@@ -220,6 +232,45 @@ _finding_label = {
 }
 
 
+def _render_explanation_expander(kind: str, observation_id: str, session_key: str):
+    """Epic J: "Explain this match." Gated behind an explicit button click,
+    not fetched automatically -- Streamlit reruns this whole script on every
+    widget interaction, and unlike every other GET-shaped read on this page,
+    this one can trigger a real, costed external API call (or, for the
+    bundled demo cases, a cache hit with no live call at all -- see
+    api/case_routes.py:_ensure_demo_case_exists). Result is kept in
+    st.session_state so it survives the rerun the button click itself
+    causes, the same pattern the investigative-file export buttons below
+    already use."""
+    with st.expander("Explain this match", expanded=False):
+        if st.button("Generate explanation", key=f"{session_key}_btn"):
+            try:
+                path = "findings" if kind == "finding" else "ties"
+                st.session_state[session_key] = _post(
+                    f"/cases/{case_id}/{path}/{observation_id}/explanation", {}
+                ).json()
+            except requests.RequestException as exc:
+                st.error(f"Explanation failed: {exc}")
+        result = st.session_state.get(session_key)
+        if result is None:
+            st.caption("Not generated yet for this row.")
+            return
+        st.write(result["recitation"])
+        if result["synthesis_sentence"]:
+            st.markdown(f"*{result['synthesis_sentence']}*")
+            st.caption(
+                "Grounded in: "
+                + " · ".join(f"“{c['cited_text']}”" for c in result["citations"])
+            )
+        else:
+            st.caption(
+                "No additional synthesis sentence for this row (recitation-only is "
+                "a complete, valid explanation, not a failure state)."
+            )
+        if result["synthetic"]:
+            st.caption("⚠ SYNTHETIC DEMONSTRATION DATA — see the export's own provenance notice.")
+
+
 def _action_cells(action):
     action = action or {}
     return {
@@ -276,6 +327,7 @@ if rows:
         fid = labels[picked]
         with st.expander("Evidence (declaration-search trail)", expanded=False):
             st.json(next(r["finding"] for r in rows if r["finding"]["finding_id"] == fid))
+        _render_explanation_expander("finding", fid, f"explain_finding_{fid}")
         f_action = st.selectbox(
             "Action", ["dismiss", "request_clarification", "escalate", "certification_required"],
             key="f_action",
@@ -378,6 +430,7 @@ if tie_rows:
             )
         with st.expander("Evidence (traversal path, matched entry, attribution)", expanded=False):
             st.json(_picked_tie)
+        _render_explanation_expander("concern_tie", tid, f"explain_tie_{tid}")
         t_action = st.selectbox(
             "Action", ["dismiss", "request_clarification", "escalate", "certification_required"],
             key="t_action",

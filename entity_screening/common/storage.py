@@ -361,6 +361,26 @@ CREATE TABLE IF NOT EXISTS case_outcomes (
     -- that reaches Outcome again appends a new row, the prior one intact.
 );
 
+-- Epic J -- evidence-grounded explanation generation. Cached by
+-- (observation_id, evidence_hash): a re-run of reconciliation regenerates
+-- finding_id/tie_id (uuid4) on every run, so a stale explanation is never
+-- looked up again by construction -- no separate invalidation needed.
+-- Row marshalling lives in entity_screening/explanation/store.py.
+CREATE TABLE IF NOT EXISTS explanations (
+    explanation_id VARCHAR PRIMARY KEY,
+    observation_kind VARCHAR,
+    observation_id VARCHAR,
+    case_id VARCHAR,
+    recitation VARCHAR,
+    synthesis_sentence VARCHAR,
+    citations JSON,
+    evidence_hash VARCHAR,
+    model VARCHAR,
+    prompt_version VARCHAR,
+    generated_at VARCHAR,
+    synthetic BOOLEAN
+);
+
 -- Restricted-party screening (RPS) -- Use Case 02, step 5. A deliberately
 -- separate table family from the case tables above, not a reuse of them --
 -- see entity_screening/screening/rps_schema.py's module docstring for why.
