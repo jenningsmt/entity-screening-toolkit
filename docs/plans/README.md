@@ -21,6 +21,7 @@ that's worth its own note in the file or a follow-up plan, not a silent rewrite.
 |---|---|---|
 | 2026-08-31 | [V1 — minimum viable screening loop](2026-08-31-v1-minimum-viable-screening-loop.md) | Built |
 | 2026-08-31 | [FastAPI layer under Streamlit](2026-08-31-fastapi-layer-under-streamlit.md) | Built |
+| 2026-09-01 | [V2 Epic C -- GLEIF ownership graph and foreign-control flagging](2026-09-01-v2-epic-c-gleif-ownership-graph.md) | Built (backfilled 2026-09-15 from the shipped commit -- see the file's own header for what's reconstructed vs. independently verified) |
 | 2026-09-01 | [Section 117 foreign gift & contract disclosure cross-check](2026-09-01-section-117-foreign-gift-disclosure-cross-check.md) | Built |
 | 2026-09-01 | [V3 — OpenAlex bibliometric affiliation layer](2026-09-01-v3-openalex-bibliometric-affiliation-layer.md) | Built |
 | 2026-09-01 | [DuckDB VSS semantic topic-similarity layer](2026-09-01-vss-topic-similarity-layer.md) | Built |
@@ -37,12 +38,19 @@ that's worth its own note in the file or a follow-up plan, not a silent rewrite.
 | 2026-09-15 | [Step 6 -- annual COI/Outside-Interest disclosure reuse](2026-09-15-step-6-coi-annual-disclosure-reuse.md) | Built (narrower than the original "COI and NSPM-33" framing -- NSPM-33's own federal disclosure forms stay out of scope; `Case.declaration_id` and optional `coverage_basis` were the two real generalizations "nearly free" undersold) |
 | 2026-09-15 | [Epic J -- evidence-grounded explanation generation](2026-09-15-epic-j-evidence-grounded-explanation.md) | Built (recitation is fully templated; the one allowed synthesis sentence is verified by citation grounding + a forbidden-lexicon check before it can ever be persisted; the real-model CI guard landed in its own workflow file, not inside `ci.yml` -- see the plan file's own Implementation note) |
 
-**Known gap in this log:** the V2/Epic C plan (GLEIF ownership graph + foreign-control
-flagging, built in commit `3c07677`) was approved via plan mode but never copied here —
-an oversight in applying this practice, not a deliberate omission. Its content isn't
-recoverable verbatim at this point; if it's ever worth backfilling, it would have to be
-reconstructed from `docs/architecture.md`, `docs/data_sources.md`'s GLEIF entry, and
-`git log`/`git show 3c07677`, not from a source-of-truth plan file.
+**Resolved gap in this log (2026-09-15):** the V2/Epic C plan (GLEIF ownership graph +
+foreign-control flagging) was approved via plan mode but never copied here — an
+oversight in applying this practice, not a deliberate omission. It's backfilled now,
+above. Two corrections to what this note used to say: first, the commit was originally
+cited here as `3c07677` — that hash no longer resolves (`git show`/GitHub both 404 on
+it) because this repo's history was rewritten with `git-filter-repo` on 2026-09-02
+(`.git/filter-repo/commit-map` records the full old-hash → new-hash mapping); the
+commit survived the rewrite intact, just under a new hash,
+`0f8bf276be8d6e0d44c61743b2797daa6211332b`. Second, the shipped commit's own message
+turned out to be detailed enough (architecture rationale, real-data bugs found, timing
+numbers) that the backfilled file below is closer to a real reconstruction than a bare
+summary — what's genuinely unrecoverable is only the pre-approval plan-mode
+conversation itself, not the design record.
 
 Smaller, single-file changes that "wrap existing code" rather than reshape it (CI,
 Dockerfiles, the DoD 1260H list wiring, the `git_commit` containerization fix) were

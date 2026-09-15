@@ -1,5 +1,20 @@
 # Entity Screening Toolkit — Repository Archaeology and Development-Process Retrospective
 
+> **Addendum, 2026-09-15:** every commit hash in this report has been mechanically
+> remapped from the hash it actually had on 2026-09-09 (when this audit was written)
+> to its current equivalent. This repository's history was rewritten with
+> `git-filter-repo` on 2026-09-02 (`.git/filter-repo/commit-map` records the full
+> old-hash → new-hash mapping) — before this rewrite, hashes were stable, but every
+> commit that existed before Sept 2 got a new hash as a result, silently breaking
+> every hash citation written against the pre-rewrite history, this report included.
+> The remap was purely mechanical (an exact 1:1 lookup against `commit-map`, verified
+> to have zero ambiguous prefixes) — no finding, conclusion, or piece of evidence
+> below was reinterpreted or altered, only the hash strings used to cite it. This was
+> found and corrected while backfilling `docs/plans/2026-09-01-v2-epic-c-gleif-ownership-graph.md`
+> (see that file and `docs/plans/README.md`'s own note) — the same rewrite is why the
+> `3c07677` hash originally logged there didn't resolve either.
+
+
 ## Executive Findings
 
 1. **Documented fact:** The project is now **Monops**, a publicly deployed portfolio demonstration, not a completed production screening system. It evolved from corpus-wide organizational matching into a synthetic-person case worksheet with reconciliation, analyst actions and investigative-file exports. The foreign-adversary-country ingester, further use cases and other promised work remain outstanding.
@@ -17,7 +32,7 @@
 
 **Audit date:** September 9, 2026.  
 **Repository:** `G:\entity-screening-toolkit-portfolio`.  
-**HEAD:** `170992ffd3fb8794a09cee9f261a0e022e8bf157`.  
+**HEAD:** `b521162d41664b7b87d5a41f73954f81ae0bf834`.  
 **Remote configured:** `https://github.com/jenningsmt/entity-screening-toolkit.git`.
 
 Evidence classifications:
@@ -101,28 +116,28 @@ Dates below distinguish commit history from retrospectively dated documents. Ini
 
 | Date | Commit(s) | Milestone |
 |---|---|---|
-| Aug 31, 12:51 CDT | `42a4436` | Scaffold: 220-line requirements document, README, package skeleton and dependencies; no implementation tests |
-| Aug 31, 19:24–19:28 CDT | `e86fc56`, `f40f313` | Stale requirements synchronized, then V1 committed: 34 reported tests, batch pipeline, Streamlit, CSV/Excel and run provenance |
-| Aug 31, 19:39–19:40 | `f3cc81e`, `61862c0`, `627eb1a` | Self-contained evidence, CI and first Dockerfile |
-| Aug 31, 20:05–20:36 | `936ed43`, `211ff29`, `63630dd`, `62cd825` | Shared pipeline, FastAPI, thin UI client, multi-run key correction, two-container replacement |
-| Aug 31, 20:50–21:30 | `edc8b9f`, `c5a22b1` | Compose integration CI; build-time commit identity corrects null provenance inside containers |
-| Sept 1, morning | `0593ddb`, `401eb72`, `3c07677`, `533b340` | DoD registry, approved-plan archive, GLEIF ownership and repository line-ending policy |
-| Sept 1, 12:09–12:32 | `c8a3664` through `5380658` | Section 117 plan, real-schema ingestion, normalization, cross-check and real-data verification |
-| Sept 1, 13:04–13:33 | `8254109` through `33af483` | OpenAlex layer, author ambiguity handling, Seven Sons coverage test, integrations and real-data false-positive correction |
-| Sept 1, 15:53–17:34 | `ed06852` through `822789e` | Optional VSS layer; corpus-specific rankings; dedicated real-model CI job prevents permanent silent skipping |
-| Sept 1, 19:32–21:59 | `3be4c7e`, `7c0a524`, `98b26f8`, `861834f` | Terraform hosting and provider lock; real bootstrap-shell and HTTPS redirect corrections |
-| Sept 2, 07:01 | `6797fd1` | Documentation states Monops is live on Lightsail |
-| Sept 2, 10:29 | `40ca51b` | Real NSF demo dataset; dead endpoint and OpenAlex rate-limit fixes |
-| Sept 2, 14:59 | `7c94f23` | Independent codebase evaluation and remediation plan committed |
-| Sept 2, 15:06–16:12 | `a35b578` through `66e0689` | Producer-scoped replacement, acronym blocking, attribution/caveats, DTO/export fields, scoring differentiation, graph correction, boundary/idempotency tests and fetch-once/capped works |
-| Sept 2, 17:17–19:24 | `5842b8c` through `26586fc` | Demo presentation/data, self-healing screening-only run, action gating, path allowlist, rate limiting and noindex |
-| Sept 3, 13:25 | `4980dab`, `b50b6ca` | Public build log and README link; log records product-direction reappraisal |
-| Sept 6, 06:49 | `6313004`, `4e5242f`, `13491b4` | Specific researcher-screening use case, requirements reframe and Phase 6 record |
-| Sept 6, 08:12–09:37 | `1583c39` through `4e2483d` | Approved implementation plan; case storage/guards, reconciliation, ownership composition, actions/adjudication, export, API and worksheet |
-| Sept 6, 09:53 | `821ba2e`, `cb0b123` | Synthetic marker restored to exported files; specification corrected to admit fabricated ownership chain |
-| Sept 6, 15:09–19:42 | `844e1b4`, `db94882`, `9a34b68`, `cdce8d6`, `c24238d` | First exported worksheet triggers split between discrepancy Findings and ConcernTies |
-| Sept 7, 09:19 | `583a510` | Three live-server fixes finally folded into bootstrap/runbook: cold-cache breakage, missing action secret and TLS configuration clobber |
-| Sept 7, 09:28–21:34 | branding/theme commits; `170992f` | Logo, pinned Streamlit theme/version, visitor explanation and case subject line; current HEAD |
+| Aug 31, 12:51 CDT | `e50540e` | Scaffold: 220-line requirements document, README, package skeleton and dependencies; no implementation tests |
+| Aug 31, 19:24–19:28 CDT | `1b2dcdb`, `857a2c9` | Stale requirements synchronized, then V1 committed: 34 reported tests, batch pipeline, Streamlit, CSV/Excel and run provenance |
+| Aug 31, 19:39–19:40 | `1721475`, `8502f38`, `3964c10` | Self-contained evidence, CI and first Dockerfile |
+| Aug 31, 20:05–20:36 | `8271676`, `72e7efa`, `9fe729c`, `4e11e3c` | Shared pipeline, FastAPI, thin UI client, multi-run key correction, two-container replacement |
+| Aug 31, 20:50–21:30 | `d4d08c0`, `04c7f70` | Compose integration CI; build-time commit identity corrects null provenance inside containers |
+| Sept 1, morning | `4036944`, `fb5b5ca`, `0f8bf27`, `a832510` | DoD registry, approved-plan archive, GLEIF ownership and repository line-ending policy |
+| Sept 1, 12:09–12:32 | `f1d4a42` through `3adbc3a` | Section 117 plan, real-schema ingestion, normalization, cross-check and real-data verification |
+| Sept 1, 13:04–13:33 | `c754934` through `94b9b41` | OpenAlex layer, author ambiguity handling, Seven Sons coverage test, integrations and real-data false-positive correction |
+| Sept 1, 15:53–17:34 | `457bafc` through `0b68502` | Optional VSS layer; corpus-specific rankings; dedicated real-model CI job prevents permanent silent skipping |
+| Sept 1, 19:32–21:59 | `27692db`, `8038f5c`, `f2ac14c`, `b4e988d` | Terraform hosting and provider lock; real bootstrap-shell and HTTPS redirect corrections |
+| Sept 2, 07:01 | `e8a9470` | Documentation states Monops is live on Lightsail |
+| Sept 2, 10:29 | `6ff0fca` | Real NSF demo dataset; dead endpoint and OpenAlex rate-limit fixes |
+| Sept 2, 14:59 | `722f8dd` | Independent codebase evaluation and remediation plan committed |
+| Sept 2, 15:06–16:12 | `5d97136` through `9fc64b7` | Producer-scoped replacement, acronym blocking, attribution/caveats, DTO/export fields, scoring differentiation, graph correction, boundary/idempotency tests and fetch-once/capped works |
+| Sept 2, 17:17–19:24 | `21de76b` through `471dc7a` | Demo presentation/data, self-healing screening-only run, action gating, path allowlist, rate limiting and noindex |
+| Sept 3, 13:25 | `ea296bf`, `6cf44ff` | Public build log and README link; log records product-direction reappraisal |
+| Sept 6, 06:49 | `19ca950`, `6bbc37b`, `f94a41a` | Specific researcher-screening use case, requirements reframe and Phase 6 record |
+| Sept 6, 08:12–09:37 | `47a8651` through `c057766` | Approved implementation plan; case storage/guards, reconciliation, ownership composition, actions/adjudication, export, API and worksheet |
+| Sept 6, 09:53 | `8b60f31`, `39ebdcd` | Synthetic marker restored to exported files; specification corrected to admit fabricated ownership chain |
+| Sept 6, 15:09–19:42 | `3735f77`, `be3ea1b`, `6db6794`, `a8f1e0a`, `8c1808d` | First exported worksheet triggers split between discrepancy Findings and ConcernTies |
+| Sept 7, 09:19 | `4232ad5` | Three live-server fixes finally folded into bootstrap/runbook: cold-cache breakage, missing action secret and TLS configuration clobber |
+| Sept 7, 09:28–21:34 | branding/theme commits; `b521162` | Logo, pinned Streamlit theme/version, visitor explanation and case subject line; current HEAD |
 
 The visible project spans approximately one week, not two weeks. The first V1 commit bundles 2,018 insertions across 34 files. Later commits become more incremental, though not uniformly small.
 
@@ -231,16 +246,16 @@ Function counts below were derived from historical Python ASTs; they are not his
 
 | Milestone | Test functions | Execution evidence |
 |---|---:|---|
-| Initial scaffold `42a4436` | 0 | No suite |
-| V1 `f40f313` | 27 | Commit and build log report 34 passing tests |
-| API/thin-client `63630dd` | 49 | Build log reports independent 56-test verification |
-| GLEIF `3c07677` | 93 | Historical source count |
-| Section 117 docs `3191e6d` | 112 | Historical source count |
-| Bibliometric correction `33af483` | 140 | Historical source count |
-| Separate real-model CI `822789e` | 157 | Historical source count |
-| Review baseline `40ca51b` | 160 | Report references 167 locally passing; its own sandbox reports 157/1/7 |
-| Security remediation `26586fc` | 196 | Historical source count |
-| Initial case slice `4e2483d` | 234 | Historical source count |
+| Initial scaffold `e50540e` | 0 | No suite |
+| V1 `857a2c9` | 27 | Commit and build log report 34 passing tests |
+| API/thin-client `9fe729c` | 49 | Build log reports independent 56-test verification |
+| GLEIF `0f8bf27` | 93 | Historical source count |
+| Section 117 docs `ef853cd` | 112 | Historical source count |
+| Bibliometric correction `94b9b41` | 140 | Historical source count |
+| Separate real-model CI `0b68502` | 157 | Historical source count |
+| Review baseline `6ff0fca` | 160 | Report references 167 locally passing; its own sandbox reports 157/1/7 |
+| Security remediation `471dc7a` | 196 | Historical source count |
+| Initial case slice `c057766` | 234 | Historical source count |
 | ConcernTie/current HEAD | 250 | This audit: 277 executed cases pass |
 
 ### What constitutes proof
@@ -270,7 +285,7 @@ Further limits:
 
 ### 1. Correct implementation, stale instructions
 
-**Documented fact:** `e86fc56` and `f40f313` explicitly record V1 being built against the stale 220-line spec. Missing Section 9a requirements required API/container/CI follow-up work.
+**Documented fact:** `1b2dcdb` and `857a2c9` explicitly record V1 being built against the stale 220-line spec. Missing Section 9a requirements required API/container/CI follow-up work.
 
 **Trigger → correction:** independent repository/canonical comparison → separate spec-sync commit → specific rebrief → planned API refactor.
 
@@ -278,15 +293,15 @@ The build log calls this a human-side handoff/process failure. Git supports the 
 
 ### 2. Reproducibility failed at two boundaries
 
-**Documented fact:** Rescoring could produce exports inconsistent with the run's original rubric. `936ed43` introduces the RunManifest/ExportManifest distinction and pure rescoring.
+**Documented fact:** Rescoring could produce exports inconsistent with the run's original rubric. `8271676` introduces the RunManifest/ExportManifest distinction and pure rescoring.
 
-Separately, a local screenshot reportedly exposed null Git provenance in Docker because .git was excluded. `c5a22b1` adds build-time commit stamping and a Compose wrapper; CI checks the generated manifest.
+Separately, a local screenshot reportedly exposed null Git provenance in Docker because .git was excluded. `04c7f70` adds build-time commit stamping and a Compose wrapper; CI checks the generated manifest.
 
 These are durable corrections, not just explanations of a limitation.
 
 ### 3. A real-data precision error multiplied 27 times
 
-**Documented fact as recorded live result:** A Chinese Academy of Sciences institution name matched Chinese Academy of Ordnance Science at **0.8387**, generating **27** bibliometric false positives. `33af483` raises that stage's threshold from 0.80 to 0.90 and adds regression protection.
+**Documented fact as recorded live result:** A Chinese Academy of Sciences institution name matched Chinese Academy of Ordnance Science at **0.8387**, generating **27** bibliometric false positives. `94b9b41` raises that stage's threshold from 0.80 to 0.90 and adds regression protection.
 
 **Reasonable reconstruction:** The important learning is differentiated error cost: checking many co-author institutions multiplies opportunities for a false match. One uniform threshold was not justified merely because code was shared.
 
@@ -294,13 +309,13 @@ These are durable corrections, not just explanations of a limitation.
 
 **Documented fact:** The September 2 review probes show acronym pairs scoring 0.90 directly but producing zero hits through `screen_entity`. Prefix blocking discarded them before scoring.
 
-**Correction:** `8ffa248` adds acronym blocking keys and end-to-end regression coverage. Existing Seven Sons tests had passed because the real dataset supplied both names and aliases; that was dataset assistance, not proof the general path worked.
+**Correction:** `a201951` adds acronym blocking keys and end-to-end regression coverage. Existing Seven Sons tests had passed because the real dataset supplied both names and aliases; that was dataset assistance, not proof the general path worked.
 
 ### 5. Repeat enrichment silently changed meaning
 
 **Documented fact:** Repeated embeddings created duplicate winners/runner-ups, reduced ranking margin to zero and replaced previously non-empty flags with none. Bibliometric hits also accumulated on repeated calls.
 
-**Correction:** `a35b578` adds producer-aware replacement and related lifecycle fixes; `240a850` adds cross-enrichment idempotency checks, including preservation of other producers' rows.
+**Correction:** `5d97136` adds producer-aware replacement and related lifecycle fixes; `0b5d6e2` adds cross-enrichment idempotency checks, including preservation of other producers' rows.
 
 The result was a class-level test, though equal-input reruns do not prove all changed-input or crash-recovery behavior.
 
@@ -308,13 +323,13 @@ The result was a class-level test, though equal-input reruns do not prove all ch
 
 **Documented fact:** The evaluation's branching fixture produced one flattened tuple combining different branches and an arbitrarily selected ultimate parent. A cycle produced a repeated chain.
 
-**Correction:** `466bcd6` introduces separate paths/cycle handling and multiple-parent output, with storage migration and tests. This directly addresses the project's evidence-traceability promise.
+**Correction:** `adcbc77` introduces separate paths/cycle handling and multiple-parent output, with storage migration and tests. This directly addresses the project's evidence-traceability promise.
 
 ### 7. A public deployment crossed the wrong trust boundary
 
 **Documented fact as contemporaneous review:** The API's local-user assumptions were already warned about in source, but the public Streamlit UI forwarded unrestricted file paths and allowed costly live enrichments. The review recorded **405 run directories**, not 405 users; automatic runs and development activity prevent that interpretation.
 
-**Correction:** `26586fc` adds server-side path validation, an action secret, rate limiting and indexing controls. A self-healing precomputed demo avoids fresh work for every visitor.
+**Correction:** `471dc7a` adds server-side path validation, an action secret, rate limiting and indexing controls. A self-healing precomputed demo avoids fresh work for every visitor.
 
 **Important continuation:** September 7 reveals the bootstrap did not actually supply the secret to systemd/Compose. With an empty secret, the intended gate failed open. Controls written in application code were insufficient without deployment wiring.
 
@@ -322,7 +337,7 @@ The result was a class-level test, though equal-input reruns do not prove all ch
 
 **Documented fact:** The initial case export omitted any synthetic marker while naming a real concern-listed ultimate parent connected by fabricated ownership edges.
 
-**Correction:** `821ba2e` adds a JSON provenance block and an XLSX first-sheet notice, with assertions in export/demo tests. `cb0b123` separately corrects the spec's claim that the ownership chain was real.
+**Correction:** `8b60f31` adds a JSON provenance block and an XLSX first-sheet notice, with assertions in export/demo tests. `39ebdcd` separately corrects the spec's claim that the ownership chain was real.
 
 This is the clearest example of a previously identified failure pattern recurring after a supposed general remedy. The marker now travels with the artifact; the required real-chain check remains undone.
 
@@ -330,7 +345,7 @@ This is the clearest example of a previously identified failure pattern recurrin
 
 **Documented fact:** The first deployed case export classified an ownership concern as outside declaration scope, allowing it to be dismissed with the category meant for irrelevant disclosure gaps.
 
-**Correction:** Mike's analyst decision, recorded in the plan, requires two distinct types. `9a34b68` implements Finding versus ConcernTie, separate reason vocabularies, explicit joins and a closure rule spanning both.
+**Correction:** Mike's analyst decision, recorded in the plan, requires two distinct types. `6db6794` implements Finding versus ConcernTie, separate reason vocabularies, explicit joins and a closure rule spanning both.
 
 The original slice deliberately tested two discovery paths together. This was an acknowledged design risk surfaced early, although the observation had already reached a deployed walkthrough.
 
@@ -338,7 +353,7 @@ The original slice deliberately tested two discovery paths together. This was an
 
 **Documented fact as September 7 commit account:** A friend opening the README link encountered failures loading frontend chunks. A rate limit with burst 20 rejected a roughly 150-chunk cold load; logs recorded 128 rejected requests matching browser errors.
 
-**Correction:** `583a510` exempts static assets and increases burst capacity. The same commit records a September 6 outage after copying an HTTP-only nginx template over Certbot-managed TLS configuration, plus recovery instructions and the missing-secret fix.
+**Correction:** `4232ad5` exempts static assets and increases burst capacity. The same commit records a September 6 outage after copying an HTTP-only nginx template over Certbot-managed TLS configuration, plus recovery instructions and the missing-secret fix.
 
 These fixes had been made manually on the live instance before being committed. The commit explicitly says a fresh infrastructure rebuild was not performed to verify all corrections.
 
@@ -544,49 +559,49 @@ Full hashes identify events. Package paths abbreviated as common/, screening/, o
 
 | Finding | Evidence class | Date | Commit/tag | File(s) | Evidence / explanation |
 |---|---|---|---|---|---|
-| Requirements precede code | Documented fact | 2026-08-31 | 42a44362cd6c69aca95e21ab13b80dbb1f2a7246 | docs/requirements.md; package skeleton | 220-line spec; 14-file scaffold; no substantive implementation |
-| Stale spec caused missing architecture | Documented fact | 2026-09-01 00:24:45Z | e86fc56237b8bf816ae4b436921c6bd867dc600b | docs/requirements.md | Explicit 26-line Section 9a synchronization and causal commit account |
-| V1 with early tests | Documented fact | 2026-09-01 00:28:15Z | f40f31330f29e323b069a4ec45442028c153fb33 | engine; tests; app.py | 34 reported tests; 2,018 insertions; implemented against stale input |
-| Self-contained evidence | Documented fact | 2026-08-31 | f3cc81e25fb00929407a57f8645519fae12697d2 | screening/screen.py; tests/test_screening.py | Evidence usable without another data join |
-| CI introduced immediately after V1 | Documented fact | 2026-08-31 | 61862c04e530018dd2b28704786b26643a97e31c | .github/workflows/ci.yml | Structural validation and pytest on push/PR |
-| Run/export reproducibility distinction | Documented fact | 2026-08-31 | 936ed434593f2383c21580b511959ecd47cb196a | entity_screening/pipeline.py; common/manifest.py | Export identifies actual rubric; rescoring separated from baseline persistence |
-| Thin-client refactor and run-scoped key | Documented fact | 2026-08-31 | 63630ddbf0c8613d06259672981867e6341a4277 | app.py; common/storage.py | Multi-run deterministic entity IDs require compound key |
-| Superseded single-container architecture | Documented fact | 2026-08-31 | 62cd8253661bc4f241d86296483e08cd17a3e9e9 | deleted Dockerfile; Dockerfile.api; Dockerfile.streamlit; compose | Two processes require two connected services |
-| Compose CI checks real boundary | Documented fact | 2026-08-31 | edc8b9fb30f04154f1dc24a3583157b3f1138911 | .github/workflows/ci.yml | UI-container-to-API network check plus pipeline output |
-| Null container SHA corrected | Documented fact | 2026-08-31 | c5a22b15397be86d113f4fe000d18e62fd319ac1 | common/manifest.py; Dockerfile.api; scripts/compose-up.ps1; CI | Build-time identity and exact manifest assertion |
-| Approved plans brought into history | Documented fact | 2026-09-01 | 401eb72d047300b6e9e5f06bf2aacf920ecada93 | docs/plans/README.md; first two plans | Prior plans external; V1 reconstructed; GLEIF plan later acknowledged missing |
-| Explicit predecessor learning | Documented fact as plan account, with source checks | 2026-09-01 archive | 401eb72d047300b6e9e5f06bf2aacf920ecada93 | docs/plans/2026-08-31-v1-minimum-viable-screening-loop.md | Rubric/provenance/streaming inheritance plus predecessor gaps |
-| Ownership phase | Documented fact | 2026-09-01 | 3c076772953a9caa6372eaac418ce9d87edc38b6 | ownership/*; storage; manifests | GLEIF graph and parent-jurisdiction flags |
-| Section 117 real-data validation | Recorded fact | 2026-09-01 | 53806588d93969fa0aeecffff9d1191f633d3222 | docs/data_sources.md; Section 117 plan | Workbook/name/data-quality observations |
-| Retained ambiguous author identity | Documented fact | 2026-09-01 | ffa91374aa5142f21e2d45e759469d00a1feeefd | bibliometric/author_resolve.py; tests/test_author_resolve.py | Shared ORCID and remaining tie represented, not forced to one candidate |
-| Feature replaced by existing-coverage test | Documented fact | 2026-09-01 | b42cce867a00adb66afb114f2ea09982ae77253c | tests/test_screening_seven_sons.py | Seven universities tested through existing OpenSanctions |
-| 27 false positives change threshold | Recorded live event; code/test correction verified | 2026-09-01 | 33af4837fde1de61f61fff4437dffbd5adedc870 | bibliometric/cross_check.py; tests/test_bibliometric_cross_check.py | 0.8387 false match; 0.90 stage threshold |
-| Real-model gate gets its own job | Documented fact | 2026-09-01 | 822789ed3a3f70822aaf7fd150fc36d21d71f422 | CI; tests/test_topic_similarity_real_model.py | Optional-dependency skip no longer sole CI path |
-| Terraform delivery and CDKTF reversal account | Code fact plus recorded reversal | 2026-09-01 | 3be4c7ef45df2c81cb1f7ae2f2656a669d357284 | infra/*; deployment plan | HCL committed; discarded CDKTF code not recovered from Git |
-| Bootstrap shell assumption failed | Recorded live event; correction verified | 2026-09-01 | 98b26f877657cd5154070ce7e9aee01117872211 | infra/user_data.sh | Explicit POSIX-compatible re-exec to bash |
-| HTTPS downgrade correction | Recorded live event; correction verified | 2026-09-01 | 861834f12ca9a0bf6f1cd24798bb1d51f5fba892 | infra/nginx/monops.conf | Proxy handles trailing-slash redirect |
-| NSF endpoint/rate-limit corrections | Documented fact | 2026-09-02 | 40ca51bc184fab27bd57a396c17b2a0d60e4be16 | ingestion/nsf.py; bibliometric/openalex_client.py; demo fixture/docs | Known endpoint defect repaired during demo work |
-| Reproduced whole-codebase review | Documented review artifact | 2026-09-02 | 7c94f235241741fc05bcc9189d09d665a6091863 | docs/2026-09-02-codebase-evaluation.md; remediation plan | Nine findings with probe outputs; historical test outcomes qualified |
-| Producer-aware rerun correction | Documented fact | 2026-09-02 | a35b578b6362f32bf57308e2a2fb659609f329ee | common/storage.py; pipeline.py | Independent producers no longer share append-only assumption |
-| Acronym path fixed | Documented fact | 2026-09-02 | 8ffa2485fc0a0fa28092a4c9c45041155204ad09 | screening/lists.py; tests/test_screening.py | Blocking admits scorer's acronym candidates |
-| Caveats/attribution carried with data | Documented fact | 2026-09-02 | c1ce5b4479ef862e2bcd686334ffb4bff03f96ab | common/attribution.py; evidence producers | Output consumers receive source/caveat payloads |
-| Matched field/producer reach output | Documented fact | 2026-09-02 | cc1a1b5e2859181fcc9a407205022aea0cb989c0 | api/dto.py; output/export.py | Distinguishes direct from second-order evidence |
-| Branch/cycle evidence corrected | Documented fact | 2026-09-02 | 466bcd6df99906945ff084579952460ee2829c8d | ownership/graph.py; flagging/storage/tests | Separate real paths; compatible storage |
-| Boundary and rerun tests | Documented fact | 2026-09-02 | 240a85016056e02bd5c62d58b83a8c0f99573f74 | tests/test_output_contract.py; tests/test_idempotency.py | Parsed artifacts and repeat operations |
-| Fetch-once and bounded enrichment | Documented fact | 2026-09-02 | 66e0689c096b773e9a0fbffcc9e579ab31311635 | pipeline; OpenAlex client; storage | Persist works, cap retrieval, separate timeout |
-| Demo security work | Documented fact | 2026-09-02 | 26586fc89dbaebf77db367a6f70fd37635200cbc | API; compose.prod; nginx; security tests | Action gate, server allowlist and request controls |
-| Two-session collaboration and product-error account | Documented process account | 2026-09-03 | 4980dab963e5b02e1013a520e2f95e70eb12e78d | docs/how-this-was-built.md | Explicit labor split, human/AI corrections and retrospective gaps |
-| User/workflow reframe | Documented fact | 2026-09-06 | 63130047e180cb57c2dfd1179c612dde3c304058; 4e5242f45b7df002cda60ba0bab40b3de359769f | use-case doc; requirements §9c | Specific case-based requirements replace primary corpus workflow |
-| Binding gate later deferred | Documented conflict | 2026-09-06 | 1583c39d4f982541d31be88a521f7130ef6f4b3b; b7857ff71c5891f6a155b3997bddc4691d942238 | implementation plan §2H; fixture NOTICE | Real chain required before merge; fabricated chain ships pending check |
-| Fact/judgment guard in code | Documented fact | 2026-09-06 | ec237c79b4f0125338a613d46613780385e41873 | common/schema.py; cli.py; tests/test_finding_contract.py | Allowed fields and synthetic=False rejection; semantic limits remain |
-| Reconciliation calibration | Documented fact as measured-pair record | 2026-09-06 | e3a61f4a3854e4239949d40c005d97a2d3040d54 | reconciliation/match.py; docs/data_sources.md | 0.90 threshold above documented 0.876 distinct pair |
-| Synthetic export provenance restored | Documented fact | 2026-09-06 | 821ba2e964883fd69e0f1b8b49e5b41cc75135f1 | case/export.py; output/demo tests | JSON marker and XLSX first sheet added after review |
-| Real-chain claim corrected in spec | Documented fact | 2026-09-06 | cb0b1238cf764b52efc2951d4c2338bd8b3cedff | use-case doc §10 | Explicitly distinguishes real designation from fabricated chain |
-| ConcernTie correction | Documented fact | 2026-09-06 | 9a34b6889dbff7f9cb4a0c0dde3e3a1d77505292 | schema; reconciliation; case services/storage; API/tests | First export triggers two types, vocabularies and joint closure |
-| Cold-cache, missing-secret and TLS drift | Recorded live events; source correction verified | 2026-09-07 | 583a5105c3cb5f7bdf10d3a5115e16452dbbae73 | infra/user_data.sh; nginx; deployment runbook | Three hand fixes incorporated; fresh rebuild explicitly not verified |
-| Dependency/theme scope restrained | Documented fact | 2026-09-07 | e62da8cc13e6f7ba70001fb16e84c6967e1cef0f | requirements.txt; .streamlit/config.toml; Dockerfile.streamlit | Pin running Streamlit version; most dependency pinning remains debt |
-| Current product polish | Documented fact | 2026-09-07 | 170992ffd3fb8794a09cee9f261a0e022e8bf157 | app.py | Visitor explainer and case subject line |
-| Present verification | Documented fact | 2026-09-09 | HEAD 170992ffd3fb8794a09cee9f261a0e022e8bf157 | tests/*; cli validate | 274 base + 3 offline real-model tests pass |
+| Requirements precede code | Documented fact | 2026-08-31 | e50540eaa4526fec7a95f71aeebd65dae263dc33 | docs/requirements.md; package skeleton | 220-line spec; 14-file scaffold; no substantive implementation |
+| Stale spec caused missing architecture | Documented fact | 2026-09-01 00:24:45Z | 1b2dcdbba12b8985ccc1f3824a76203ccac6c6e4 | docs/requirements.md | Explicit 26-line Section 9a synchronization and causal commit account |
+| V1 with early tests | Documented fact | 2026-09-01 00:28:15Z | 857a2c956b5376ef3f2ccbe9a5243be7d4ccace7 | engine; tests; app.py | 34 reported tests; 2,018 insertions; implemented against stale input |
+| Self-contained evidence | Documented fact | 2026-08-31 | 1721475b4c72595659f4a9b128f007800387fbe6 | screening/screen.py; tests/test_screening.py | Evidence usable without another data join |
+| CI introduced immediately after V1 | Documented fact | 2026-08-31 | 8502f388d29aefb83429a5826db6bb89f1a9606d | .github/workflows/ci.yml | Structural validation and pytest on push/PR |
+| Run/export reproducibility distinction | Documented fact | 2026-08-31 | 82716766d1bda64a31840918f2e70aa0a50f4823 | entity_screening/pipeline.py; common/manifest.py | Export identifies actual rubric; rescoring separated from baseline persistence |
+| Thin-client refactor and run-scoped key | Documented fact | 2026-08-31 | 9fe729c461050154ffee0e70c9a213a7a7ec41cc | app.py; common/storage.py | Multi-run deterministic entity IDs require compound key |
+| Superseded single-container architecture | Documented fact | 2026-08-31 | 4e11e3c593c91958886cefc4766d711e83d05c63 | deleted Dockerfile; Dockerfile.api; Dockerfile.streamlit; compose | Two processes require two connected services |
+| Compose CI checks real boundary | Documented fact | 2026-08-31 | d4d08c0fe935331470a66525028c6dd26e4c2db0 | .github/workflows/ci.yml | UI-container-to-API network check plus pipeline output |
+| Null container SHA corrected | Documented fact | 2026-08-31 | 04c7f700fa0715ffe75a9d57309ee25f67046d57 | common/manifest.py; Dockerfile.api; scripts/compose-up.ps1; CI | Build-time identity and exact manifest assertion |
+| Approved plans brought into history | Documented fact | 2026-09-01 | fb5b5ca856271c20f68eda9b60fe5a6b86ea03dd | docs/plans/README.md; first two plans | Prior plans external; V1 reconstructed; GLEIF plan later acknowledged missing |
+| Explicit predecessor learning | Documented fact as plan account, with source checks | 2026-09-01 archive | fb5b5ca856271c20f68eda9b60fe5a6b86ea03dd | docs/plans/2026-08-31-v1-minimum-viable-screening-loop.md | Rubric/provenance/streaming inheritance plus predecessor gaps |
+| Ownership phase | Documented fact | 2026-09-01 | 0f8bf276be8d6e0d44c61743b2797daa6211332b | ownership/*; storage; manifests | GLEIF graph and parent-jurisdiction flags |
+| Section 117 real-data validation | Recorded fact | 2026-09-01 | 3adbc3aa9dcdfffc2d59f564a7d198f224b1b68b | docs/data_sources.md; Section 117 plan | Workbook/name/data-quality observations |
+| Retained ambiguous author identity | Documented fact | 2026-09-01 | 8935b26fd5dac06e55a28783b859f4b518559e02 | bibliometric/author_resolve.py; tests/test_author_resolve.py | Shared ORCID and remaining tie represented, not forced to one candidate |
+| Feature replaced by existing-coverage test | Documented fact | 2026-09-01 | 4196565f6550efa8d497fe8dbbc0271ae9b3a613 | tests/test_screening_seven_sons.py | Seven universities tested through existing OpenSanctions |
+| 27 false positives change threshold | Recorded live event; code/test correction verified | 2026-09-01 | 94b9b41c8b088fdf1c088706a8b54e160c5ed44f | bibliometric/cross_check.py; tests/test_bibliometric_cross_check.py | 0.8387 false match; 0.90 stage threshold |
+| Real-model gate gets its own job | Documented fact | 2026-09-01 | 0b68502e64b4d5b0fb121f07620f4f301d123672 | CI; tests/test_topic_similarity_real_model.py | Optional-dependency skip no longer sole CI path |
+| Terraform delivery and CDKTF reversal account | Code fact plus recorded reversal | 2026-09-01 | 27692db64bc77fe036a99e2d4de24a395161b4c8 | infra/*; deployment plan | HCL committed; discarded CDKTF code not recovered from Git |
+| Bootstrap shell assumption failed | Recorded live event; correction verified | 2026-09-01 | f2ac14c05e3303880bc64a20c8b56287cdf18a5c | infra/user_data.sh | Explicit POSIX-compatible re-exec to bash |
+| HTTPS downgrade correction | Recorded live event; correction verified | 2026-09-01 | b4e988d6e03874b71ffb7333c17780944c537a09 | infra/nginx/monops.conf | Proxy handles trailing-slash redirect |
+| NSF endpoint/rate-limit corrections | Documented fact | 2026-09-02 | 6ff0fca9676d3f3cefd7ea9c727dbdaf56c12d0c | ingestion/nsf.py; bibliometric/openalex_client.py; demo fixture/docs | Known endpoint defect repaired during demo work |
+| Reproduced whole-codebase review | Documented review artifact | 2026-09-02 | 722f8dd71686a3fcf1f21e9e8d03e3cf010a53c5 | docs/2026-09-02-codebase-evaluation.md; remediation plan | Nine findings with probe outputs; historical test outcomes qualified |
+| Producer-aware rerun correction | Documented fact | 2026-09-02 | 5d9713601cf58f7203865b4763809ef0d8e99fc3 | common/storage.py; pipeline.py | Independent producers no longer share append-only assumption |
+| Acronym path fixed | Documented fact | 2026-09-02 | a201951656c4e0b25db50cd62f326898e60f963b | screening/lists.py; tests/test_screening.py | Blocking admits scorer's acronym candidates |
+| Caveats/attribution carried with data | Documented fact | 2026-09-02 | 019580e26307107d9bc6fb8f83a4eb0d94e6e85a | common/attribution.py; evidence producers | Output consumers receive source/caveat payloads |
+| Matched field/producer reach output | Documented fact | 2026-09-02 | 0692fd3e754ecd0d6956325d4b6a194e550c8e89 | api/dto.py; output/export.py | Distinguishes direct from second-order evidence |
+| Branch/cycle evidence corrected | Documented fact | 2026-09-02 | adcbc77232c7b42cc57d35681ac55920597eb2d2 | ownership/graph.py; flagging/storage/tests | Separate real paths; compatible storage |
+| Boundary and rerun tests | Documented fact | 2026-09-02 | 0b5d6e2740b7f38ff5bdc1ee8aec0afcd443c2b4 | tests/test_output_contract.py; tests/test_idempotency.py | Parsed artifacts and repeat operations |
+| Fetch-once and bounded enrichment | Documented fact | 2026-09-02 | 9fc64b7b5106d09dbcbfe7377fb418f39baa3324 | pipeline; OpenAlex client; storage | Persist works, cap retrieval, separate timeout |
+| Demo security work | Documented fact | 2026-09-02 | 471dc7adcb34b32991ae8efb99893cce3bb25400 | API; compose.prod; nginx; security tests | Action gate, server allowlist and request controls |
+| Two-session collaboration and product-error account | Documented process account | 2026-09-03 | ea296bf3fa80f4508e455f656c0be5e971f7249f | docs/how-this-was-built.md | Explicit labor split, human/AI corrections and retrospective gaps |
+| User/workflow reframe | Documented fact | 2026-09-06 | 19ca950e7e771b68a9da14f10a1334fa4170d5e1; 6bbc37bbbf83e0c2b9dfc2abb2506d729e50ad5e | use-case doc; requirements §9c | Specific case-based requirements replace primary corpus workflow |
+| Binding gate later deferred | Documented conflict | 2026-09-06 | 47a8651e90e391df39d9fad88f86b06c001f8186; 39cd42e0e698be79b7d7db6686d0532160ab1d23 | implementation plan §2H; fixture NOTICE | Real chain required before merge; fabricated chain ships pending check |
+| Fact/judgment guard in code | Documented fact | 2026-09-06 | e95af4dcccec3e826e7e71115bcc1d7ed0b24be2 | common/schema.py; cli.py; tests/test_finding_contract.py | Allowed fields and synthetic=False rejection; semantic limits remain |
+| Reconciliation calibration | Documented fact as measured-pair record | 2026-09-06 | 4c11d4834457843a18927da3dfc67110530bc238 | reconciliation/match.py; docs/data_sources.md | 0.90 threshold above documented 0.876 distinct pair |
+| Synthetic export provenance restored | Documented fact | 2026-09-06 | 8b60f31414d5768610dc0c191131d40a8d0034d5 | case/export.py; output/demo tests | JSON marker and XLSX first sheet added after review |
+| Real-chain claim corrected in spec | Documented fact | 2026-09-06 | 39ebdcd9d58f92c3eb28f4ef0bf1138cf0a7fcfe | use-case doc §10 | Explicitly distinguishes real designation from fabricated chain |
+| ConcernTie correction | Documented fact | 2026-09-06 | 6db67946717d952bd9bae4711766dc1c5e4e4c86 | schema; reconciliation; case services/storage; API/tests | First export triggers two types, vocabularies and joint closure |
+| Cold-cache, missing-secret and TLS drift | Recorded live events; source correction verified | 2026-09-07 | 4232ad55530a3e2f948bd3c52019b4eb3a811d48 | infra/user_data.sh; nginx; deployment runbook | Three hand fixes incorporated; fresh rebuild explicitly not verified |
+| Dependency/theme scope restrained | Documented fact | 2026-09-07 | f56c344f91c0e3dd83dcf36bd2512e76fe7bdb6a | requirements.txt; .streamlit/config.toml; Dockerfile.streamlit | Pin running Streamlit version; most dependency pinning remains debt |
+| Current product polish | Documented fact | 2026-09-07 | b521162d41664b7b87d5a41f73954f81ae0bf834 | app.py | Visitor explainer and case subject line |
+| Present verification | Documented fact | 2026-09-09 | HEAD b521162d41664b7b87d5a41f73954f81ae0bf834 | tests/*; cli validate | 274 base + 3 offline real-model tests pass |
 | “Most mature/complex” | My later recollection/interpretation; qualified reconstruction | Retrospective prompt | Not established by a single commit | Prompt; comparative evidence | Stronger process dimensions demonstrated; whole-journey superlative unproved |
 
 ## Overall Interpretation
