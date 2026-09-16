@@ -44,8 +44,8 @@ FORBIDDEN_EXPLANATION_PHRASES: tuple[str, ...] = (
     "raises questions about",
     "raises concerns",
     "of particular concern",
-    "notably,",
-    "importantly,",
+    "notably",
+    "importantly",
     "worth noting that",
     "red flag",
     "warning sign",
@@ -73,11 +73,7 @@ def find_violations(sentence: str) -> list[str]:
     hits = [p for p in FORBIDDEN_EXPLANATION_PHRASES if p in lowered]
     words = set(_tokens(sentence))
     hits += [m for m in FORBIDDEN_JUDGMENT_MODALS if m in words]
-    hits += [
-        t
-        for t in _FORBIDDEN_OBSERVATION_FIELD_TOKENS
-        if any(t in w for w in words)
-    ]
+    hits += [t for t in _FORBIDDEN_OBSERVATION_FIELD_TOKENS if t in words]
     return hits
 
 

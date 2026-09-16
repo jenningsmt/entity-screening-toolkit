@@ -1,18 +1,21 @@
 """Real-model regression guard for Epic J (mirrors
 tests/test_topic_similarity_real_model.py's role): makes a real call to the
-live Claude API and asserts the citation-grounding and lexicon checks both
-pass against real, uncontrolled output -- not a fixture.
+live Claude API, against the real bundled demo case's real findings/ties,
+and asserts the citation-grounding and lexicon checks both against the
+raw, uncontrolled output -- not a fixture.
 
 Skipped, not failed, when ANTHROPIC_API_KEY is unset (e.g. the base `test`
 CI job). A skip guard alone would let this regression guard go quietly
 unexercised in CI forever, which defeats its whole purpose -- see
 test_topic_similarity_real_model.py's own docstring for the precedent this
 follows. Paired with a dedicated `llm-explanation-real-model` job in
-.github/workflows/ci.yml that has the secret configured and actually runs
-this, triggered on changes under entity_screening/explanation/ plus a
-weekly schedule -- a skip guard and that job are a package deal, not
-alternatives, adapted from the VSS job's every-push trigger because a live
-API call spends real money on every run, unlike a free local-model download.
+.github/workflows/llm-explanation-real-model.yml (a separate workflow file,
+not a job inside ci.yml, because GitHub's path filters are workflow-scoped)
+that has the secret configured and actually runs this, triggered on changes
+under entity_screening/explanation/ plus a weekly schedule -- a skip guard
+and that job are a package deal, not alternatives, adapted from the VSS
+job's every-push trigger because a live API call spends real money on
+every run, unlike a free local-model download.
 
 The first real run of this test is also the calibration pass
 docs/plans/<date>-epic-j-evidence-grounded-explanation.md's Real-data
@@ -26,20 +29,11 @@ import os
 
 import pytest
 
-from entity_screening.common.schema import (
-    ConcernTie,
-    DeclarationSearch,
-    DiscoveredAffiliation,
-    FactualBasis,
-    Finding,
-    ForeignControlFlag,
-    MatchStatus,
-    NearestDeclared,
-    ScopeKind,
-    ScreeningHit,
-    TieKind,
-)
+from entity_screening.case import demo, store as case_store
+from entity_screening.common import storage
+from entity_screening.common.schema import TieKind
 from entity_screening.explanation import generate, lexicon
+from entity_screening.pipeline import reconcile_case
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("ANTHROPIC_API_KEY"),
@@ -47,100 +41,77 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _real_finding() -> Finding:
-    return Finding(
-        finding_id="find-1",
-        case_id="case-1",
-        run_id="run-1",
-        discovered=DiscoveredAffiliation(
-            source="openalex",
-            institution_name="Beijing Institute of Technology",
-            country="CN",
-            country_on_adversary_list=True,
-            adversary_list_version="v1",
-            first_observed="2016",
-            last_observed="2017",
-            record_count=2,
-            role="publication_affiliation",
-            source_refs=("W1", "W2"),
-        ),
-        declaration_search=(
-            DeclarationSearch(
-                source_kind="cv",
-                present=True,
-                scope_kind=ScopeKind.FULL_HISTORY,
-                scope_descriptor={},
-                covers_this_item=True,
-            ),
-        ),
-        factual_basis=FactualBasis.ABSENT_FROM_IN_SCOPE_SOURCE,
-        nearest_declared=(
-            NearestDeclared(
-                declared_affiliation_id="aff-1",
-                institution_name="Tsinghua University",
-                best_confidence=0.41,
-                match_basis="fuzzy_token_sort",
-                cleared_name=False,
-                scope_compatible=True,
-            ),
-        ),
+def _real_demo_observations(tmp_path):
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    demo.build_demo_case(conn)
+    conn.close()
+    reconcile_case(
+        demo.DEMO_CASE_ID,
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
     )
+    conn = storage.connect(db_path)
+    findings = case_store.load_findings(conn, demo.DEMO_CASE_ID)
+    ties = case_store.load_ties(conn, demo.DEMO_CASE_ID)
+    conn.close()
+    return findings, ties
 
 
-def _real_tie() -> ConcernTie:
-    return ConcernTie(
-        tie_id="tie-1",
-        case_id="case-1",
-        run_id="run-1",
-        tie_kind=TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT,
-        anchor_affiliation_id="aff-subsidiary",
-        related_finding_id=None,
-        concern_entity_name="NIO INC.",
-        country="KY",
-        country_on_adversary_list=None,
-        adversary_list_version=None,
-        first_observed="2016",
-        last_observed="2019",
-        record_count=1,
-        concern_list_evidence=(
-            ScreeningHit(
-                entity_id="aff-subsidiary",
-                list_name="dod_section_1260h",
-                matched_variant="NIO INC.",
-                matched_field="ownership_ultimate_parent",
-                confidence=1.0,
-                evidence={"entry_id": "1260h-7"},
-                status=MatchStatus.CANDIDATE_MATCH,
-                producer="ownership_parent",
-            ),
-        ),
-        ownership_evidence=(
-            ForeignControlFlag(
-                entity_id="aff-subsidiary",
-                entity_lei="LEI-AAA",
-                entity_jurisdiction="CN",
-                ultimate_parent_lei="LEI-BBB",
-                ultimate_parent_name="NIO INC.",
-                ultimate_parent_jurisdiction="KY",
-                relationship_path=("LEI-AAA", "LEI-BBB"),
-                match_confidence=0.95,
-                evidence={"truncated": False},
-                status=MatchStatus.CANDIDATE_MATCH,
-            ),
-        ),
-    )
+def test_real_model_synthesis_against_the_real_demo_case_is_grounded(tmp_path):
+    findings, ties = _real_demo_observations(tmp_path)
+    # Selected by a stable attribute, not list position -- row order from
+    # load_findings/load_ties isn't guaranteed stable (M10). This is the
+    # demo's one ownership tie, its headline case.
+    primary = next(t for t in ties if t.tie_kind == TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT)
+    context = list(findings) + [t for t in ties if t is not primary]
 
+    document_text = generate._build_document(primary, context)
+    raw_response = generate._default_anthropic_call(generate._build_request(document_text))
+    blocks = generate._extract(raw_response)
 
-def test_real_model_synthesis_is_grounded_and_lexicon_clean():
-    result = generate.generate_synthesis(_real_tie(), [_real_finding()])
-    if result is None:
-        # A real model failing to clear the gate on every attempt is itself
-        # a valid, informative outcome (recitation-only ships) -- not a
-        # test failure. What WOULD be a failure is a persisted violation,
-        # which the assertions below rule out for whichever branch ran.
-        return
-    assert result.citations, "an accepted result must carry at least one citation"
-    assert lexicon.is_clean(result.sentence), (
-        f"real model output failed the lexicon check: {result.sentence!r} -- "
-        f"violations: {lexicon.find_violations(result.sentence)}"
+    total = sum(1 for text, _ in blocks if text.strip())
+    uncited = sum(1 for text, cites in blocks if text.strip() and not cites)
+    sentence = " ".join(text.strip() for text, _ in blocks if text.strip())
+
+    print(f"\n[Epic J calibration] document_text: {document_text!r}")
+    print(f"[Epic J calibration] sentence: {sentence!r}")
+    print(f"[Epic J calibration] blocks={total} uncited={uncited}")
+    for text, cites in blocks:
+        for c in cites:
+            matched = document_text[c.start_char : c.end_char] == c.cited_text
+            print(
+                f"[Epic J calibration] citation {c.cited_text!r} "
+                f"offset={c.start_char}:{c.end_char} matches={matched}"
+            )
+
+    # Independent assertions -- computed from the raw response here, not
+    # delegated to generate_synthesis's own boolean. The uncited == 0 bar
+    # is not an invented tolerance: it's the same grounding invariant
+    # generate_synthesis enforces (B1), restated and checked independently.
+    assert total > 0, "model returned no text content at all"
+    assert uncited == 0, f"{uncited}/{total} block(s) had no citation at all"
+    for text, cites in blocks:
+        for c in cites:
+            assert document_text[c.start_char : c.end_char] == c.cited_text, (
+                f"citation offset mismatch: expected {c.cited_text!r}, "
+                f"got {document_text[c.start_char : c.end_char]!r}"
+            )
+    if sentence:
+        assert lexicon.is_clean(sentence), (
+            f"real model output failed the lexicon check: {sentence!r} -- "
+            f"violations: {lexicon.find_violations(sentence)}"
+        )
+
+    # Also exercise the real, retry-wrapped public entry point, logging its
+    # verdict -- a second, independent live call (this test spends two
+    # billed calls per run, not one; see the module docstring's note on
+    # this job's cost-driven, narrower CI trigger).
+    result = generate.generate_synthesis(primary, context)
+    print(
+        "[Epic J calibration] generate_synthesis verdict: "
+        + ("accepted" if result else "rejected -- recitation-only ships")
     )

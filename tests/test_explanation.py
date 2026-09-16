@@ -134,6 +134,36 @@ def _fake_response(text: str, citations: list[tuple[str, int, int]]) -> SimpleNa
     )
 
 
+def _fake_multi_block_response(
+    blocks: list[tuple[str, list[tuple[str, int, int]]]]
+) -> SimpleNamespace:
+    """Like `_fake_response`, but one caller-specified block per entry --
+    B1 needs the per-block cited/uncited distinction a single-block
+    response can't represent."""
+    return SimpleNamespace(
+        content=[
+            SimpleNamespace(
+                type="text",
+                text=text,
+                citations=[
+                    SimpleNamespace(cited_text=c, start_char_index=s, end_char_index=e)
+                    for c, s, e in citations
+                ],
+            )
+            for text, citations in blocks
+        ]
+    )
+
+
+def _real_citation(document_text: str, substring: str) -> tuple[str, int, int]:
+    """A citation tuple whose offsets are computed from where `substring`
+    actually appears in `document_text` -- never hand-typed, so a later
+    change to recite()'s templated text can't silently leave a stale
+    offset in a fixture."""
+    start = document_text.index(substring)
+    return substring, start, start + len(substring)
+
+
 # --------------------------------------------------------------------------
 # Lexicon
 # --------------------------------------------------------------------------
@@ -162,6 +192,32 @@ def test_lexicon_accepts_a_clean_factual_sentence():
     )
     assert lexicon.is_clean(sentence)
     assert lexicon.find_violations(sentence) == []
+
+
+@pytest.mark.parametrize(
+    "word", ["Frankfurt", "frontier", "underscores", "brisk", "asterisk"]
+)
+def test_lexicon_does_not_false_positive_on_a_forbidden_token_as_a_substring(word):
+    """S14: _FORBIDDEN_OBSERVATION_FIELD_TOKENS ('rank', 'tier', 'score',
+    'risk', ...) must match whole words only -- 'rank' is a substring of
+    'Frankfurt', 'tier' of 'frontier', 'score' of 'underscores', 'risk' of
+    both 'brisk' and 'asterisk'."""
+    sentence = f"The subject's institution is located near {word}."
+    assert lexicon.is_clean(sentence), lexicon.find_violations(sentence)
+
+
+@pytest.mark.parametrize("token", ["rank", "tier", "score", "risk"])
+def test_lexicon_still_catches_a_forbidden_token_as_its_own_word(token):
+    """The whole-word fix must not just silently stop matching altogether."""
+    sentence = f"This item carries a {token} for the institution."
+    assert not lexicon.is_clean(sentence)
+    assert token in lexicon.find_violations(sentence)
+
+
+def test_lexicon_catches_notably_without_a_trailing_comma():
+    sentence = "Notably the two records name the same institution."
+    assert not lexicon.is_clean(sentence)
+    assert lexicon.find_violations(sentence)
 
 
 # --------------------------------------------------------------------------
@@ -198,13 +254,17 @@ def test_recite_rejects_an_unknown_type():
 
 def test_generate_synthesis_accepts_a_grounded_clean_sentence():
     calls = []
+    document_text = generate._build_document(_tie(), [_finding()])
 
     def fake_call(request):
         calls.append(request)
         return _fake_response(
             "The tie to NIO INC. and the affiliation with Beijing Institute of "
             "Technology both name entities based in China.",
-            [("NIO INC.", 10, 18), ("Beijing Institute of Technology", 40, 72)],
+            [
+                _real_citation(document_text, "NIO INC."),
+                _real_citation(document_text, "Beijing Institute of Technology"),
+            ],
         )
 
     result = generate.generate_synthesis(_tie(), [_finding()], call=fake_call)
@@ -222,10 +282,12 @@ def test_generate_synthesis_rejects_an_uncited_claim_and_falls_back_to_none():
 
 
 def test_generate_synthesis_rejects_a_lexicon_violation_and_falls_back_to_none():
+    document_text = generate._build_document(_tie(), [_finding()])
+
     def fake_call(request):
         return _fake_response(
             "This tie is concerning given the ownership chain.",
-            [("ownership chain", 0, 15)],
+            [_real_citation(document_text, "ownership chain")],
         )
 
     result = generate.generate_synthesis(_tie(), [_finding()], call=fake_call)
@@ -234,14 +296,66 @@ def test_generate_synthesis_rejects_a_lexicon_violation_and_falls_back_to_none()
 
 def test_generate_synthesis_retries_within_the_bound_then_gives_up():
     calls = []
+    document_text = generate._build_document(_tie(), [_finding()])
 
     def always_bad_call(request):
         calls.append(request)
-        return _fake_response("concerning", [("x", 0, 1)])
+        return _fake_response("concerning", [_real_citation(document_text, "NIO INC.")])
 
     result = generate.generate_synthesis(_tie(), [_finding()], call=always_bad_call)
     assert result is None
     assert len(calls) == generate.MAX_RETRIES + 1
+
+
+def test_generate_synthesis_rejects_mixed_cited_and_uncited_blocks():
+    """B1: a response with an interleaved cited and uncited text block is
+    the expected real-Citations-API shape, not an edge case -- both blocks
+    must be grounded, not just 'at least one citation exists anywhere'."""
+    document_text = generate._build_document(_tie(), [_finding()])
+
+    def fake_call(request):
+        return _fake_multi_block_response(
+            [
+                ("NIO INC. is the ultimate parent.", [_real_citation(document_text, "NIO INC.")]),
+                ("It also has extensive undisclosed ties elsewhere.", []),
+            ]
+        )
+
+    result = generate.generate_synthesis(_tie(), [_finding()], call=fake_call)
+    assert result is None
+
+
+def test_generate_synthesis_rejects_a_citation_whose_offsets_dont_match_the_text():
+    document_text = generate._build_document(_tie(), [_finding()])
+
+    def fake_call(request):
+        # A citation claiming to be "NIO INC." but pointing at the wrong
+        # slice of document_text (and/or past its end) -- the SDK's own
+        # citation object is not to be trusted verbatim.
+        bad_start = len(document_text) - 2
+        bad_end = bad_start + len("NIO INC.")
+        return _fake_response(
+            "NIO INC. is the ultimate parent.",
+            [("NIO INC.", bad_start, bad_end)],
+        )
+
+    result = generate.generate_synthesis(_tie(), [_finding()], call=fake_call)
+    assert result is None
+
+
+def test_generate_synthesis_rejects_an_all_empty_response():
+    """The 'no content at all' case today's `if not sentence or not
+    citations` guard also covers -- must stay covered by the per-block
+    rewrite, not fall through as an accepted empty SynthesisResult."""
+
+    def empty_call(request):
+        return _fake_response("", [])
+
+    def whitespace_only_call(request):
+        return _fake_response("   ", [])
+
+    assert generate.generate_synthesis(_tie(), [_finding()], call=empty_call) is None
+    assert generate.generate_synthesis(_tie(), [_finding()], call=whitespace_only_call) is None
 
 
 # --------------------------------------------------------------------------
@@ -304,6 +418,51 @@ def test_match_explanation_recitation_only_is_valid():
 
 
 # --------------------------------------------------------------------------
+# evidence_hash_for -- M17: case_context must be part of the cache key
+# --------------------------------------------------------------------------
+
+
+def test_evidence_hash_for_differs_when_case_context_differs():
+    """Two cases sharing an identical finding must not share a cached
+    sentence if their surrounding ties differ -- the synthesis sentence is
+    explicitly allowed to connect the primary to other observations in the
+    same case, so the cache key has to be able to tell those two
+    situations apart."""
+    finding = _finding()
+    context_a = [_tie(TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT)]
+    context_b = [_tie(TieKind.OWN_AFFILIATION_HISTORY)]
+
+    hash_a = service.evidence_hash_for(finding, context_a)
+    hash_b = service.evidence_hash_for(finding, context_b)
+
+    assert hash_a != hash_b
+
+
+def test_evidence_hash_for_is_stable_under_case_context_reordering():
+    """case_context comes from store.load_findings/load_ties, whose row
+    order isn't guaranteed stable across calls (M10) -- the same logical
+    context must hash the same regardless of the order its observations
+    arrive in, or a GET immediately after the POST that cached it could
+    already disagree."""
+    finding = _finding()
+    tie_a = _tie(TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT)
+    tie_b = _tie(TieKind.OWN_AFFILIATION_HISTORY)
+
+    hash_forward = service.evidence_hash_for(finding, [tie_a, tie_b])
+    hash_reversed = service.evidence_hash_for(finding, [tie_b, tie_a])
+
+    assert hash_forward == hash_reversed
+
+
+def test_evidence_hash_for_with_no_context_matches_the_default():
+    """Backward-compatible default: a call with no case_context argument
+    (existing callers that haven't been updated) must not silently produce
+    a different hash than one that explicitly passes an empty list."""
+    finding = _finding()
+    assert service.evidence_hash_for(finding) == service.evidence_hash_for(finding, [])
+
+
+# --------------------------------------------------------------------------
 # service.explain -- persistence + idempotency
 # --------------------------------------------------------------------------
 
@@ -311,12 +470,13 @@ def test_match_explanation_recitation_only_is_valid():
 def test_explain_is_idempotent_for_the_same_observation_and_evidence(tmp_path):
     conn = storage.connect(tmp_path / "test.duckdb")
     calls = []
+    document_text = generate._build_document(_tie(), [_finding()])
 
     def fake_call(request):
         calls.append(request)
         return _fake_response(
             "The tie to NIO INC. involves a Cayman Islands ultimate parent.",
-            [("NIO INC.", 0, 8)],
+            [_real_citation(document_text, "NIO INC.")],
         )
 
     tie = _tie()
@@ -336,11 +496,12 @@ def test_explain_is_idempotent_for_the_same_observation_and_evidence(tmp_path):
 
 def test_explain_persists_and_round_trips_via_store(tmp_path):
     conn = storage.connect(tmp_path / "test.duckdb")
+    document_text = generate._build_document(_tie(), [_finding()])
 
     def fake_call(request):
         return _fake_response(
             "The tie to NIO INC. involves a Cayman Islands ultimate parent.",
-            [("NIO INC.", 0, 8)],
+            [_real_citation(document_text, "NIO INC.")],
         )
 
     explanation = service.explain(

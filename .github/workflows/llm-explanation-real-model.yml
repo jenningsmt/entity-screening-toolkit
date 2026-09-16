@@ -21,13 +21,21 @@ on:
     branches: [main, master]
     paths:
       - "entity_screening/explanation/**"
+      - "entity_screening/common/schema.py"
+      - "entity_screening/case/demo.py"
+      - "tests/fixtures/demo_case/**"
       - "tests/test_explanation_real_model.py"
+      - "requirements.txt"
       - ".github/workflows/llm-explanation-real-model.yml"
   pull_request:
     branches: [main, master]
     paths:
       - "entity_screening/explanation/**"
+      - "entity_screening/common/schema.py"
+      - "entity_screening/case/demo.py"
+      - "tests/fixtures/demo_case/**"
       - "tests/test_explanation_real_model.py"
+      - "requirements.txt"
       - ".github/workflows/llm-explanation-real-model.yml"
   schedule:
     # Weekly backstop: catches a live model-behavior change even when
@@ -58,3 +66,16 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: pytest tests/test_explanation_real_model.py -q -v
+
+      # M20: pytest exits 0 on a skip, so an unset secret otherwise
+      # produces a plain green check indistinguishable from "ran and
+      # passed" unless someone opens the raw log -- this makes the skip
+      # visible in the Actions UI (run summary, PR checks tab) without
+      # failing the job. An unset secret on a portfolio project is an
+      # expected, legitimate state, not a build failure.
+      - name: Flag if the calibration test was skipped (no ANTHROPIC_API_KEY)
+        if: always()
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::warning::Epic J real-model calibration test skipped -- ANTHROPIC_API_KEY is not set as a repo secret. This run verified nothing about grounding behavior."
+          fi

@@ -90,5 +90,6 @@ reproducibility manifest, a FastAPI layer over the pipeline with a Streamlit UI 
 its thin client, CI (GitHub Actions, including a real Docker Compose integration
 job), a two-container Docker Compose setup (API + UI), and a pytest suite including
 a known-difficult-entity regression set. Epic J (LLM-based evidence-grounded
-explanations) remains a deliberately deferred, V3-adjacent follow-up per
-`docs/requirements.md` Section 9a — not part of any currently-scheduled phase.
+explanations, built 2026-09-15) adds one citation-grounded, lexicon-checked
+synthesis sentence per case-worksheet finding/tie — everything else in an
+explanation stays fully templated.

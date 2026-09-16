@@ -103,26 +103,44 @@ def _build_request(document_text: str) -> dict[str, Any]:
     }
 
 
-def _extract(response: Any) -> tuple[str, tuple[Citation, ...]]:
-    """Pulls the generated text and its resolved citations out of a Claude
-    response. `response.content` is a list of text blocks; a cited block
-    carries a `.citations` list with `.cited_text`/`.start_char_index`/
-    `.end_char_index` (per the Claude API's documented citation shape)."""
-    sentence_parts: list[str] = []
-    citations: list[Citation] = []
+def _extract(response: Any) -> list[tuple[str, tuple[Citation, ...]]]:
+    """Pulls each text block's text and its own citations out of a Claude
+    response, block by block. `response.content` is a list of text blocks;
+    a cited block carries a `.citations` list with `.cited_text`/
+    `.start_char_index`/`.end_char_index` (per the Claude API's documented
+    citation shape). Kept per-block (not pooled into one flat string/list)
+    because a real Citations API response is normally a sequence of
+    interleaved cited and uncited blocks -- callers need to know which
+    citations belong to which block to verify every non-whitespace block
+    is actually grounded, not just that a citation exists somewhere."""
+    blocks: list[tuple[str, tuple[Citation, ...]]] = []
     for block in getattr(response, "content", []):
         if getattr(block, "type", None) != "text":
             continue
-        sentence_parts.append(block.text)
-        for cite in getattr(block, "citations", None) or []:
-            citations.append(
-                Citation(
-                    cited_text=cite.cited_text,
-                    start_char=cite.start_char_index,
-                    end_char=cite.end_char_index,
-                )
+        citations = tuple(
+            Citation(
+                cited_text=cite.cited_text,
+                start_char=cite.start_char_index,
+                end_char=cite.end_char_index,
             )
-    return " ".join(p.strip() for p in sentence_parts if p.strip()), tuple(citations)
+            for cite in (getattr(block, "citations", None) or [])
+        )
+        blocks.append((block.text, citations))
+    return blocks
+
+
+def _is_grounded(blocks: list[tuple[str, tuple[Citation, ...]]], document_text: str) -> bool:
+    """True only if every non-whitespace block carries at least one
+    citation, and every citation's offsets actually slice out its own
+    cited_text from document_text -- the SDK's own citation object is not
+    trusted verbatim (B1)."""
+    for text, citations in blocks:
+        if text.strip() and not citations:
+            return False
+        for c in citations:
+            if document_text[c.start_char : c.end_char] != c.cited_text:
+                return False
+    return True
 
 
 def _default_anthropic_call(request: dict[str, Any]) -> Any:
@@ -147,9 +165,13 @@ def generate_synthesis(
 
     for _ in range(MAX_RETRIES + 1):
         response = call(request)
-        sentence, citations = _extract(response)
-        if not sentence or not citations:
-            continue  # ungrounded -- no citation to verify against
+        blocks = _extract(response)
+        sentence = " ".join(text.strip() for text, _ in blocks if text.strip())
+        citations = tuple(c for _, cites in blocks for c in cites)
+        if not sentence:
+            continue  # no content at all -- distinct from "ungrounded content"
+        if not _is_grounded(blocks, document_text):
+            continue  # an uncited non-whitespace block, or a bad citation offset
         if not is_clean(sentence):
             continue
         return SynthesisResult(sentence=sentence, citations=citations)

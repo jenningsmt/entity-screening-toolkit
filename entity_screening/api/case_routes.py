@@ -204,13 +204,13 @@ def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
         for f in findings:
             explanation_service.explain(
                 conn, ObservationKind.FINDING, f, demo_case_id,
-                [o for o in findings if o.finding_id != f.finding_id] + list(ties),
+                _case_context_for(findings, ties, ObservationKind.FINDING, f.finding_id),
                 synthetic=synthetic, call=_demo_no_synthesis_call,
             )
         for t in ties:
             explanation_service.explain(
                 conn, ObservationKind.CONCERN_TIE, t, demo_case_id,
-                [o for o in ties if o.tie_id != t.tie_id] + list(findings),
+                _case_context_for(findings, ties, ObservationKind.CONCERN_TIE, t.tie_id),
                 synthetic=synthetic, call=_demo_no_synthesis_call,
             )
     store.demo_meta_set(conn, "fixture_version", version)
@@ -491,6 +491,24 @@ def _find_primary_or_404(
     return primary
 
 
+def _case_context_for(
+    findings: list, ties: list, observation_kind: ObservationKind, observation_id: str
+) -> list:
+    """Everything else in the case besides the primary observation -- the
+    context the one allowed synthesis sentence may connect the primary to
+    (explanation/generate.py). Shared by _explain (POST, generates),
+    _cached_explanation_or_404 (GET, reads), and _ensure_demo_case_exists
+    (build-time pre-generation) so all three build the *same* context for
+    the same observation -- required since M17 folded case_context into
+    evidence_hash_for's cache key: if any of the three built a different
+    context, it would disagree on the hash for the same logical
+    explanation, and the mismatch would surface as a silent, wrong cache
+    hit/miss rather than an error."""
+    if observation_kind is ObservationKind.FINDING:
+        return [f for f in findings if f.finding_id != observation_id] + list(ties)
+    return [t for t in ties if t.tie_id != observation_id] + list(findings)
+
+
 def _explain(conn: duckdb.DuckDBPyConnection, case_id: str, observation_kind: ObservationKind, observation_id: str) -> dict:
     """Shared by the finding/tie explanation routes below: loads the case's
     full finding+tie set once, picks out the requested observation as the
@@ -503,11 +521,7 @@ def _explain(conn: duckdb.DuckDBPyConnection, case_id: str, observation_kind: Ob
     findings = store.load_findings(conn, case_id)
     ties = store.load_ties(conn, case_id)
     primary = _find_primary_or_404(findings, ties, observation_kind, observation_id, case_id)
-
-    if observation_kind is ObservationKind.FINDING:
-        context = [f for f in findings if f.finding_id != observation_id] + list(ties)
-    else:
-        context = [t for t in ties if t.tie_id != observation_id] + list(findings)
+    context = _case_context_for(findings, ties, observation_kind, observation_id)
 
     subject = store.load_subject(conn, case.subject_id)
     synthetic = bool(case.synthetic and (subject.synthetic if subject else True))
@@ -541,8 +555,9 @@ def _cached_explanation_or_404(
     findings = store.load_findings(conn, case_id)
     ties = store.load_ties(conn, case_id)
     primary = _find_primary_or_404(findings, ties, observation_kind, observation_id, case_id)
+    context = _case_context_for(findings, ties, observation_kind, observation_id)
 
-    evidence_hash = explanation_service.evidence_hash_for(primary)
+    evidence_hash = explanation_service.evidence_hash_for(primary, context)
     cached = explanation_store.load_explanation(conn, observation_id, evidence_hash)
     if cached is None:
         raise HTTPException(
