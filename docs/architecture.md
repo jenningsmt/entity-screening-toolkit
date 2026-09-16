@@ -378,3 +378,16 @@ will silently build without it and `RunManifest.git_commit` will read `null` aga
 pre-downloaded NSF Award Search JSON response (the "size-capped demo dataset"
 pattern from Section 9); omit it and pass `--nsf-date-start`/`--nsf-date-end`
 (CLI only, for now) to pull live from the NSF API instead.
+
+## Known limitations
+
+**Ownership-parent screening only runs against a bundled fixture, not any
+real non-demo data.** `tie_from_ownership` (Use Case 01's concern-tie path)
+requires a GLEIF Level 1/2 snapshot to be loaded; the only one bundled with
+this repo is the demo's own 2-row fixture
+(`tests/fixtures/demo_case/gleif_lei.csv`/`gleif_relationships.csv`). A case
+created via `POST /cases` never receives GLEIF files today, so it never gets
+ownership-parent screening — there is no real path to it yet, only the demo
+one. This is separate from 1260H/OpenSanctions screening of the subject's
+own declared/discovered affiliations (`ties_from_own_affiliations`), which
+has no GLEIF dependency and runs for every case, demo or not.

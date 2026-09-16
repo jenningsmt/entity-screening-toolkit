@@ -5,6 +5,7 @@ local user (dev, the CLI), and every other test in this suite relies on it
 staying true.
 """
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -136,3 +137,56 @@ def test_allowlist_gates_ownership_route_gleif_files(client, monkeypatch):
     )
 
     assert response.status_code == 400
+
+
+# --- S12: every mutating route is gated, proven structurally, not one at a time ---
+#
+# Individual tests above (and test_api_case.py) prove specific routes are
+# gated. This walks the whole app once so a route added without
+# Depends(require_action_secret)/_require_action_secret can never ship
+# unnoticed -- the exact "built with no allowlist check, unnoticed until a
+# UI called it" failure mode this project has already hit once
+# (docs/plans/2026-09-14-restricted-party-screening-ui.md Section 2).
+#
+# `app.routes` on this FastAPI version doesn't hold flat APIRoute objects for
+# an include_router()-mounted router -- it holds a lazy `_IncludedRouter`
+# wrapper (FastAPI resolves the real, prefixed routes only when a request is
+# actually dispatched or the OpenAPI schema is built). Walking the OpenAPI
+# schema is the stable, public way to get the fully flattened, already-
+# prefixed (method, path) list without reaching into that private structure;
+# it's also strictly more black-box, which is the right level for a test
+# that exists to catch "someone forgot the dependency," not to pin FastAPI's
+# internals.
+
+_MUTATING_METHODS = {"post", "put", "patch", "delete"}
+
+# Every (method, path) pair that is allowed to be a mutating route with no
+# action-secret gate. Empty today -- any future entry must be justified in
+# the same commit that adds it, not inferred from what happens to pass.
+_UNGATED_MUTATING_ROUTES: set[tuple[str, str]] = set()
+
+
+def _mutating_operations() -> list[tuple[str, str]]:
+    schema = TestClient(app).get("/openapi.json").json()
+    return [
+        (method.upper(), path)
+        for path, operations in schema["paths"].items()
+        for method in operations
+        if method in _MUTATING_METHODS
+    ]
+
+
+@pytest.mark.parametrize("method,path", _mutating_operations())
+def test_every_mutating_route_is_gated(client, monkeypatch, method, path):
+    if (method, path) in _UNGATED_MUTATING_ROUTES:
+        pytest.skip(f"{(method, path)} is explicitly allowlisted as ungated")
+
+    monkeypatch.setenv("MONOPS_ACTION_SECRET", "correct-horse")
+    concrete_path = re.sub(r"\{[^}]+\}", "placeholder", path)
+    response = client.request(method, concrete_path, json={})
+    assert response.status_code == 403, (
+        f"{method} {path} returned {response.status_code}, not 403, with no "
+        "action-secret header -- either it's missing its gate, or it's "
+        "rejecting the placeholder path/body before the gate runs (check "
+        "manually with a real id)."
+    )

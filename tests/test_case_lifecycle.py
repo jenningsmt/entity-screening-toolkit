@@ -94,6 +94,91 @@ def test_worksheet_cannot_close_while_a_row_of_either_type_is_unactioned(tmp_pat
     conn.close()
 
 
+def _clean_subject_conn(tmp_path):
+    """B3: a subject whose only affiliation is the one already declared --
+    no undisclosed publication affiliation, no concern-list match. Built
+    directly via Subject/Declaration/Case + store.save_*, mirroring
+    api/case_routes.py's create_case (which starts a case in
+    DECLARATION_ASSEMBLY, the same state reconcile_case accepts)."""
+    from entity_screening.common.schema import Case, CaseKind
+
+    db_path = tmp_path / "case.duckdb"
+    conn = storage.connect(db_path)
+    subject = Subject(
+        subject_id="clean-subject",
+        display_name="Clean Subject",
+        synthetic=True,
+        coverage_basis=None,
+        classified_fields={},
+    )
+    declaration = Declaration(
+        declaration_id="clean-case-declaration",
+        subject_id="clean-subject",
+        synthetic=True,
+        sources=(
+            DeclarationSource(
+                source_id="ds160",
+                kind="ds160",
+                present=True,
+                scope_kind=ScopeKind.TEMPORAL_WINDOW,
+                scope_descriptor={"window_years": 5, "anchor": "2026-01-15"},
+            ),
+        ),
+        affiliations=(
+            DeclaredAffiliation(
+                affiliation_id="aff-1",
+                source_id="ds160",
+                institution_name="Ordinary University",
+                country="us",
+                role="researcher",
+                start_date="2020-01-01",
+                end_date=None,
+                activity_kind="employment",
+            ),
+        ),
+    )
+    case = Case(
+        case_id="clean-case",
+        subject_id="clean-subject",
+        declaration_id="clean-case-declaration",
+        trigger="hb127",
+        access_scope="data",
+        coverage_basis=None,
+        synthetic=True,
+        case_kind=CaseKind.HB127_RESEARCHER_SCREENING,
+        state=CaseState.DECLARATION_ASSEMBLY,
+        statutory_deadline=None,
+        office_id=None,
+    )
+    store.save_subject(conn, subject)
+    store.save_declaration(conn, declaration)
+    store.save_case(conn, case)
+    conn.close()
+
+    manifest, findings, ties = reconcile_case(
+        "clean-case",
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=[],  # no undisclosed publication affiliation
+    )
+    return storage.connect(db_path), manifest, findings, ties
+
+
+def test_a_clean_zero_observation_case_can_close(tmp_path):
+    conn, manifest, findings, ties = _clean_subject_conn(tmp_path)
+    assert findings == []
+    assert ties == []
+
+    view = service.worksheet(conn, "clean-case")
+    assert view.rows == () and view.tie_rows == ()
+    assert view.unactioned_count == 0
+    assert view.can_close is True
+
+    service.transition(conn, "clean-case", CaseState.ADJUDICATION)
+    assert store.load_case(conn, "clean-case").state == CaseState.ADJUDICATION
+    conn.close()
+
+
 def test_bulk_action_dispositions_a_class_with_one_reason_and_one_batch_id(tmp_path):
     conn = _demo_conn(tmp_path)
     view = service.worksheet(conn, "demo")

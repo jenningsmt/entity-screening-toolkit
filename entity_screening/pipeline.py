@@ -50,6 +50,7 @@ from entity_screening.common.manifest import (
     ReconciliationManifest,
     RunManifest,
     TopicSimilarityManifest,
+    prune_sibling_export_dirs,
 )
 from entity_screening.common.schema import (
     CaseState,
@@ -630,6 +631,7 @@ def export_scored_entities(
         fmt=fmt,
     )
     export_dir = export_manifest.export_dir(runs_dir)
+    prune_sibling_export_dirs(export_dir)  # S6 (interim): cap disk growth from repeated GETs
     if fmt == "xlsx":
         out_path = export_dir / "candidate_matches.xlsx"
         export_excel(scored_entities, out_path, export_manifest.export_id)
@@ -716,28 +718,38 @@ def reconcile_case(
         discovery_sources = ["openalex", "foreign_adversary_countries"]
 
         ties: list[ConcernTie] = []
-        if gleif_lei_file and gleif_relationships_file:
-            run_dir = Path(runs_dir) / "cases" / case_id
-            run_dir.mkdir(parents=True, exist_ok=True)
-            error_log = IngestionErrorLog(run_dir / "ingestion_errors.jsonl")
+
+        # B4: concern-list screening (DoD 1260H is bundled, no file needed;
+        # OpenSanctions is optional) has no GLEIF dependency and must run
+        # for every case -- only tie_from_ownership (an ownership-parent
+        # lookup) genuinely needs GLEIF loaded into `conn`. Order below is
+        # deliberately gleif_ownership-then-dod_section_1260h so
+        # discovery_sources comes out byte-identical to before this change
+        # whenever GLEIF is supplied (both demo cases today).
+        run_dir = Path(runs_dir) / "cases" / case_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        error_log = IngestionErrorLog(run_dir / "ingestion_errors.jsonl")
+
+        gleif_ready = bool(gleif_lei_file and gleif_relationships_file)
+        if gleif_ready:
             load_gleif_level1(conn, gleif_lei_file, date.today(), error_log)
             load_gleif_level2(conn, gleif_relationships_file, date.today(), error_log)
 
-            concern_lists = _case_concern_lists(
-                error_log, dod_1260h_file, opensanctions_file
-            )
-            error_log.close()
+        concern_lists = _case_concern_lists(error_log, dod_1260h_file, opensanctions_file)
+        error_log.close()
 
+        if gleif_ready:
             ties += tie_from_ownership(
                 case_id, run_id, list(declaration.affiliations), conn, concern_lists,
                 adversary_list,
             )
-            ties += ties_from_own_affiliations(
-                case_id, run_id, discovered, concern_lists
-            )
-            discovery_sources += ["gleif_ownership", "dod_section_1260h"]
-            if opensanctions_file:
-                discovery_sources.append("opensanctions")
+            discovery_sources.append("gleif_ownership")
+
+        ties += ties_from_own_affiliations(case_id, run_id, discovered, concern_lists)
+        discovery_sources.append("dod_section_1260h")
+
+        if opensanctions_file:
+            discovery_sources.append("opensanctions")
 
         # Stamp each own-affiliation tie with the Finding for the same
         # discovered affiliation (the both-at-once join -- a fact, not a name

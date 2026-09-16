@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -19,6 +20,35 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_RUNS_DIR = Path("data/processed/runs")
+
+# S6 (interim): both ExportManifest.export_dir and
+# InvestigativeFileManifest.export_dir create a brand-new, never-pruned
+# directory per call, and both routes that call them are ungated GETs --
+# an anonymous visitor polling either endpoint can otherwise grow
+# data/processed/runs/ without bound. Full in-memory streaming (S6-full) is
+# deferred to a later phase; this caps disk growth in the meantime.
+MAX_EXPORTS_PER_TARGET = 20
+
+
+def prune_sibling_export_dirs(export_dir: Path, keep: int = MAX_EXPORTS_PER_TARGET) -> None:
+    """Call right after an export_dir() method creates a fresh export
+    directory: deletes the oldest sibling directories (by mtime) so at
+    most `keep` remain, the new one included. Both ExportManifest and
+    InvestigativeFileManifest lay out their export directories the same
+    way (a per-target parent holding one subdirectory per export_id), so
+    one helper covers both."""
+    parent = export_dir.parent
+    siblings = sorted(
+        (d for d in parent.iterdir() if d.is_dir()),
+        # st_mtime_ns, not the float st_mtime: directories created in a tight
+        # loop (as in a pruning test, or a burst of requests) can land in
+        # the same rounded-float second/tick, and a tie would make "delete
+        # the oldest" ambiguous exactly when it matters.
+        key=lambda d: d.stat().st_mtime_ns,
+    )
+    for old in siblings[: max(len(siblings) - keep, 0)]:
+        if old != export_dir:
+            shutil.rmtree(old, ignore_errors=True)
 
 
 def _git_commit() -> str | None:

@@ -24,6 +24,8 @@ st.navigation() -- see ui_common.render_navigation().
 """
 from __future__ import annotations
 
+import urllib.parse
+
 import pandas as pd
 import requests
 import streamlit as st
@@ -117,7 +119,12 @@ _actions_enabled = cfg.actions_enabled
 
 with st.sidebar:
     st.header("Case")
-    case_id = st.text_input("Case ID", value=DEMO_CASE_ID)
+    # S8 belt-and-braces: quoted once here so every one of the five
+    # f"/cases/{case_id}/..." call sites below is automatically safe against
+    # a `?`/`#` in a free-typed case_id truncating the intended path (not an
+    # SSRF escape -- api_base_url is a fixed prefix -- just a cheap fix
+    # while this field is open).
+    case_id = urllib.parse.quote(st.text_input("Case ID", value=DEMO_CASE_ID), safe="")
 
 
 def _get(path: str, **params) -> requests.Response:
@@ -233,28 +240,51 @@ _finding_label = {
 
 
 def _render_explanation_expander(kind: str, observation_id: str, session_key: str):
-    """Epic J: "Explain this match." Gated behind an explicit button click,
-    not fetched automatically -- Streamlit reruns this whole script on every
-    widget interaction, and unlike every other GET-shaped read on this page,
-    this one can trigger a real, costed external API call (or, for the
-    bundled demo cases, a cache hit with no live call at all -- see
-    api/case_routes.py:_ensure_demo_case_exists). Result is kept in
-    st.session_state so it survives the rerun the button click itself
-    causes, the same pattern the investigative-file export buttons below
-    already use."""
+    """Epic J: "Explain this match." B2: a cached row is fetched via the
+    ungated GET the first time this expander is considered (cached once in
+    st.session_state so a Streamlit rerun -- triggered by any widget
+    interaction anywhere on the page -- doesn't re-fetch it every time);
+    generating a *new* explanation is still gated behind an explicit button
+    click and the action secret, since unlike the GET, the POST can trigger
+    a real, costed external API call (or, for the bundled demo cases, a
+    cache hit with no live call at all -- see
+    api/case_routes.py:_ensure_demo_case_exists, which means the GET above
+    already serves them)."""
+    path = "findings" if kind == "finding" else "ties"
+    if session_key not in st.session_state:
+        try:
+            st.session_state[session_key] = _get(
+                f"/cases/{case_id}/{path}/{observation_id}/explanation"
+            ).json()
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                st.session_state[session_key] = None
+            else:
+                st.error(f"Explanation lookup failed: {exc}")
+                st.session_state[session_key] = None
+        except requests.RequestException as exc:
+            st.error(f"Explanation lookup failed: {exc}")
+            st.session_state[session_key] = None
+
     with st.expander("Explain this match", expanded=False):
-        if st.button("Generate explanation", key=f"{session_key}_btn"):
-            try:
-                path = "findings" if kind == "finding" else "ties"
-                st.session_state[session_key] = _post(
-                    f"/cases/{case_id}/{path}/{observation_id}/explanation", {}
-                ).json()
-            except requests.RequestException as exc:
-                st.error(f"Explanation failed: {exc}")
         result = st.session_state.get(session_key)
         if result is None:
-            st.caption("Not generated yet for this row.")
-            return
+            if st.button(
+                "Generate explanation", key=f"{session_key}_btn", disabled=not _actions_enabled
+            ):
+                try:
+                    st.session_state[session_key] = _post(
+                        f"/cases/{case_id}/{path}/{observation_id}/explanation", {}
+                    ).json()
+                    result = st.session_state[session_key]
+                except requests.RequestException as exc:
+                    st.error(f"Explanation failed: {exc}")
+            if result is None:
+                if not _actions_enabled:
+                    st.caption("⚠️ Enter the action secret to generate an explanation for this row.")
+                else:
+                    st.caption("Not generated yet for this row.")
+                return
         st.write(result["recitation"])
         if result["synthesis_sentence"]:
             st.markdown(f"*{result['synthesis_sentence']}*")

@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from entity_screening import pipeline
@@ -415,7 +415,7 @@ def get_ownership_chain(
     run_id: str,
     entity_id: str,
     direction: str = "up",
-    depth: int = 10,
+    depth: int = Query(10, ge=1, le=25),
 ) -> ParentChainOut:
     """Epic C's "traversal depth and direction... both queryable" criterion,
     as an actual ad-hoc endpoint — not just the precomputed foreign-control

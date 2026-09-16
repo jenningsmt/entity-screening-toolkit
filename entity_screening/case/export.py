@@ -33,7 +33,11 @@ from entity_screening.case.store import (
     _nearest_to_dict,
     _search_to_dict,
 )
-from entity_screening.common.manifest import DEFAULT_RUNS_DIR, InvestigativeFileManifest
+from entity_screening.common.manifest import (
+    DEFAULT_RUNS_DIR,
+    InvestigativeFileManifest,
+    prune_sibling_export_dirs,
+)
 
 REDACTION_MARKER = {"_redacted": True, "_reason": "field-level sensitive (use-case-01 Section 9)"}
 
@@ -246,6 +250,7 @@ def export_investigative_file(
         "adjudication_seq_exported": manifest.adjudication_seq_exported,
     }
     export_dir = manifest.export_dir(runs_dir)
+    prune_sibling_export_dirs(export_dir)  # S6 (interim): cap disk growth from repeated GETs
 
     if fmt == "xlsx":
         out_path = export_dir / "investigative_file.xlsx"

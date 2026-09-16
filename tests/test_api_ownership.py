@@ -109,6 +109,23 @@ def test_ownership_chain_endpoint_404s_for_an_entity_never_resolved(client, nsf_
     assert response.status_code == 404
 
 
+def test_ownership_chain_depth_is_bounded(client, nsf_file):
+    """M16: an unbounded caller-controlled `depth` on the recursive CTE."""
+    run_id = _create_run(client, nsf_file)
+    client.post(
+        f"/runs/{run_id}/ownership",
+        json={"gleif_lei_file": GLEIF_LEI_FILE, "gleif_relationships_file": GLEIF_RELATIONSHIPS_FILE},
+    )
+    entity_id = client.get(f"/runs/{run_id}/scores").json()[0]["entity_id"]
+
+    ok = client.get(f"/runs/{run_id}/ownership/{entity_id}", params={"depth": 25})
+    assert ok.status_code == 200
+    too_deep = client.get(f"/runs/{run_id}/ownership/{entity_id}", params={"depth": 26})
+    assert too_deep.status_code == 422
+    zero = client.get(f"/runs/{run_id}/ownership/{entity_id}", params={"depth": 0})
+    assert zero.status_code == 422
+
+
 def test_enrich_ownership_endpoint_404s_for_an_unknown_run(client):
     response = client.post(
         "/runs/does-not-exist/ownership",

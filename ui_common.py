@@ -116,9 +116,19 @@ def render_sidebar_config(actor_default: str = "analyst.demo") -> SidebarConfig:
     section, and the "Actions" (action-secret) section -- identical rendering
     to app.py's original inline sidebar, minus any page-specific section."""
     with st.sidebar:
-        api_base_url = st.text_input(
-            "API base URL", value=os.environ.get("API_BASE_URL", "http://localhost:8000")
-        ).rstrip("/")
+        env_base_url = os.environ.get("API_BASE_URL")
+        if env_base_url:
+            # S8: on a deployed image API_BASE_URL is set, so the field is
+            # never rendered -- a visitor-editable API base URL on the
+            # public site is a read-SSRF vector (it can repoint the
+            # Streamlit server at an arbitrary URL: the Docker network,
+            # cloud metadata endpoints, or the demo itself as a relay).
+            # Local dev (env var unset) keeps the editable widget.
+            api_base_url = env_base_url.rstrip("/")
+        else:
+            api_base_url = st.text_input(
+                "API base URL", value="http://localhost:8000"
+            ).rstrip("/")
 
         try:
             gate_enabled = bool(

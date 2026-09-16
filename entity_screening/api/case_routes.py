@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 import duckdb
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -43,6 +43,7 @@ from entity_screening.common.schema import (
     WorksheetActionKind,
 )
 from entity_screening.explanation import service as explanation_service
+from entity_screening.explanation import store as explanation_store
 from entity_screening.explanation.schema import MatchExplanation, ObservationKind
 
 router = APIRouter(prefix="/cases", tags=["hb127-case"])
@@ -467,6 +468,29 @@ def _explanation_dto(explanation: MatchExplanation) -> dict:
     }
 
 
+def _find_primary_or_404(
+    findings: list,
+    ties: list,
+    observation_kind: ObservationKind,
+    observation_id: str,
+    case_id: str,
+) -> Any:
+    """Shared by the generate (_explain) and cached-read
+    (_cached_explanation_or_404) paths below, so both agree on what "the
+    requested observation" means, including the 404 behaviour for an
+    unknown id."""
+    if observation_kind is ObservationKind.FINDING:
+        primary = next((f for f in findings if f.finding_id == observation_id), None)
+    else:
+        primary = next((t for t in ties if t.tie_id == observation_id), None)
+    if primary is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown {observation_kind.value} {observation_id!r} in case {case_id!r}",
+        )
+    return primary
+
+
 def _explain(conn: duckdb.DuckDBPyConnection, case_id: str, observation_kind: ObservationKind, observation_id: str) -> dict:
     """Shared by the finding/tie explanation routes below: loads the case's
     full finding+tie set once, picks out the requested observation as the
@@ -478,18 +502,12 @@ def _explain(conn: duckdb.DuckDBPyConnection, case_id: str, observation_kind: Ob
     case = _load_case_or_404(conn, case_id)
     findings = store.load_findings(conn, case_id)
     ties = store.load_ties(conn, case_id)
+    primary = _find_primary_or_404(findings, ties, observation_kind, observation_id, case_id)
 
     if observation_kind is ObservationKind.FINDING:
-        primary = next((f for f in findings if f.finding_id == observation_id), None)
         context = [f for f in findings if f.finding_id != observation_id] + list(ties)
     else:
-        primary = next((t for t in ties if t.tie_id == observation_id), None)
         context = [t for t in ties if t.tie_id != observation_id] + list(findings)
-    if primary is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown {observation_kind.value} {observation_id!r} in case {case_id!r}",
-        )
 
     subject = store.load_subject(conn, case.subject_id)
     synthetic = bool(case.synthetic and (subject.synthetic if subject else True))
@@ -507,6 +525,49 @@ def _explain(conn: duckdb.DuckDBPyConnection, case_id: str, observation_kind: Ob
             ),
         )
     return _explanation_dto(explanation)
+
+
+def _cached_explanation_or_404(
+    conn: duckdb.DuckDBPyConnection, case_id: str, observation_kind: ObservationKind, observation_id: str
+) -> dict:
+    """The ungated read half of B2: returns the same row `_explain` would
+    consider cached (same (observation_id, evidence_hash) key via
+    evidence_hash_for), or 404 -- and never calls explanation_service.explain,
+    so it never triggers a live, costed generation. Anonymous visitors on the
+    public demo can reach this even though the POST routes below are gated,
+    since the demo's explanations are pre-generated at build time
+    (_ensure_demo_case_exists)."""
+    _load_case_or_404(conn, case_id)
+    findings = store.load_findings(conn, case_id)
+    ties = store.load_ties(conn, case_id)
+    primary = _find_primary_or_404(findings, ties, observation_kind, observation_id, case_id)
+
+    evidence_hash = explanation_service.evidence_hash_for(primary)
+    cached = explanation_store.load_explanation(conn, observation_id, evidence_hash)
+    if cached is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No cached explanation for {observation_kind.value} {observation_id!r} in case {case_id!r}",
+        )
+    return _explanation_dto(cached)
+
+
+@router.get("/{case_id}/findings/{finding_id}/explanation")
+def get_finding_explanation(case_id: str, finding_id: str) -> dict:
+    conn = _connect()
+    try:
+        return _cached_explanation_or_404(conn, case_id, ObservationKind.FINDING, finding_id)
+    finally:
+        conn.close()
+
+
+@router.get("/{case_id}/ties/{tie_id}/explanation")
+def get_tie_explanation(case_id: str, tie_id: str) -> dict:
+    conn = _connect()
+    try:
+        return _cached_explanation_or_404(conn, case_id, ObservationKind.CONCERN_TIE, tie_id)
+    finally:
+        conn.close()
 
 
 @router.post("/{case_id}/findings/{finding_id}/explanation")
@@ -723,12 +784,20 @@ def post_outcome(
 
 
 @router.get("/{case_id}/investigative-file.json")
-def get_investigative_file_json(case_id: str, redact: bool = True) -> FileResponse:
+def get_investigative_file_json(
+    case_id: str, redact: bool = True, x_monops_action_secret: str | None = Header(default=None)
+) -> FileResponse:
+    if not redact:
+        require_action_secret(x_monops_action_secret)
     return _export(case_id, "json", redact)
 
 
 @router.get("/{case_id}/investigative-file.xlsx")
-def get_investigative_file_xlsx(case_id: str, redact: bool = True) -> FileResponse:
+def get_investigative_file_xlsx(
+    case_id: str, redact: bool = True, x_monops_action_secret: str | None = Header(default=None)
+) -> FileResponse:
+    if not redact:
+        require_action_secret(x_monops_action_secret)
     return _export(case_id, "xlsx", redact)
 
 

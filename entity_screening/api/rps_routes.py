@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import duckdb
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from entity_screening.api.deps import allowed_data_files, check_allowlisted
@@ -187,7 +187,7 @@ def get_reason_codes() -> dict:
 
 
 @router.get("")
-def list_events(trigger: str | None = None, limit: int = 50) -> dict:
+def list_events(trigger: str | None = None, limit: int = Query(50, ge=1, le=500)) -> dict:
     """Summary fields only (no parties/matches -- GET /{event_id} is the
     detail call) so a browse view can find an event without already knowing
     its event_id. Open, not gated, like every other read in this API."""

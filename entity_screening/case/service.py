@@ -108,15 +108,18 @@ def worksheet(conn: duckdb.DuckDBPyConnection, case_id: str) -> WorksheetView:
     unactioned = sum(1 for r in rows if r.action is None) + sum(
         1 for r in tie_rows if r.action is None
     )
-    total = len(rows) + len(tie_rows)
     return WorksheetView(
         case=case,
         rows=rows,
         tie_rows=tie_rows,
         unactioned_count=unactioned,
         # A case cannot leave the worksheet while any row of EITHER type is
-        # unactioned (use-case-01 Section 8, extended for concern ties).
-        can_close=(unactioned == 0 and total > 0),
+        # unactioned (use-case-01 Section 8, extended for concern ties). A
+        # case with zero rows of either type -- a clean subject, the single
+        # most common real screening outcome -- closes trivially: the only
+        # path into WORKSHEET is reconcile_case itself (pipeline.py), so
+        # reaching this function at all already proves reconciliation ran.
+        can_close=(unactioned == 0),
     )
 
 
@@ -254,11 +257,12 @@ def transition(
     if case.state == CaseState.WORKSHEET and target == CaseState.ADJUDICATION:
         view = worksheet(conn, case_id)
         if not view.can_close:
+            total = len(view.rows) + len(view.tie_rows)
             raise CaseStateError(
-                f"Case {case_id!r} has {view.unactioned_count} unactioned worksheet "
-                "row(s). Every discrepancy AND every concern tie must have an analyst "
-                "action before the case leaves the worksheet (use-case-01 Section 8's "
-                "closure rule)."
+                f"Case {case_id!r} has {view.unactioned_count} of {total} worksheet "
+                "row(s) unactioned. Every discrepancy AND every concern tie must have "
+                "an analyst action before the case leaves the worksheet (use-case-01 "
+                "Section 8's closure rule)."
             )
     from dataclasses import replace
 

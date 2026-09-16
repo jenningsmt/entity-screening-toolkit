@@ -189,3 +189,85 @@ def test_action_gate_blocks_mutations_when_a_secret_is_configured(client, monkey
         headers={"X-Monops-Action-Secret": "s3cr3t"},
     )
     assert ok.status_code == 200
+
+
+# --- B2: the demo's pre-generated explanations are reachable anonymously ---
+
+
+def test_anonymous_get_returns_cached_explanation_but_post_stays_gated(client, monkeypatch):
+    monkeypatch.setenv("MONOPS_ACTION_SECRET", "s3cr3t")
+    worksheet = client.get("/cases/demo/worksheet").json()
+    finding_id = worksheet["rows"][0]["finding"]["finding_id"]
+    tie_id = worksheet["tie_rows"][0]["tie"]["tie_id"]
+
+    get_finding = client.get(f"/cases/demo/findings/{finding_id}/explanation")
+    assert get_finding.status_code == 200
+    body = get_finding.json()
+    assert body["observation_id"] == finding_id
+    assert body["recitation"]
+
+    get_tie = client.get(f"/cases/demo/ties/{tie_id}/explanation")
+    assert get_tie.status_code == 200
+    assert get_tie.json()["observation_id"] == tie_id
+
+    post_finding = client.post(f"/cases/demo/findings/{finding_id}/explanation", json={})
+    assert post_finding.status_code == 403
+    post_tie = client.post(f"/cases/demo/ties/{tie_id}/explanation", json={})
+    assert post_tie.status_code == 403
+
+
+def test_get_explanation_404s_for_an_unknown_observation_id(client):
+    client.get("/cases/demo/worksheet")  # trigger self-heal
+    assert client.get("/cases/demo/findings/not-a-real-id/explanation").status_code == 404
+    assert client.get("/cases/demo/ties/not-a-real-id/explanation").status_code == 404
+
+
+def test_get_explanation_misses_cache_after_a_prompt_version_bump(client, monkeypatch):
+    """The GET path and explain()'s own cache check must agree on what
+    counts as stale: bumping PROMPT_VERSION changes evidence_hash_for's
+    output, so a row cached under the old prompt version must not be served
+    as if it were still current."""
+    from entity_screening.explanation import service as explanation_service
+
+    worksheet = client.get("/cases/demo/worksheet").json()
+    finding_id = worksheet["rows"][0]["finding"]["finding_id"]
+    assert client.get(f"/cases/demo/findings/{finding_id}/explanation").status_code == 200
+
+    # PROMPT_VERSION is imported into service.py's own namespace (`from
+    # ...generate import PROMPT_VERSION`), so evidence_hash_for reads
+    # service.PROMPT_VERSION, not generate.PROMPT_VERSION -- patch it there.
+    monkeypatch.setattr(explanation_service, "PROMPT_VERSION", "test-bumped-version")
+    assert client.get(f"/cases/demo/findings/{finding_id}/explanation").status_code == 404
+
+
+# --- S7: redact=false requires the action secret ---------------------------
+
+
+def test_redact_false_requires_the_action_secret(client, monkeypatch):
+    monkeypatch.setenv("MONOPS_ACTION_SECRET", "s3cr3t")
+    client.get("/cases/demo/worksheet")  # trigger self-heal
+
+    unauth = client.get("/cases/demo/investigative-file.json?redact=false")
+    assert unauth.status_code == 403
+
+    ok = client.get(
+        "/cases/demo/investigative-file.json?redact=false",
+        headers={"X-Monops-Action-Secret": "s3cr3t"},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["subject"]["classified_fields"] != {
+        "_redacted": True,
+        "_reason": "field-level sensitive (use-case-01 Section 9)",
+    }
+
+
+def test_redact_default_stays_open_and_redacted(client, monkeypatch):
+    monkeypatch.setenv("MONOPS_ACTION_SECRET", "s3cr3t")
+    client.get("/cases/demo/worksheet")  # trigger self-heal
+
+    response = client.get("/cases/demo/investigative-file.json")
+    assert response.status_code == 200
+    assert response.json()["subject"]["classified_fields"] == {
+        "_redacted": True,
+        "_reason": "field-level sensitive (use-case-01 Section 9)",
+    }

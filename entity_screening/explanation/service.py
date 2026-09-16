@@ -24,7 +24,7 @@ from entity_screening.explanation.schema import MatchExplanation, ObservationKin
 from entity_screening.explanation.skeletons import recite
 
 
-def _evidence_hash(observation: Finding | ConcernTie) -> str:
+def evidence_hash_for(observation: Finding | ConcernTie) -> str:
     """The cache key's content component: a hash of the observation's own
     fully-templated recitation plus the model/prompt version currently in
     use. Since `finding_id`/`tie_id` are already regenerated (uuid4) on
@@ -32,7 +32,10 @@ def _evidence_hash(observation: Finding | ConcernTie) -> str:
     model/prompt_version change invalidating a previously-cached
     explanation for an otherwise-unchanged observation, not against
     evidence drift under a fixed id (which can't happen -- ids don't
-    persist across runs)."""
+    persist across runs). Public (not `_`-prefixed): the API layer's
+    ungated `GET .../explanation` route (case_routes.py) needs to compute
+    the same cache key `explain()` uses below, so the two paths agree on
+    what "the cached explanation" means."""
     payload = f"{recite(observation)}|{MODEL}|{PROMPT_VERSION}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -57,7 +60,7 @@ def explain(
         if isinstance(observation, Finding)
         else observation.tie_id
     )
-    evidence_hash = _evidence_hash(observation)
+    evidence_hash = evidence_hash_for(observation)
 
     cached = store.load_explanation(conn, observation_id, evidence_hash)
     if cached is not None:

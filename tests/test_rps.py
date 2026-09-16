@@ -339,6 +339,14 @@ def test_api_list_events_endpoint(tmp_path, monkeypatch):
     assert filtered.json()["events"] == []
 
 
+def test_api_list_events_limit_is_bounded(tmp_path, monkeypatch):
+    """M16: an unbounded caller-controlled `limit` on a public read."""
+    client = _client(tmp_path, monkeypatch)
+    assert client.get("/screening-events", params={"limit": 500}).status_code == 200
+    assert client.get("/screening-events", params={"limit": 501}).status_code == 422
+    assert client.get("/screening-events", params={"limit": 0}).status_code == 422
+
+
 # --------------------------------------------------------------------------
 # Allowlist protection on the screen endpoint (the security gap found while
 # building the Streamlit page -- fixed before the page could exercise it).

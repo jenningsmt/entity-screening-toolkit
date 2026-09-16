@@ -170,10 +170,14 @@ sequence: it is the only thing that actually confirms new code landed.
 
 Warm the self-healing demo case so the first real visitor doesn't pay the
 build cost (and so a stale `DEMO_FIXTURE_VERSION` rebuild happens now, not
-under load):
+under load). `_ensure_demo_case_exists` builds and reconciles *both* demo
+cases (`demo` and `demo-coi`) together on first access, so the single call
+below already warms both -- the second `curl` just proves it, rather than
+relying on the reader knowing that side effect:
 
 ```
 curl -s http://127.0.0.1:8000/cases/demo/worksheet > /dev/null
+curl -s http://127.0.0.1:8000/cases/demo-coi/worksheet > /dev/null
 ```
 
 ## 8. Public-demo security posture (Workstream 2)
@@ -211,15 +215,26 @@ scraper that simply ignores them):
 - `infra/user_data.sh` lays down `/var/www/monops-placeholder/robots.txt`
   disallowing `/monops/` (`curl https://mikejennings.dev/robots.txt`).
 
-The actual defence against request volume is `infra/nginx/monops.conf`'s
-rate limit (`limit_req_zone`, 5 req/s per client IP, burst 100), which
-exempts Streamlit's websocket upgrade requests so the live UI doesn't
-stutter under its own budget, and does not rate-limit `/monops/static/` at
-all -- a fresh Streamlit page pulls ~150 lazily-imported frontend chunks in
-one burst, and the original burst of 20 rejected the excess with 503,
-breaking the site for every cold-cache visitor (found 2026-09-07, after
-days unnoticed because a warm cache never hits the limit). Every expensive
-operation is behind the action secret regardless.
+`infra/nginx/monops.conf`'s rate limit (`limit_req_zone`, 5 req/s per client
+IP, burst 100) exempts Streamlit's websocket upgrade requests so the live UI
+doesn't stutter under its own budget, and does not rate-limit
+`/monops/static/` at all -- a fresh Streamlit page pulls ~150 lazily-imported
+frontend chunks in one burst, and the original burst of 20 rejected the
+excess with 503, breaking the site for every cold-cache visitor (found
+2026-09-07, after days unnoticed because a warm cache never hits the limit).
+
+**This rate limit is not the defence against request volume from inside the
+app** (corrected 2026-09-16, S6 of the 2026-09-15 pre-ship review): every
+request the Streamlit UI itself makes -- including a visitor repeatedly
+clicking "Prepare JSON"/"Prepare Excel" -- travels over the same
+websocket-exempted channel, so `limit_req_zone` never sees it. What actually
+bounds that is `entity_screening/common/manifest.py`'s
+`prune_sibling_export_dirs`, called from both export paths
+(`case/export.py`'s `export_investigative_file` and
+`pipeline.export_scored_entities`): each caps its own export directory at
+`MAX_EXPORTS_PER_TARGET` (20), deleting the oldest on overflow, so disk usage
+from repeated ungated `GET` exports is bounded regardless of request volume.
+Every *mutating* operation is still behind the action secret, unchanged.
 
 ## 9. Housekeeping (Section 9's remaining asks)
 
