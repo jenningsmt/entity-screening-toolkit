@@ -9,6 +9,7 @@ self-heals from bundled fixtures on first access, with no live network call
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import duckdb
@@ -17,6 +18,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from entity_screening import pipeline
+from entity_screening.api.deps import allowed_data_files, check_allowlisted
 from entity_screening.api.deps import db_path as _db_path
 from entity_screening.api.deps import require_action_secret
 from entity_screening.api.deps import runs_dir as _runs_dir
@@ -43,6 +45,7 @@ from entity_screening.common.schema import (
     WorksheetActionKind,
 )
 from entity_screening.explanation import service as explanation_service
+from entity_screening.explanation.generate import _default_anthropic_call
 from entity_screening.explanation import store as explanation_store
 from entity_screening.explanation.schema import MatchExplanation, ObservationKind
 
@@ -92,6 +95,14 @@ class CreateCaseRequest(BaseModel):
 class ReconcileRequest(BaseModel):
     # Live OpenAlex is opt-in; the demo runs entirely on fixtures.
     contact_email: str | None = None
+    # B4-followup: a caller-supplied, allowlisted GLEIF snapshot -- the same
+    # posture as the batch /runs/{id}/ownership route's own gleif_lei_file/
+    # gleif_relationships_file params. Ignored for case_id in
+    # (demo, demo-coi), which always use the bundled, verified demo
+    # fixtures regardless of what a caller supplies.
+    gleif_lei_file: str | None = None
+    gleif_relationships_file: str | None = None
+    opensanctions_file: str | None = None
 
 
 class ActionRequest(BaseModel):
@@ -177,6 +188,25 @@ def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
         and store.demo_meta_get(conn, "fixture_version") == version
     ):
         return
+    # Phase 4: pre-generation uses the real Claude call, so the demo's own
+    # explanations get Epic J's real synthesis step against the corrected
+    # evidence, only when BOTH a live key is present AND this deploy-time
+    # opt-in is explicitly set -- ANTHROPIC_API_KEY alone is deliberately
+    # not enough. That var is commonly set in a developer's shell for
+    # unrelated reasons (running other Claude tooling), and this function
+    # runs from the plain test suite too (five test files touch
+    # /cases/demo/...) -- gating on ANTHROPIC_API_KEY alone would silently
+    # start making real, billed API calls the moment a developer with that
+    # var set locally ran the ordinary tests. MONOPS_DEMO_LIVE_SYNTHESIS is
+    # never set by the base test/CI config, only by a deliberate deploy
+    # step (see docs/deployment-runbook.md). Either way the public box
+    # (neither var set) is unaffected: _demo_no_synthesis_call never
+    # depends on a credential.
+    explain_call = (
+        _default_anthropic_call
+        if os.environ.get("ANTHROPIC_API_KEY") and os.environ.get("MONOPS_DEMO_LIVE_SYNTHESIS")
+        else _demo_no_synthesis_call
+    )
     demo.build_demo_case(conn)
     pipeline.reconcile_case(
         demo.DEMO_CASE_ID,
@@ -205,13 +235,13 @@ def _ensure_demo_case_exists(conn: duckdb.DuckDBPyConnection) -> None:
             explanation_service.explain(
                 conn, ObservationKind.FINDING, f, demo_case_id,
                 _case_context_for(findings, ties, ObservationKind.FINDING, f.finding_id),
-                synthetic=synthetic, call=_demo_no_synthesis_call,
+                synthetic=synthetic, call=explain_call,
             )
         for t in ties:
             explanation_service.explain(
                 conn, ObservationKind.CONCERN_TIE, t, demo_case_id,
                 _case_context_for(findings, ties, ObservationKind.CONCERN_TIE, t.tie_id),
-                synthetic=synthetic, call=_demo_no_synthesis_call,
+                synthetic=synthetic, call=explain_call,
             )
     store.demo_meta_set(conn, "fixture_version", version)
 
@@ -477,14 +507,28 @@ def reconcile(
     finally:
         conn.close()
     is_demo = case_id in (demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID)
+    # B4-followup: a caller-supplied GLEIF/OpenSanctions path is gated by
+    # the same allowlist every other caller-supplied data-file path already
+    # goes through -- and ignored outright for demo/demo-coi, which always
+    # use the bundled, verified demo fixtures regardless of what a caller
+    # supplies (demo integrity can't be overridden by a caller).
+    allowlist = allowed_data_files()
+    check_allowlisted(request.gleif_lei_file, allowlist)
+    check_allowlisted(request.gleif_relationships_file, allowlist)
+    check_allowlisted(request.opensanctions_file, allowlist)
     manifest, findings, ties = pipeline.reconcile_case(
         case_id,
         db_path=_db_path(),
         runs_dir=_runs_dir(),
         contact_email=request.contact_email,
         works_fixture=demo.load_demo_works_fixture() if is_demo else None,
-        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE if is_demo else None,
-        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE if is_demo else None,
+        gleif_lei_file=(
+            demo.DEMO_GLEIF_LEI_FILE if is_demo else request.gleif_lei_file
+        ),
+        gleif_relationships_file=(
+            demo.DEMO_GLEIF_RELATIONSHIPS_FILE if is_demo else request.gleif_relationships_file
+        ),
+        opensanctions_file=None if is_demo else request.opensanctions_file,
     )
     return {
         "case_id": case_id,

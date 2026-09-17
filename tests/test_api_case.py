@@ -41,6 +41,30 @@ def test_demo_case_self_heals_and_shows_a_worked_worksheet(client):
     assert hit["evidence"]["source_attribution"]["license"]
 
 
+def test_demo_self_heal_never_calls_the_live_anthropic_client_from_anthropic_api_key_alone(
+    client, monkeypatch
+):
+    """Phase 4's live-synthesis switch in _ensure_demo_case_exists requires
+    BOTH ANTHROPIC_API_KEY and the deploy-time opt-in
+    MONOPS_DEMO_LIVE_SYNTHESIS. ANTHROPIC_API_KEY alone -- commonly set in
+    a developer's shell for unrelated reasons (other Claude tooling) --
+    must not make this plain worksheet GET silently start making a real,
+    billed API call."""
+    from entity_screening.api import case_routes
+
+    def _boom(request):
+        raise AssertionError(
+            "must not call the live Anthropic client without MONOPS_DEMO_LIVE_SYNTHESIS"
+        )
+
+    monkeypatch.setattr(case_routes, "_default_anthropic_call", _boom)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake-not-a-real-key")
+
+    response = client.get("/cases/demo/worksheet")
+
+    assert response.status_code == 200
+
+
 def test_worksheet_closure_rule_and_investigative_file_export(client):
     body = client.get("/cases/demo/worksheet").json()
     ids = [r["finding"]["finding_id"] for r in body["rows"]]

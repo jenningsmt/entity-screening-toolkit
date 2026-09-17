@@ -24,9 +24,12 @@ from entity_screening.common.schema import (
     DiscoveredAffiliation,
     DeclarationSearch,
     Finding,
+    ForeignControlFlag,
     MatchStatus,
     NearestDeclared,
+    ScreeningHit,
     Subject,
+    walk_dict_keys,
 )
 from entity_screening.common.attribution import attribution_for
 from entity_screening.explanation.schema import (
@@ -177,6 +180,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         "DiscoveredAffiliation": DiscoveredAffiliation,
         "DeclarationSearch": DeclarationSearch,
         "NearestDeclared": NearestDeclared,
+        # S15: ConcernTie embeds both of these; they were never walked.
+        "ScreeningHit": ScreeningHit,
+        "ForeignControlFlag": ForeignControlFlag,
     }
     for type_name, dc in _observation_graph_types.items():
         actual = {f.name for f in _dc_fields(dc)}
@@ -207,6 +213,30 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 "observation type may not hold a severity/risk/priority/score/"
                 "materiality/tier/weight/disposition/impair/prevent claim about a person."
             )
+
+    # S15: the field-name check above can't see inside ScreeningHit/
+    # ForeignControlFlag's own `evidence: dict[str, Any]` -- no dataclass
+    # field-name check can, since it's an open payload, not a declared
+    # field. Prove the recursive walker that guards it (used for real
+    # against real exported evidence in test_output_contract.py) actually
+    # catches a violation, the same "build a deliberately-bad instance,
+    # confirm the guard fires" shape as the MatchExplanation check below.
+    _bad_evidence_hit = ScreeningHit(
+        entity_id="x", list_name="x", matched_variant="x", matched_field="x",
+        confidence=1.0, evidence={"ownership_path": {"risk_note": "x"}},
+    )
+    _walked = set(walk_dict_keys(_bad_evidence_hit.evidence))
+    _caught = {
+        key for key in _walked
+        for token in _FORBIDDEN_OBSERVATION_FIELD_TOKENS
+        if token in key.lower()
+    }
+    if not _caught:
+        problems.append(
+            "walk_dict_keys did not catch a forbidden token nested inside a "
+            "ScreeningHit.evidence dict -- the recursive evidence-key guard "
+            "test_output_contract.py relies on is not actually working."
+        )
 
     # Same guard, extended to restricted-party screening (use-case-02 Section
     # 3) -- kept as RPS's own allowlist in screening/rps_schema.py rather than

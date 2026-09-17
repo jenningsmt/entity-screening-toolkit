@@ -514,7 +514,8 @@ def load_findings(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[Finding
 _TIE_COLUMNS = (
     "tie_id, case_id, run_id, tie_kind, anchor_affiliation_id, related_finding_id, "
     "concern_entity_name, country, country_on_adversary_list, adversary_list_version, "
-    "first_observed, last_observed, record_count, concern_list_evidence, ownership_evidence"
+    "first_observed, last_observed, record_count, concern_list_evidence, ownership_evidence, "
+    "hq_country, hq_country_on_adversary_list"
 )
 
 
@@ -552,13 +553,15 @@ def replace_ties(
             t.record_count,
             json.dumps([_hit_to_dict(h) for h in t.concern_list_evidence], default=str),
             json.dumps([_flag_to_dict(fl) for fl in t.ownership_evidence], default=str),
+            t.hq_country,
+            t.hq_country_on_adversary_list,
         )
         for t in ties
     ]
     if rows:
         conn.executemany(
             f"INSERT INTO concern_ties ({_TIE_COLUMNS}) VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
     if removed_ids:
@@ -592,6 +595,8 @@ def load_ties(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[ConcernTie]
         record_count,
         concern_list_evidence,
         ownership_evidence,
+        hq_country,
+        hq_country_on_adversary_list,
     ) in rows:
         ties.append(
             ConcernTie(
@@ -615,6 +620,10 @@ def load_ties(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[ConcernTie]
                 ),
                 ownership_evidence=tuple(
                     _flag_from_dict(d) for d in json.loads(ownership_evidence)
+                ),
+                hq_country=hq_country,
+                hq_country_on_adversary_list=(
+                    None if hq_country_on_adversary_list is None else bool(hq_country_on_adversary_list)
                 ),
             )
         )

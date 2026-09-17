@@ -206,6 +206,19 @@ is a hard requirement to get the stack running:
   deliberately not in the allowlist -- those routes always reject on the
   public deployment, matching the sidebar's own "leave blank to skip"
   framing for files that were never bundled in the first place.
+- **`MONOPS_DEMO_LIVE_SYNTHESIS`** (Phase 4) -- set this alongside a real
+  `ANTHROPIC_API_KEY` on the deploying shell (never committed) to have the
+  demo self-heal (`_ensure_demo_case_exists`) pre-generate the demo's
+  explanations with Epic J's real Claude synthesis step instead of the
+  deterministic, no-network recitation-only fixture. Deliberately a
+  second, separate opt-in rather than gating on `ANTHROPIC_API_KEY` alone:
+  that var is commonly already set in a developer's shell for unrelated
+  reasons (other Claude tooling), and `_ensure_demo_case_exists` runs from
+  the plain test suite too (any test touching `/cases/demo/...`) -- gating
+  on the key alone would silently start making real, billed API calls the
+  moment such a developer ran the ordinary tests. Neither var is set by
+  the base test/CI config; omit both and the demo stays exactly as safe as
+  every prior deploy.
 
 Two additional hygiene measures, not access control (nothing stops a
 scraper that simply ignores them):

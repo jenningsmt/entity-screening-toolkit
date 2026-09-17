@@ -67,6 +67,7 @@ from entity_screening.common.schema import (
 from entity_screening.reconciliation.discover import (
     discover_from_publications,
     tie_from_ownership,
+    ties_from_declared_affiliations,
     ties_from_own_affiliations,
 )
 from entity_screening.reconciliation.match import RECONCILIATION_THRESHOLD
@@ -706,7 +707,6 @@ def reconcile_case(
         discovered = discover_from_publications(
             subject.display_name,
             hiring_institution,
-            list(declaration.affiliations),
             adversary_list,
             contact_email=contact_email,
             fetch=fetch,
@@ -746,6 +746,13 @@ def reconcile_case(
             discovery_sources.append("gleif_ownership")
 
         ties += ties_from_own_affiliations(case_id, run_id, discovered, concern_lists)
+        # S2: a declared affiliation can itself be concern-listed --
+        # unconditional, no GLEIF gate, same as ties_from_own_affiliations
+        # above (screens against the same discovery_sources already
+        # appended, so no new source label is needed).
+        ties += ties_from_declared_affiliations(
+            case_id, run_id, list(declaration.affiliations), concern_lists
+        )
         discovery_sources.append("dod_section_1260h")
 
         if opensanctions_file:

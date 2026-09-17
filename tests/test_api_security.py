@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from entity_screening.api.main import app
+from entity_screening.bibliometric import openalex_client
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 NSF_FILE = str(FIXTURES_DIR / "sample_nsf_awards.json")
@@ -26,6 +27,21 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ENTITY_SCREENING_DB_PATH", str(tmp_path / "test.duckdb"))
     monkeypatch.setenv("ENTITY_SCREENING_RUNS_DIR", str(tmp_path / "runs"))
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def no_live_openalex_calls(monkeypatch):
+    """B4-followup's /cases/{id}/reconcile tests below drive a non-demo
+    case through the real pipeline, which (unlike the demo path) has no
+    works_fixture to short-circuit discover_from_publications -- the HTTP
+    route can't accept an injectable fetch over the wire either. Monkeypatch
+    the client's actual default HTTP function instead, so this suite never
+    hits the live network (same principle, same fix, as
+    test_api_bibliometric.py's fixture of the same name)."""
+    def fake_http_get(url, params):
+        return {"results": []}
+
+    monkeypatch.setattr(openalex_client, "_http_get", fake_http_get)
 
 
 def _create_run(client, **headers) -> object:
@@ -137,6 +153,127 @@ def test_allowlist_gates_ownership_route_gleif_files(client, monkeypatch):
     )
 
     assert response.status_code == 400
+
+
+# --- B4-followup: a real GLEIF path for non-demo cases, via /cases/{id}/reconcile ---
+
+
+def _create_case_with_a_declared_employer(client, case_id: str) -> None:
+    resp = client.post(
+        "/cases",
+        json={
+            "case_id": case_id,
+            "subject_id": f"{case_id}-subject",
+            "subject_display_name": "Test Subject",
+            "coverage_basis": "151a1",
+            "synthetic": True,
+            "trigger": "hire",
+            "access_scope": "data",
+            "declaration_sources": [
+                {"source_id": "cv", "kind": "cv", "present": True, "scope_kind": "full_history"},
+            ],
+            "declared_affiliations": [
+                {
+                    "affiliation_id": "aff-1",
+                    "source_id": "cv",
+                    "institution_name": "Fixture Subsidiary Corp",
+                    "activity_kind": "employment",
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_reconcile_route_runs_real_ownership_screening_for_a_non_demo_case(client):
+    """B4-followup: a caller-supplied, allowlisted GLEIF snapshot gives a
+    non-demo case a real ownership-parent screening path -- mirrors Phase
+    1's B4 test pattern, but through the route this time, not only at the
+    pipeline layer. LEI-SUB's real ultimate parent (per the fixture) isn't
+    on any concern list, so no tie is expected -- the assertion is that
+    GLEIF was actually loaded and screened, not that a tie fires."""
+    _create_case_with_a_declared_employer(client, "c-b4")
+
+    response = client.post(
+        "/cases/c-b4/reconcile",
+        json={
+            "gleif_lei_file": GLEIF_LEI_FILE,
+            "gleif_relationships_file": GLEIF_RELATIONSHIPS_FILE,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert "gleif_ownership" in response.json()["discovery_sources"]
+
+
+def test_allowlist_gates_reconcile_route_gleif_files(client, monkeypatch):
+    _create_case_with_a_declared_employer(client, "c-b4-gated")
+    monkeypatch.setenv("MONOPS_DATA_FILE_ALLOWLIST", GLEIF_LEI_FILE)  # relationships file NOT allowlisted
+
+    response = client.post(
+        "/cases/c-b4-gated/reconcile",
+        json={
+            "gleif_lei_file": GLEIF_LEI_FILE,
+            "gleif_relationships_file": GLEIF_RELATIONSHIPS_FILE,
+        },
+    )
+
+    assert response.status_code == 400
+
+
+def _drive_demo_case_to_reconcile_eligible(client) -> None:
+    """The only path back to a state `reconcile` is allowed in again once
+    the demo case has self-healed into WORKSHEET: action every row, then
+    ADJUDICATION -> OUTCOME -> CLOSED -> re-open to DISCOVERY (no direct
+    edge from WORKSHEET/ADJUDICATION/OUTCOME back to DISCOVERY -- mirrors
+    test_api_case.py's own _drive_demo_case_to_closed)."""
+    body = client.get("/cases/demo/worksheet").json()
+    for fid in [r["finding"]["finding_id"] for r in body["rows"]]:
+        client.post(
+            f"/cases/demo/findings/{fid}/action",
+            json={"action": "dismiss", "reason_code": "record_error_or_misattribution",
+                  "reason_note": "", "actor": "analyst.a"},
+        )
+    for tid in [r["tie"]["tie_id"] for r in body["tie_rows"]]:
+        client.post(
+            f"/cases/demo/ties/{tid}/action",
+            json={"action": "dismiss", "reason_code": "historical_or_divested_relationship",
+                  "reason_note": "", "actor": "analyst.a"},
+        )
+    assert client.post("/cases/demo/transition", json={"target_state": "adjudication"}).status_code == 200
+    assert client.post(
+        "/cases/demo/adjudication",
+        json={"assessment": "Nothing material.", "recommendation": "Proceed.", "actor": "analyst.a"},
+    ).status_code == 200
+    assert client.post("/cases/demo/transition", json={"target_state": "outcome"}).status_code == 200
+    assert client.post(
+        "/cases/demo/outcome", json={"outcome": "cleared", "actor": "analyst.a", "note": ""},
+    ).status_code == 200
+    assert client.post("/cases/demo/transition", json={"target_state": "closed"}).status_code == 200
+    assert client.post("/cases/demo/transition", json={"target_state": "discovery"}).status_code == 200
+
+
+def test_reconcile_route_ignores_a_caller_supplied_gleif_path_for_the_demo_case(client):
+    """Demo integrity can't be overridden by a caller -- the demo case
+    always uses its own bundled, verified GLEIF fixture regardless of what
+    a caller supplies."""
+    _drive_demo_case_to_reconcile_eligible(client)
+
+    response = client.post(
+        "/cases/demo/reconcile",
+        json={
+            "gleif_lei_file": GLEIF_LEI_FILE,  # a different, non-demo GLEIF snapshot
+            "gleif_relationships_file": GLEIF_RELATIONSHIPS_FILE,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "gleif_ownership" in body["discovery_sources"]
+    assert body["tie_count"] == 1  # the demo's own real NIO INC. tie, unaffected
+
+    worksheet = client.get("/cases/demo/worksheet").json()
+    assert worksheet["tie_rows"][0]["tie"]["concern_entity_name"] == "NIO INC."
 
 
 # --- S12: every mutating route is gated, proven structurally, not one at a time ---

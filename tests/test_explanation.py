@@ -8,6 +8,7 @@ tests/test_explanation_real_model.py, skip-guarded on ANTHROPIC_API_KEY.
 """
 from __future__ import annotations
 
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -239,6 +240,84 @@ def test_tie_recitation_contains_evidence_and_no_forbidden_lexicon(kind):
     t = _tie(kind)
     text = recite(t)
     assert t.concern_entity_name in text
+    assert lexicon.is_clean(text)
+
+
+def _hit_with_ownership_path(employer_name: str) -> ScreeningHit:
+    return ScreeningHit(
+        entity_id="aff-subsidiary",
+        list_name="dod_section_1260h",
+        matched_variant="NIO INC.",
+        matched_field="ownership_ultimate_parent",
+        confidence=1.0,
+        evidence={"ownership_path": {"declared_employer_name": employer_name}},
+        status=MatchStatus.CANDIDATE_MATCH,
+        producer="ownership_parent",
+    )
+
+
+def test_ownership_tie_recitation_names_the_employer_and_states_a_real_two_node_link_count():
+    """M1/M2, the real 2-node case (the demo's own shape): record_count is
+    read off the tie directly, not off len(relationship_path)."""
+    t = dataclasses.replace(
+        _tie(),
+        record_count=1,
+        concern_list_evidence=(_hit_with_ownership_path("Nanjing Zhongke Robotics Co., Ltd."),),
+    )
+    text = recite(t)
+    assert "Nanjing Zhongke Robotics Co., Ltd." in text
+    assert "1 link(s)" in text
+    assert lexicon.is_clean(text)
+
+
+def test_ownership_tie_recitation_states_a_real_three_node_link_count():
+    """M1/M2, the multi-hop case (S1's new fixture): a 3-node chain is 2
+    real links, not the node count."""
+    t = dataclasses.replace(
+        _tie(),
+        record_count=2,
+        concern_list_evidence=(_hit_with_ownership_path("Multihop Fixture Subsidiary Co"),),
+    )
+    text = recite(t)
+    assert "Multihop Fixture Subsidiary Co" in text
+    assert "2 link(s)" in text
+
+
+def test_ownership_tie_recitation_states_the_link_count_even_with_no_foreign_control_flag():
+    """S1's same-jurisdiction-but-listed case: real path/hop data exists on
+    the tie, but no ForeignControlFlag is attached (it isn't foreign
+    control). The recitation must still state the real link count, proving
+    it reads t.record_count, not the (possibly empty) ownership_evidence
+    tuple."""
+    t = dataclasses.replace(
+        _tie(),
+        record_count=1,
+        country="CN",
+        hq_country="CN",
+        ownership_evidence=(),
+        concern_list_evidence=(_hit_with_ownership_path("Samejur Fixture Subsidiary Co"),),
+    )
+    text = recite(t)
+    assert "Samejur Fixture Subsidiary Co" in text
+    assert "1 link(s)" in text
+    assert lexicon.is_clean(text)
+
+
+def test_ownership_tie_recitation_labels_both_jurisdiction_verdicts_separately():
+    """S3: legal jurisdiction and HQ country are two independent facts,
+    each labelled -- never merged into one bare "country" claim."""
+    t = dataclasses.replace(
+        _tie(),
+        country="KY",
+        country_on_adversary_list=False,
+        hq_country="CN",
+        hq_country_on_adversary_list=True,
+    )
+    text = recite(t)
+    assert "legal jurisdiction KY" in text
+    assert "headquartered in CN" in text
+    assert "legal: False" in text
+    assert "HQ: True" in text
     assert lexicon.is_clean(text)
 
 

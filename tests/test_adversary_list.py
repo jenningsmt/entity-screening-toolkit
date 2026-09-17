@@ -84,7 +84,7 @@ def test_discover_from_publications_wires_a_real_adversary_country():
     }
     adversary_list = load_adversary_list()
     discovered = discover_from_publications(
-        "Test Subject", "Some University", [], adversary_list, works_fixture=works["works"]
+        "Test Subject", "Some University", adversary_list, works_fixture=works["works"]
     )
     by_name = {d.institution_name: d for d in discovered}
     assert by_name["A China Institution"].country_on_adversary_list is True

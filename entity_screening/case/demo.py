@@ -61,7 +61,15 @@ DEMO_COI_CASE_ID = "demo-coi"
 # deterministic uuid5 of the natural key -- every v6-era row's id changes
 # value, so this bump forces the same self-heal rebuild (findings, ties,
 # and their pre-generated explanations) under the new ids.
-DEMO_FIXTURE_VERSION = 7
+# v8: Phase 4 -- the ownership tie's evidence is now a real traversal
+# (S1), carries a second, independent HQ-country verdict (S3), and its
+# recitation names the declared employer and states both jurisdiction
+# verdicts (M1/M2). finding_id/tie_id are unchanged (confirmed by the
+# phase's own demo-evidence diff); this bump forces the self-heal rebuild
+# so a pre-existing data volume's cached rows/explanations reflect the
+# corrected evidence rather than orphaning silently against the new
+# evidence_hash_for key.
+DEMO_FIXTURE_VERSION = 8
 
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "demo_case"
 

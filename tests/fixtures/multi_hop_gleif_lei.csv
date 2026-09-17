@@ -1,0 +1,4 @@
+LEI,Entity.LegalName,Entity.LegalJurisdiction,Entity.HeadquartersAddress.Country,Entity.EntityStatus,Entity.EntityCategory
+LEI-MULTIHOP-SUB,Multihop Fixture Subsidiary Co,US,US,ACTIVE,GENERAL
+LEI-MULTIHOP-MID,Multihop Fixture Midco,US,US,ACTIVE,GENERAL
+LEI-MULTIHOP-ULT,Aviation Industry Corporation of China Ltd.,CN,CN,ACTIVE,GENERAL

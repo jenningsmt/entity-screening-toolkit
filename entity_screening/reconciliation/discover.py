@@ -32,7 +32,7 @@ from entity_screening.common.schema import (
     ScreeningHit,
     TieKind,
 )
-from entity_screening.ownership.graph import DEFAULT_MAX_DEPTH, ultimate_parent
+from entity_screening.ownership.graph import DEFAULT_MAX_DEPTH, parent_chain
 from entity_screening.ownership.match import resolve_entity_to_lei
 from entity_screening.resolution.matcher import (
     DEFAULT_THRESHOLD,
@@ -113,7 +113,6 @@ def _aggregate_own_affiliations(
 def discover_from_publications(
     subject_display_name: str,
     hiring_institution_name: str,
-    declared_affiliations: list[DeclaredAffiliation],  # unused here; kept for a symmetric signature
     adversary_list: AdversaryCountryList,
     *,
     contact_email: str | None = None,
@@ -250,14 +249,26 @@ def tie_from_ownership(
     concern_threshold: float = DEFAULT_CONCERN_THRESHOLD,
     max_depth: int = DEFAULT_MAX_DEPTH,
 ) -> list[ConcernTie]:
-    """For each declared employer, resolve it to a GLEIF LEI, walk to its
-    ultimate parent(s), and screen each parent's legal name against the
-    concern lists. `conn` must already have GLEIF loaded (the caller does this
-    via ownership.ingest.load_gleif_level1/2, exactly as enrich_ownership
-    does). One ConcernTie per parent that produced a concern-list hit --
-    emitted **whether or not** the parent is itself declared, because
-    disclosure is the Sec. 51B.153 question and this is a Sec. 51B.151(b)
-    tie."""
+    """For each declared employer, resolve it to a GLEIF LEI, walk every real
+    chain to its ultimate parent(s) via `parent_chain` (the same primitive
+    `ownership/flagging.py:flag_from_match` uses for the batch path), and
+    screen each distinct ultimate parent's legal name against the concern
+    lists -- regardless of jurisdiction. `conn` must already have GLEIF
+    loaded (the caller does this via ownership.ingest.load_gleif_level1/2,
+    exactly as enrich_ownership does). One ConcernTie per distinct ultimate
+    parent that produced a concern-list hit -- emitted **whether or not**
+    the parent is itself declared, because disclosure is the Sec. 51B.153
+    question and this is a Sec. 51B.151(b) tie.
+
+    Deliberately does NOT delegate to `flag_from_match`: that function
+    exists to detect *foreign control* (Epic C) and silently skips any
+    ultimate parent whose jurisdiction matches the employer's own, before
+    any concern-list screening happens -- a same-jurisdiction parent that
+    IS concern-listed would then never even be checked, contradicting this
+    tie's own documented purpose (no jurisdiction precondition --
+    docs/use-case-01-hb127-researcher-screening.md). So the jurisdiction
+    check here controls only whether a `ForeignControlFlag` gets attached
+    to `ownership_evidence`, never whether the tie itself gets built."""
     employers = [
         a
         for a in declared_affiliations
@@ -270,25 +281,36 @@ def tie_from_ownership(
         )
         if match is None:
             continue
-        parents = ultimate_parent(conn, match.lei, max_depth=max_depth)
-        if parents is None:
+        result = parent_chain(conn, match.lei, direction="up", max_depth=max_depth)
+        if not result.chains:
             continue
-        parent_leis, truncated = parents
-        for parent_lei in parent_leis:
-            row = conn.execute(
-                "SELECT legal_name, legal_jurisdiction FROM gleif_lei WHERE lei = ?",
-                [parent_lei],
-            ).fetchone()
-            if row is None:
+
+        seen_ultimate_leis: set[str] = set()
+        for chain in result.chains:
+            ultimate_lei = chain[-1]
+            # A diamond-shaped graph can reach the same ultimate parent via
+            # more than one distinct path -- one tie per distinct parent,
+            # not per path (same de-dup rule as flag_from_match).
+            if ultimate_lei in seen_ultimate_leis:
                 continue
-            parent_name, parent_jurisdiction = row
+            seen_ultimate_leis.add(ultimate_lei)
+
+            parent_row = conn.execute(
+                "SELECT legal_name, legal_jurisdiction, hq_country FROM gleif_lei WHERE lei = ?",
+                [ultimate_lei],
+            ).fetchone()
+            if parent_row is None:
+                continue
+            parent_name, parent_jurisdiction, parent_hq_country = parent_row
+            full_path = (match.lei, *chain)
+
             ownership_path = {
                 "declared_employer_name": employer.institution_name,
                 "declared_employer_lei": match.lei,
                 "declared_employer_lei_match_basis": match.match_basis,
                 "declared_employer_lei_confidence": match.confidence,
-                "ultimate_parent_lei": parent_lei,
-                "chain_truncated": truncated,
+                "ultimate_parent_lei": ultimate_lei,
+                "chain_truncated": result.truncated,
             }
             hits = _screen_name_against_concern_lists(
                 parent_name,
@@ -300,23 +322,30 @@ def tie_from_ownership(
                 ownership_path=ownership_path,
             )
             if not hits:
-                continue
+                continue  # not concern-listed -- no tie, regardless of jurisdiction
 
-            flags: tuple[ForeignControlFlag, ...] = ()
+            # A ForeignControlFlag is attached only when the parent's
+            # jurisdiction genuinely differs from the employer's own --
+            # same-jurisdiction ownership isn't "foreign control" by Epic
+            # C's own definition. That's a separate fact from whether the
+            # tie exists: a same-jurisdiction, concern-listed parent still
+            # produces a tie, just with no ownership_evidence attached.
+            ownership_evidence: tuple[ForeignControlFlag, ...] = ()
             if parent_jurisdiction and parent_jurisdiction != match.legal_jurisdiction:
-                flags = (
+                ownership_evidence = (
                     ForeignControlFlag(
                         entity_id=employer.affiliation_id,
                         entity_lei=match.lei,
                         entity_jurisdiction=match.legal_jurisdiction,
-                        ultimate_parent_lei=parent_lei,
+                        ultimate_parent_lei=ultimate_lei,
                         ultimate_parent_name=parent_name,
                         ultimate_parent_jurisdiction=parent_jurisdiction,
-                        relationship_path=(match.lei, parent_lei),
+                        relationship_path=full_path,
                         match_confidence=match.confidence,
                         evidence={
                             "lei_match_basis": match.match_basis,
-                            "truncated": truncated,
+                            "relationship_path": list(full_path),
+                            "truncated": result.truncated,
                             "source_attribution": attribution_for("gleif_golden_copy"),
                         },
                         status=MatchStatus.CANDIDATE_MATCH,
@@ -346,11 +375,76 @@ def tie_from_ownership(
                     adversary_list_version=adversary_list.list_version,
                     first_observed=None,
                     last_observed=None,
-                    record_count=1,
+                    record_count=len(full_path) - 1,
                     concern_list_evidence=tuple(hits),
-                    ownership_evidence=flags,
+                    ownership_evidence=ownership_evidence,
+                    hq_country=parent_hq_country or None,
+                    hq_country_on_adversary_list=adversary_list.contains(parent_hq_country),
                 )
             )
+    return ties
+
+
+def ties_from_declared_affiliations(
+    case_id: str,
+    run_id: str,
+    declared_affiliations: list[DeclaredAffiliation],
+    concern_lists: list[EntityOfConcernList],
+    *,
+    concern_threshold: float = DEFAULT_CONCERN_THRESHOLD,
+) -> list[ConcernTie]:
+    """Screens each of the subject's OWN declared affiliations directly
+    against the concern lists (S2, TieKind.DECLARED_AFFILIATION_DIRECT) --
+    the case where the subject declares an affiliation with an entity that
+    is itself concern-listed, distinct from `tie_from_ownership` (a
+    declared employer's ultimate *parent* is listed) and
+    `ties_from_own_affiliations` (a *discovered*, not declared,
+    affiliation is listed).
+
+    No `adversary_list` parameter here -- a declared affiliation carries
+    only the country the subject stated, never independently verified
+    against the adversary list the way `_aggregate_own_affiliations`
+    verifies a discovered one, so `country_on_adversary_list` is left
+    None ("not yet checked"), not a guessed value."""
+    ties: list[ConcernTie] = []
+    for a in declared_affiliations:
+        hits = _screen_name_against_concern_lists(
+            a.institution_name,
+            concern_lists,
+            concern_threshold,
+            anchor_entity_id=a.affiliation_id,
+            matched_field="declared_affiliation_direct",
+            producer="declared_affiliation",
+        )
+        if not hits:
+            continue
+        ties.append(
+            ConcernTie(
+                # S5: deterministic, not uuid4 -- same natural-key
+                # rationale as the other two constructors (see
+                # ties_from_own_affiliations below): (case_id, tie_kind,
+                # anchor_affiliation_id, concern_entity_name).
+                tie_id=str(uuid.uuid5(
+                    uuid.NAMESPACE_DNS,
+                    f"tie|{case_id}|{TieKind.DECLARED_AFFILIATION_DIRECT.value}|"
+                    f"{a.affiliation_id}|{a.institution_name}",
+                )),
+                case_id=case_id,
+                run_id=run_id,
+                tie_kind=TieKind.DECLARED_AFFILIATION_DIRECT,
+                anchor_affiliation_id=a.affiliation_id,
+                related_finding_id=None,  # a declared affiliation has no corresponding finding
+                concern_entity_name=a.institution_name,
+                country=a.country,
+                country_on_adversary_list=None,  # not yet checked -- see docstring
+                adversary_list_version=None,
+                first_observed=a.start_date,
+                last_observed=a.end_date,
+                record_count=1,
+                concern_list_evidence=tuple(hits),
+                ownership_evidence=(),
+            )
+        )
     return ties
 
 

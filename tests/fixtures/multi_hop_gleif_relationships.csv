@@ -1,0 +1,3 @@
+Relationship.StartNode.NodeID,Relationship.EndNode.NodeID,Relationship.RelationshipType,Relationship.RelationshipStatus
+LEI-MULTIHOP-SUB,LEI-MULTIHOP-MID,IS_DIRECTLY_CONSOLIDATED_BY,ACTIVE
+LEI-MULTIHOP-MID,LEI-MULTIHOP-ULT,IS_DIRECTLY_CONSOLIDATED_BY,ACTIVE

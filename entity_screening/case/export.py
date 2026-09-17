@@ -91,6 +91,8 @@ def _tie_to_dict(tie) -> dict:
         "record_count": tie.record_count,
         "concern_list_evidence": [_hit_to_dict(h) for h in tie.concern_list_evidence],
         "ownership_evidence": [_flag_to_dict(f) for f in tie.ownership_evidence],
+        "hq_country": tie.hq_country,
+        "hq_country_on_adversary_list": tie.hq_country_on_adversary_list,
     }
 
 

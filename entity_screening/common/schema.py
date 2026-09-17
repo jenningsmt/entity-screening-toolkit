@@ -506,6 +506,18 @@ class ConcernTie:
     always None for an ownership tie (it has no corresponding finding). The
     traversal path and its truncation status live inside the evidence
     payloads, not duplicated here.
+
+    `country`/`country_on_adversary_list` are the ultimate parent's LEGAL
+    jurisdiction (of incorporation) and that jurisdiction's own adversary-
+    list verdict -- unchanged meaning from before S3. `hq_country`/
+    `hq_country_on_adversary_list` (S3) are the SEPARATE headquarters-
+    country attribute and its own independent verdict: a Cayman/BVI-
+    incorporated, China-headquartered parent can read `country_on_
+    adversary_list=False` while `hq_country_on_adversary_list=True` --
+    both are real, independently computed facts, not two views of the same
+    one. Both pairs are None for OWN_AFFILIATION_HISTORY/
+    DECLARED_AFFILIATION_DIRECT ties, which have no ownership dimension at
+    all.
     """
 
     tie_id: str
@@ -523,6 +535,8 @@ class ConcernTie:
     record_count: int
     concern_list_evidence: tuple[ScreeningHit, ...]
     ownership_evidence: tuple[ForeignControlFlag, ...] = ()
+    hq_country: str | None = None
+    hq_country_on_adversary_list: bool | None = None
 
 
 class WorksheetActionKind(Enum):
@@ -631,6 +645,8 @@ _OBSERVATION_GRAPH_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
             "record_count",
             "concern_list_evidence",
             "ownership_evidence",
+            "hq_country",
+            "hq_country_on_adversary_list",
         }
     ),
     "DiscoveredAffiliation": frozenset(
@@ -660,6 +676,36 @@ _OBSERVATION_GRAPH_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
             "scope_compatible",
         }
     ),
+    # S15: ConcernTie embeds both of these (concern_list_evidence /
+    # ownership_evidence) but neither was ever in this allowlist -- they
+    # were invisible to cli.py's validate walk. Field sets copied from the
+    # dataclasses themselves, same as every other entry here.
+    "ScreeningHit": frozenset(
+        {
+            "entity_id",
+            "list_name",
+            "matched_variant",
+            "matched_field",
+            "confidence",
+            "evidence",
+            "status",
+            "producer",
+        }
+    ),
+    "ForeignControlFlag": frozenset(
+        {
+            "entity_id",
+            "entity_lei",
+            "entity_jurisdiction",
+            "ultimate_parent_lei",
+            "ultimate_parent_name",
+            "ultimate_parent_jurisdiction",
+            "relationship_path",
+            "match_confidence",
+            "evidence",
+            "status",
+        }
+    ),
 }
 
 # Field-name substrings that must never appear on an observation type: an
@@ -681,3 +727,20 @@ _FORBIDDEN_OBSERVATION_FIELD_TOKENS: tuple[str, ...] = (
     "prevent",
     "disqualif",
 )
+
+
+def walk_dict_keys(obj: object):
+    """Recursively yields every key of a dict, descending into nested
+    dicts/lists/tuples -- the field-name check above sees only a
+    dataclass's own declared fields; `ScreeningHit`/`ForeignControlFlag`'s
+    `evidence: dict[str, Any]` is an open payload no dataclass field-name
+    check can see inside (S15). Shared by cli.py's `validate` command and
+    tests/test_output_contract.py's export-contract walk, so both apply
+    the identical recursive rule rather than each keeping its own copy."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            yield key
+            yield from walk_dict_keys(value)
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:
+            yield from walk_dict_keys(item)

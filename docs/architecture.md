@@ -381,13 +381,20 @@ pattern from Section 9); omit it and pass `--nsf-date-start`/`--nsf-date-end`
 
 ## Known limitations
 
-**Ownership-parent screening only runs against a bundled fixture, not any
-real non-demo data.** `tie_from_ownership` (Use Case 01's concern-tie path)
-requires a GLEIF Level 1/2 snapshot to be loaded; the only one bundled with
-this repo is the demo's own 2-row fixture
-(`tests/fixtures/demo_case/gleif_lei.csv`/`gleif_relationships.csv`). A case
-created via `POST /cases` never receives GLEIF files today, so it never gets
-ownership-parent screening — there is no real path to it yet, only the demo
-one. This is separate from 1260H/OpenSanctions screening of the subject's
-own declared/discovered affiliations (`ties_from_own_affiliations`), which
+**Ownership-parent screening for a non-demo case now has a real path, but
+not an automatic one (Phase 4, B4-followup).** `tie_from_ownership` (Use
+Case 01's concern-tie path) requires a GLEIF Level 1/2 snapshot to be
+loaded. `POST /cases/{id}/reconcile` now accepts caller-supplied
+`gleif_lei_file`/`gleif_relationships_file`/`opensanctions_file` paths,
+gated by the same `MONOPS_DATA_FILE_ALLOWLIST` mechanism the batch
+`/runs/{id}/ownership` route already used — an operator who already has a
+GLEIF snapshot on disk (downloaded once, out of band) can point a non-demo
+case's reconcile call at it. The remaining limitation: nothing in this
+build fetches a GLEIF snapshot automatically — a live GLEIF Golden Copy
+download is a large, gated fetch, deliberately out of scope for this
+project. `demo`/`demo-coi` always use their own bundled, verified fixture
+regardless of what a caller supplies — a caller cannot override demo
+integrity. This is separate from 1260H/OpenSanctions screening of the
+subject's own declared/discovered affiliations
+(`ties_from_own_affiliations`/`ties_from_declared_affiliations`), which
 has no GLEIF dependency and runs for every case, demo or not.

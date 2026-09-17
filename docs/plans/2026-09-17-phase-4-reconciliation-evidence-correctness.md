@@ -679,42 +679,153 @@ afterward.
 
 ## Verification summary (binding acceptance criteria)
 
-- [ ] `cli validate` walks `ScreeningHit`/`ForeignControlFlag` and
+- [x] `cli validate` walks `ScreeningHit`/`ForeignControlFlag` and
       recursively into every `evidence` dict; fails on a planted
       forbidden-token key nested inside one (fails on the unmodified tree
       first).
-- [ ] 3-node chain fixture: `MID` appears in `ownership_evidence[0].relationship_path`;
+- [x] 3-node chain fixture: `MID` appears in `ownership_evidence[0].relationship_path`;
       `record_count` reflects the real 2-link chain.
-- [ ] Same-jurisdiction, concern-listed parent still produces a
+- [x] Same-jurisdiction, concern-listed parent still produces a
       `ConcernTie` (with `ownership_evidence == ()`) — the regression the
       first plan draft would have silently introduced.
-- [ ] `compute_foreign_control_flag` deleted; its 6 test call sites
+- [x] `compute_foreign_control_flag` deleted; its 6 test call sites
       updated to call `resolve_entity_to_lei` + `flag_from_match` directly.
-- [ ] The demo's own ownership tie shows both `country`/`country_on_adversary_list`
+- [x] The demo's own ownership tie shows both `country`/`country_on_adversary_list`
       (legal) and `hq_country`/`hq_country_on_adversary_list` (HQ),
       independently computed, each labelled in the recitation.
-- [ ] `NearestDeclared.scope_compatible` is computed (not `True` by
+- [x] `NearestDeclared.scope_compatible` is computed (not `True` by
       default) against the demo's own near-miss candidate data; an
       `"employment"`-categorized `TEMPORAL_WINDOW` source never admits a
       `publication_affiliation`-sourced item (fails on the unmodified
       tree first).
-- [ ] `reconcile()`'s clearance gate is unchanged (deliberately) — both
+- [x] `reconcile()`'s clearance gate is unchanged (deliberately) — both
       demo cases' finding counts are unaffected by the scope_compatible
       fix, confirmed by re-running both after the change.
-- [ ] `DECLARED_AFFILIATION_DIRECT` has a producer and a test; zero new
+- [x] `DECLARED_AFFILIATION_DIRECT` has a producer and a test; zero new
       ties for either demo case (confirmed, not assumed) — or explicitly
       dropped from this phase with a dated note, per the strategy doc's
       own "optional" framing.
-- [ ] Recitation states the real link count and names the declared
+- [x] Recitation states the real link count and names the declared
       employer; a real 2-node flag recites "1 link(s)."
-- [ ] `discover_from_publications`'s unused parameter removed; all 3 call
+- [x] `discover_from_publications`'s unused parameter removed; all 3 call
       sites updated.
-- [ ] A non-demo case can supply an allowlisted GLEIF snapshot through
+- [x] A non-demo case can supply an allowlisted GLEIF snapshot through
       `POST .../reconcile` and get real ownership-parent screening; a
       caller-supplied GLEIF path is ignored for `demo`/`demo-coi`.
-- [ ] One `DEMO_FIXTURE_VERSION` bump (7→8); demo-evidence diff recorded
+- [x] One `DEMO_FIXTURE_VERSION` bump (7→8); demo-evidence diff recorded
       in the implementation note, non-empty on evidence fields, unchanged
       on finding/tie counts and ids.
-- [ ] Full suite green; `cli validate` passes.
+- [x] Full suite green; `cli validate` passes.
 - [ ] Deployed; both demo cases confirmed loading; the ownership tie's
       recitation confirmed corrected on the live site.
+
+## Implementation note (2026-09-17)
+
+Built as planned, with one deviation and one confirmed-optional item kept
+in (not dropped):
+
+**S1** shipped exactly as revised in review: `tie_from_ownership` now
+calls `parent_chain` directly, screens every distinct ultimate parent
+regardless of jurisdiction, and attaches `ForeignControlFlag` only when
+jurisdictions genuinely differ. `compute_foreign_control_flag` deleted;
+its 6 test call sites in `tests/test_ownership_flagging.py` now call
+`resolve_entity_to_lei` + `flag_from_match` directly (no wrapper
+reintroduced -- an early draft of this edit added one back and was
+caught and removed before landing). New fixtures:
+`tests/fixtures/multi_hop_gleif_lei.csv`/`multi_hop_gleif_relationships.csv`
+(a genuine 3-node SUB->MID->ULTIMATE chain) back a direct unit test on
+`tie_from_ownership` proving `record_count == 2` and `MID` appears in
+`relationship_path`. The same-jurisdiction-but-listed regression test
+(the one the first plan draft would have failed) is
+`tests/test_reconciliation.py::test_tie_from_ownership_still_ties_a_same_jurisdiction_listed_parent`.
+
+**S3**: `ConcernTie.hq_country`/`hq_country_on_adversary_list` added.
+**Deviation from the plan as reviewed**: the plan's storage-layer impact
+wasn't spelled out in the reviewed text, and building it surfaced a real
+gap -- `entity_screening/common/storage.py`'s `concern_ties` DDL,
+`case/store.py`'s `_TIE_COLUMNS`/`replace_ties`/`load_ties`, and
+`case/export.py`'s `_tie_to_dict` all had to be extended too, or the two
+new fields would silently vanish on every save/reload round-trip (the API
+response, the worksheet UI, and the investigative-file export all read
+through `_tie_to_dict`). Added an idempotent `ALTER TABLE concern_ties
+ADD COLUMN IF NOT EXISTS` migration (same pattern already used for
+`screening_hits.producer`/`cases.declaration_id`) rather than relying only
+on `CREATE TABLE IF NOT EXISTS`, which is a no-op against a pre-existing
+DB file. Verified empirically against the demo's own NIO INC. tie: legal
+jurisdiction `KY` -> adversary-list `False`; HQ `CN` -> adversary-list
+`True` -- the two verdicts genuinely differ, confirming the review's
+prediction rather than assuming it.
+
+**S4/M4, S2, M21, B4-followup** shipped exactly as planned. S2's producer
+was kept (not dropped) since it was small and confirmed zero-impact, per
+the plan's own "recommend building it" framing. B4-followup's new
+`/cases/{id}/reconcile` fields are gated through the same
+`allowed_data_files`/`check_allowlisted` mechanism as the batch route;
+`demo`/`demo-coi` ignore a caller-supplied path (tested explicitly in
+`tests/test_api_security.py`, including the demo-integrity-can't-be-
+overridden case, which required driving the demo case through its full
+WORKSHEET -> ADJUDICATION -> OUTCOME -> CLOSED -> DISCOVERY cycle first,
+since the demo case self-heals into WORKSHEET on first touch and
+`reconcile` refuses to run again from there).
+
+**Demo-evidence diff** (the one phase expected to produce one), read
+directly off the demo's own NIO INC. tie, before vs. after:
+
+| field | before | after |
+|---|---|---|
+| `record_count` | `1` (hard-coded) | `1` (now the real 1-hop `parent_chain` walk -- same value, now computed) |
+| `ownership_evidence[0].relationship_path` | `(SUB_lei, ULT_lei)` (hard-coded 2-tuple) | `(SUB_lei, ULT_lei)` (same value, now `(match.lei, *chain)` from the real traversal) |
+| `hq_country` | field did not exist | `"CN"` |
+| `hq_country_on_adversary_list` | field did not exist | `True` |
+| `country_on_adversary_list` | `False` (KY) | `False` (unchanged -- this check predates Phase 4) |
+| recitation | *"A declared employer's ultimate parent, per GLEIF ownership data, is NIO INC. (KY), which appears on dod_section_1260h via an ownership chain of 2 link(s)."* (M1/M2's bug: 2 is the node count of a hard-coded 2-tuple, not the real 1-hop link count) | *"Nanjing Zhongke Robotics Co., Ltd.'s ultimate parent, per GLEIF ownership data, is NIO INC., legal jurisdiction KY, headquartered in CN, which appears on dod_section_1260h via an ownership chain of 1 link(s) (adversary-list -- legal: False, HQ: True)."* |
+
+`finding_id`/`tie_id` are byte-identical before and after (confirmed --
+neither the tie's natural key nor `case_id`/`tie_kind`/
+`anchor_affiliation_id`/`concern_entity_name` changed). Both demo cases'
+finding counts (2 for HB-127, 3 for demo-coi) and tie counts (1 each) are
+unchanged. `DEMO_FIXTURE_VERSION` bumped 7->8 so a pre-existing data
+volume's cached rows self-heal into the corrected evidence on next
+deploy.
+
+**Not done in this session**: the live-key explanation regeneration
+itself. The code change landed, but no `ANTHROPIC_API_KEY` was available
+in this environment to actually run it and record the real synthesis
+yield -- same limitation Phase 2's S13 hit. Deploy (and the live-site
+recitation confirmation) is still outstanding, same as Phase 3.
+
+**Two corrections made after independent review of this diff, before any
+commit:**
+
+1. **B4-followup's new tests had a live network dependency.** The
+   `/cases/{id}/reconcile` tests drive a non-demo case through the real
+   `pipeline.reconcile_case`, which -- unlike the demo path -- has no
+   `works_fixture` to short-circuit `discover_from_publications`, and the
+   HTTP route can't accept an injectable `fetch` over the wire. This was
+   the only test in the suite reaching live `api.openalex.org` with
+   nothing standing in front of it, and it was caught by a real failure
+   (proxy-blocked) rather than by inspection. Fixed with an autouse
+   `no_live_openalex_calls` fixture in `tests/test_api_security.py` that
+   monkeypatches `openalex_client._http_get` to return an empty result --
+   the identical fixture (same name, same fix) `tests/test_api_bibliometric.py`
+   already uses for the same reason.
+2. **The live-key regeneration switch wasn't actually scoped to deploy
+   time.** As first written, `_ensure_demo_case_exists` gated on a bare
+   `os.environ.get("ANTHROPIC_API_KEY")` -- but that function runs from
+   the plain test suite too (any test touching `/cases/demo/...`, five
+   files' worth), and `ANTHROPIC_API_KEY` is commonly already set in a
+   developer's shell for reasons unrelated to this project (other Claude
+   tooling). A developer running the ordinary suite with that var set
+   would have silently started making real, billed API calls across those
+   tests -- confirmed current CI is safe today (the base `test` job never
+   sets the secret; `llm-explanation-real-model.yml` scopes it to one
+   file) so nothing was actually broken, but it was a latent trap sitting
+   on an accident of a shared env var name, not a deliberate gate. Fixed
+   by requiring a second, separate opt-in,
+   `MONOPS_DEMO_LIVE_SYNTHESIS` (documented in
+   `docs/deployment-runbook.md`'s §8), set only by a deliberate deploy
+   step -- never by the base test/CI config -- alongside the real key.
+   Added `tests/test_api_case.py::test_demo_self_heal_never_calls_the_live_anthropic_client_from_anthropic_api_key_alone`,
+   which monkeypatches `_default_anthropic_call` to raise if called and
+   sets only `ANTHROPIC_API_KEY` (not the new opt-in), proving the gate
+   holds.

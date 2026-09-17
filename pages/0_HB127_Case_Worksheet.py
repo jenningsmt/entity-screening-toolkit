@@ -435,10 +435,15 @@ if tie_rows:
                     "confidence": round(
                         max((h["confidence"] for h in r["tie"]["concern_list_evidence"]), default=0.0), 3
                     ),
-                    "country": r["tie"]["country"] or "—",
-                    "adversary-list": (
+                    "country (legal)": r["tie"]["country"] or "—",
+                    "adversary-list (legal)": (
                         "not yet checked" if r["tie"]["country_on_adversary_list"] is None
                         else str(r["tie"]["country_on_adversary_list"])
+                    ),
+                    "country (HQ)": r["tie"].get("hq_country") or "—",
+                    "adversary-list (HQ)": (
+                        "not yet checked" if r["tie"].get("hq_country_on_adversary_list") is None
+                        else str(r["tie"]["hq_country_on_adversary_list"])
                     ),
                     "also an omission": (
                         _finding_label.get(r["tie"]["related_finding_id"], "—")

@@ -291,7 +291,9 @@ CREATE TABLE IF NOT EXISTS concern_ties (
     last_observed VARCHAR,
     record_count INTEGER,
     concern_list_evidence JSON,
-    ownership_evidence JSON
+    ownership_evidence JSON,
+    hq_country VARCHAR,
+    hq_country_on_adversary_list BOOLEAN
     -- Current state per case, like findings: replace_ties deletes
     -- WHERE case_id = ? before inserting.
 );
@@ -466,6 +468,16 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     )
     conn.execute(
         "UPDATE cases SET case_kind = 'hb127_researcher_screening' WHERE case_kind IS NULL"
+    )
+    # Phase 4 S3: hq_country/hq_country_on_adversary_list are a second,
+    # independent country attribute on ConcernTie (headquarters, not legal
+    # jurisdiction) -- added to an existing table via the same idempotent
+    # ADD COLUMN pattern above. No backfill: a pre-existing row's tie is
+    # re-derived on the next reconcile (replace_ties deletes and re-inserts
+    # per case), not patched in place.
+    conn.execute("ALTER TABLE concern_ties ADD COLUMN IF NOT EXISTS hq_country VARCHAR")
+    conn.execute(
+        "ALTER TABLE concern_ties ADD COLUMN IF NOT EXISTS hq_country_on_adversary_list BOOLEAN"
     )
     _migrate_drop_ownership_flags_primary_key(conn)
     # S5: finding_id/tie_id are now deterministic (uuid5 of the natural

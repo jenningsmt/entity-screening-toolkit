@@ -7,42 +7,8 @@ from __future__ import annotations
 import duckdb
 
 from entity_screening.common.attribution import attribution_for
-from entity_screening.common.schema import (
-    ForeignControlFlag,
-    MatchStatus,
-    OwnershipMatch,
-    ResolvedEntity,
-)
+from entity_screening.common.schema import ForeignControlFlag, MatchStatus, OwnershipMatch
 from entity_screening.ownership.graph import DEFAULT_MAX_DEPTH, parent_chain
-from entity_screening.ownership.match import DEFAULT_BLOCK_SIZE, resolve_entity_to_lei
-from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
-
-
-def compute_foreign_control_flag(
-    conn: duckdb.DuckDBPyConnection,
-    entity: ResolvedEntity,
-    threshold: float = DEFAULT_THRESHOLD,
-    max_depth: int = DEFAULT_MAX_DEPTH,
-    block_size: int = DEFAULT_BLOCK_SIZE,
-) -> list[ForeignControlFlag]:
-    """Returns zero, one, or more flags if `entity` resolves to an LEI with a
-    known ultimate parent in a *different* jurisdiction than the entity
-    itself; empty if the jurisdictions match, no LEI match clears
-    `threshold`, or no parent relationship is known at all. More than one
-    flag means a genuinely branching ownership graph (see
-    `ownership/graph.py:ParentChain`'s docstring) — not a caller error.
-
-    Resolves the LEI match itself — for a caller (like `pipeline.enrich_ownership`)
-    that already has an `OwnershipMatch` in hand (e.g. because it also needs to
-    persist every entity's match, flagged or not), call `flag_from_match`
-    directly instead to avoid resolving the same entity twice.
-    """
-    match = resolve_entity_to_lei(
-        conn, entity.entity_id, entity.canonical_name, threshold, block_size=block_size
-    )
-    if match is None:
-        return []
-    return flag_from_match(conn, match, max_depth=max_depth)
 
 
 def flag_from_match(

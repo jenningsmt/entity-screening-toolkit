@@ -32,6 +32,7 @@ from entity_screening.common.schema import (
     WorksheetActionKind,
 )
 from entity_screening.common.schema import _FORBIDDEN_OBSERVATION_FIELD_TOKENS
+from entity_screening.common.schema import walk_dict_keys as _walk_keys
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 NSF_FILE = str(FIXTURES_DIR / "sample_nsf_awards.json")
@@ -122,16 +123,6 @@ def test_output_contract_at_the_csv_and_api_boundaries(client, tmp_path):
     for s in scores:
         has_evidence = bool(s["screening_hits"]) or bool(s["ownership_flags"])
         assert s["status"] == ("candidate_match" if has_evidence else "no_hit")
-
-
-def _walk_keys(obj):
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            yield k
-            yield from _walk_keys(v)
-    elif isinstance(obj, list):
-        for item in obj:
-            yield from _walk_keys(item)
 
 
 def test_investigative_file_export_contract(tmp_path):
@@ -254,13 +245,11 @@ def test_investigative_file_export_contract(tmp_path):
             assert attribution["license"], "Section 10: licence must reach the investigative file"
 
     # --- no evaluative field anywhere in the serialized observation graphs (Section 4) ---
+    # S15: concern_list_evidence is no longer excluded -- it's walked the
+    # same as everything else now that cli.py's validate command also
+    # covers ScreeningHit/ForeignControlFlag's evidence dicts.
     observation_keys = set(_walk_keys(payload["findings"])) | set(
-        _walk_keys(
-            [
-                {k: v for k, v in t.items() if k != "concern_list_evidence"}
-                for t in payload["concern_ties"]
-            ]
-        )
+        _walk_keys(payload["concern_ties"])
     )
     for key in observation_keys:
         for token in _FORBIDDEN_OBSERVATION_FIELD_TOKENS:

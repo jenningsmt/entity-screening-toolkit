@@ -5,9 +5,10 @@ from pathlib import Path
 from entity_screening.common import storage
 from entity_screening.common.schema import MatchStatus, ResolvedEntity
 from entity_screening.ingestion.base import IngestionErrorLog
-from entity_screening.ownership.flagging import compute_foreign_control_flag
+from entity_screening.ownership.flagging import flag_from_match
 from entity_screening.ownership.ingest import load_gleif_level1, load_gleif_level2
 from entity_screening.ownership.match import resolve_entity_to_lei
+from entity_screening.resolution.matcher import DEFAULT_THRESHOLD
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -33,7 +34,8 @@ def test_positive_foreign_control_case(tmp_path):
     conn = _conn_with_gleif_loaded(tmp_path)
     entity = _entity("Fixture Subsidiary Corp")
 
-    flags = compute_foreign_control_flag(conn, entity)
+    match = resolve_entity_to_lei(conn, entity.entity_id, entity.canonical_name, DEFAULT_THRESHOLD)
+    flags = flag_from_match(conn, match)
 
     assert len(flags) == 1
     flag = flags[0]
@@ -52,7 +54,8 @@ def test_same_jurisdiction_negative_case(tmp_path):
     conn = _conn_with_gleif_loaded(tmp_path)
     entity = _entity("Fixture Same Country Sub")
 
-    flags = compute_foreign_control_flag(conn, entity)
+    match = resolve_entity_to_lei(conn, entity.entity_id, entity.canonical_name, DEFAULT_THRESHOLD)
+    flags = flag_from_match(conn, match) if match is not None else []
 
     assert flags == []
     conn.close()
@@ -62,7 +65,8 @@ def test_no_lei_match_case(tmp_path):
     conn = _conn_with_gleif_loaded(tmp_path)
     entity = _entity("Totally Unrelated Name Zzqx")
 
-    flags = compute_foreign_control_flag(conn, entity)
+    match = resolve_entity_to_lei(conn, entity.entity_id, entity.canonical_name, DEFAULT_THRESHOLD)
+    flags = flag_from_match(conn, match) if match is not None else []
 
     assert flags == []
     conn.close()
@@ -72,7 +76,8 @@ def test_no_known_parent_case(tmp_path):
     conn = _conn_with_gleif_loaded(tmp_path)
     entity = _entity("Fixture No Parent Entity")
 
-    flags = compute_foreign_control_flag(conn, entity)
+    match = resolve_entity_to_lei(conn, entity.entity_id, entity.canonical_name, DEFAULT_THRESHOLD)
+    flags = flag_from_match(conn, match) if match is not None else []
 
     assert flags == []
     conn.close()
@@ -88,7 +93,8 @@ def test_flag_from_a_truncated_chain_still_fires_but_says_so(tmp_path):
     conn = _conn_with_gleif_loaded(tmp_path)
     entity = _entity("Fixture Chain Start")
 
-    flags = compute_foreign_control_flag(conn, entity, max_depth=5)
+    match = resolve_entity_to_lei(conn, entity.entity_id, entity.canonical_name, DEFAULT_THRESHOLD)
+    flags = flag_from_match(conn, match, max_depth=5)
 
     assert len(flags) == 1
     flag = flags[0]
@@ -106,7 +112,8 @@ def test_flag_from_a_complete_chain_reports_truncated_false(tmp_path):
     conn = _conn_with_gleif_loaded(tmp_path)
     entity = _entity("Fixture Subsidiary Corp")
 
-    flags = compute_foreign_control_flag(conn, entity, max_depth=1)
+    match = resolve_entity_to_lei(conn, entity.entity_id, entity.canonical_name, DEFAULT_THRESHOLD)
+    flags = flag_from_match(conn, match, max_depth=1)
 
     assert flags == []  # LEI-DIRECT-PARENT (depth 1) is US, same as entity
     conn.close()
@@ -117,7 +124,6 @@ def test_flag_from_match_emits_one_flag_per_distinct_foreign_ultimate_parent(tmp
     ForeignControlFlag per distinct foreign ultimate parent, not a single
     flag with an arbitrarily-picked parent and a relationship_path that is
     an ordering artifact rather than a path that exists in the data."""
-    from entity_screening.ownership.flagging import flag_from_match
     from entity_screening.ownership.ingest import load_gleif_level2
 
     conn = storage.connect(tmp_path / "test.duckdb")

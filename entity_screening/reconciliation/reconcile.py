@@ -43,11 +43,26 @@ def _overlaps_temporal_window(
     discovered: DiscoveredAffiliation, descriptor: dict
 ) -> bool:
     """A TEMPORAL_WINDOW source covers the item if the discovered affiliation
-    reaches into the window. Anchor year minus window_years is the window's
-    start; the item is covered when its last observed year is at or after
-    that. An item with no observed dates cannot be placed in the window, so
-    it is treated as not covered -- the conservative reading, since claiming
-    coverage we can't establish would wrongly upgrade the finding."""
+    reaches into the window AND the window's own category admits this kind
+    of record. The only category value any fixture in this codebase uses is
+    "employment" (a DS-160/CV-style employment window); every OpenAlex-
+    sourced item's role is "publication_affiliation" (-prefixed) -- a
+    publication co-affiliation is evidence of an academic address on a
+    paper, not a verified employment relationship, so an employment window
+    never admits one, regardless of date overlap (S4/M4). Same conservative
+    principle as the missing-dates check below: claiming coverage we can't
+    establish would wrongly upgrade the finding. No other category value
+    exists yet to build a rule for -- add one only when a real fixture
+    needs it.
+
+    Anchor year minus window_years is the window's start; the item is
+    covered when its last observed year is at or after that. An item with
+    no observed dates cannot be placed in the window, so it is treated as
+    not covered."""
+    category = descriptor.get("category")
+    role = (discovered.role or "").lower()
+    if category == "employment" and role.startswith("publication_affiliation"):
+        return False
     window_years = descriptor.get("window_years")
     anchor = descriptor.get("anchor")
     if not window_years or not anchor:
@@ -88,6 +103,19 @@ def _source_covers(
         role = (discovered.role or "").lower()
         return any(t in role for t in enumerated)
     return False
+
+
+def _declared_source(
+    declaration: Declaration, declared: DeclaredAffiliation
+) -> DeclarationSource | None:
+    """The DeclarationSource a given declared affiliation was declared
+    under -- a lookup by source_id, not a name match. None only if the
+    declaration data itself is inconsistent (a declared affiliation citing
+    a source_id no source in the same declaration carries)."""
+    for source in declaration.sources:
+        if source.source_id == declared.source_id:
+            return source
+    return None
 
 
 def _declaration_search_trail(
@@ -138,17 +166,31 @@ def build_finding(
     best = best_declared_match(item.institution_name, declared, threshold)
     trail, any_in_scope = _declaration_search_trail(declaration, item)
     best_confidence = best.confidence if best is not None else 0.0
-    nearest = tuple(
-        NearestDeclared(
-            declared_affiliation_id=m.declared.affiliation_id,
-            institution_name=m.declared.institution_name,
-            best_confidence=m.confidence,
-            match_basis=m.match_basis,
-            cleared_name=m.cleared,
-            scope_compatible=True,  # scope is a source property; recorded in the trail
+    # S4/M4: scope_compatible is computed against the declaring source's
+    # actual scope, not hard-coded True -- reusing _source_covers exactly
+    # as _declaration_search_trail does above, so a candidate whose source
+    # doesn't admit this item's date/role reads False, not an unqualified
+    # claim of coverage. Diagnostic/trail information only: reconcile()'s
+    # clearance gate below stays name-match-only, deliberately (see its
+    # own docstring) -- wiring this into clearance would be correct for
+    # HB-127 but wrong for a COI/outside-interest declaration, whose
+    # single TYPE_ENUMERATION scope never admits a bare publication role
+    # at all (see docs/plans/2026-09-17-phase-4-reconciliation-evidence-
+    # correctness.md's empirical trace).
+    nearest_list = []
+    for m in ranked_declared_matches(item.institution_name, declared, threshold=threshold):
+        source = _declared_source(declaration, m.declared)
+        nearest_list.append(
+            NearestDeclared(
+                declared_affiliation_id=m.declared.affiliation_id,
+                institution_name=m.declared.institution_name,
+                best_confidence=m.confidence,
+                match_basis=m.match_basis,
+                cleared_name=m.cleared,
+                scope_compatible=_source_covers(source, item) if source is not None else False,
+            )
         )
-        for m in ranked_declared_matches(item.institution_name, declared, threshold=threshold)
-    )
+    nearest = tuple(nearest_list)
     return Finding(
         # S5: deterministic, not uuid4 -- a re-run of reconciliation must
         # produce the same finding_id for the same (case_id, source,

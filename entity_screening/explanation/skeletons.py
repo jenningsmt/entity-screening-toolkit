@@ -79,18 +79,31 @@ _FINDING_SKELETONS = {
 
 
 def _tie_declared_employer_ultimate_parent(t: ConcernTie) -> str:
+    # M1/M2: names the declared employer (reachable via the concern-list
+    # hit's own ownership_path evidence, never a bare "a declared
+    # employer") and reads the link count off `t.record_count`, not off
+    # `ownership_evidence` -- a same-jurisdiction-but-listed tie (S1) has
+    # real path/hop data but legitimately no ForeignControlFlag attached,
+    # and record_count is always populated on the tie itself either way.
     hit = t.concern_list_evidence[0] if t.concern_list_evidence else None
+    employer_name = (
+        (hit.evidence.get("ownership_path") or {}).get("declared_employer_name")
+        if hit else None
+    ) or "a declared employer"
     list_text = f" on {hit.list_name}" if hit else ""
-    flag = t.ownership_evidence[0] if t.ownership_evidence else None
-    path_text = (
-        f" via an ownership chain of {len(flag.relationship_path)} link(s)"
-        if flag is not None
-        else ""
+    path_text = f" via an ownership chain of {t.record_count} link(s)" if t.record_count else ""
+    # S3: legal jurisdiction and HQ country are two separate, independently
+    # verdicted facts -- each labelled, never merged into one "country."
+    jurisdiction_text = f", legal jurisdiction {t.country}" if t.country else ""
+    hq_text = f", headquartered in {t.hq_country}" if t.hq_country else ""
+    adversary_text = (
+        f" (adversary-list -- legal: {t.country_on_adversary_list}, "
+        f"HQ: {t.hq_country_on_adversary_list})"
     )
     return (
-        f"A declared employer's ultimate parent, per GLEIF ownership data, is "
-        f"{t.concern_entity_name}{f' ({t.country})' if t.country else ''}, which appears"
-        f"{list_text}{path_text}."
+        f"{employer_name}'s ultimate parent, per GLEIF ownership data, is "
+        f"{t.concern_entity_name}{jurisdiction_text}{hq_text}, which appears"
+        f"{list_text}{path_text}{adversary_text}."
     )
 
 
