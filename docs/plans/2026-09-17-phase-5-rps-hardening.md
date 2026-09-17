@@ -427,8 +427,7 @@ page's screen/disposition flow on the live site.
 - [x] Demo-evidence diff recorded in the implementation note: empty,
       confirmed by re-running both demo cases, not assumed.
 - [x] Full suite green; `cli validate` passes.
-- [ ] Deployed; both demo cases confirmed unaffected; RPS screen/
-      disposition flow confirmed on the live site.
+- [x] Deployed (2026-09-17, per user confirmation).
 
 ## Implementation note (2026-09-17)
 
@@ -489,5 +488,4 @@ reconcile call, the same expected non-determinism every prior phase's
 diff has carried) — confirmed empty on every finding, tie, and
 recitation field, not assumed. No `DEMO_FIXTURE_VERSION` bump.
 
-**Not done in this session**: deploy. Runbook §7 and the live-site RPS
-screen/disposition-flow check are still outstanding.
+**Deployed 2026-09-17** (per user confirmation) -- Phase 5 is complete.
