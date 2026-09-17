@@ -40,6 +40,7 @@ that's worth its own note in the file or a follow-up plan, not a silent rewrite.
 | 2026-09-16 | [Phase 1 -- public-surface hotfix](2026-09-16-phase-1-public-surface-hotfix.md) | Built and deployed (B2-B4, S7, S8, S12, M16, S6-interim) |
 | 2026-09-16 | [Phase 2 -- Epic J grounding gate](2026-09-16-phase-2-epic-j-grounding-gate.md) | Built and deployed (B1, S14, M17, S13, M20, S17; also bumped `DEMO_FIXTURE_VERSION` 5->6, required by M17) |
 | 2026-09-16 | [Phase 3 -- run identity and case lifecycle](2026-09-16-phase-3-run-identity-and-case-lifecycle.md) | Built (S5, M10, M18, M19, M5, M6, M7; switches finding/tie ids to deterministic uuid5, bumps `DEMO_FIXTURE_VERSION` 6->7; full suite + `cli validate` green; demo-evidence diff confirmed empty; deploy still outstanding) |
+| 2026-09-17 | [Phase 4 -- reconciliation evidence correctness](2026-09-17-phase-4-reconciliation-evidence-correctness.md) | Approved, not yet built (S15, S1, S3, S4/M4, S2, M1/M2, M21, B4-followup; the one phase expected to change demo evidence -- see the plan's own Context section) |
 
 **Resolved gap in this log (2026-09-15):** the V2/Epic C plan (GLEIF ownership graph +
 foreign-control flagging) was approved via plan mode but never copied here — an
