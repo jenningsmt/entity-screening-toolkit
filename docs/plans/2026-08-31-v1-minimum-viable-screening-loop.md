@@ -7,7 +7,7 @@
 
 ## Context
 
-`docs/requirements.md` is a complete, approved-for-review spec (status: Draft for review) for a portfolio project that reproduces, at hobby scale, entity-resolution and foreign-affiliation due-diligence screening against open data. The repo currently contains only an empty package skeleton (`entity_screening/{bibliometric,ingestion,ownership,resolution,scoring,screening}/__init__.py`, all empty) and `requirements.txt` (duckdb, pandas, pyarrow, rapidfuzz, streamlit, requests, pytest). Nothing has been built yet.
+`docs/requirements.md` is a complete, approved-for-review spec (status: Draft for review) for a portfolio project that creates an open-source experimental platform for studying the reliability, limitations and human-review requirements of cross-dataset entity resolution in research security analysis, via entity-resolution and foreign-affiliation due-diligence screening against open data. The repo currently contains only an empty package skeleton (`entity_screening/{bibliometric,ingestion,ownership,resolution,scoring,screening}/__init__.py`, all empty) and `requirements.txt` (duckdb, pandas, pyarrow, rapidfuzz, streamlit, requests, pytest). Nothing has been built yet.
 
 Per the requirements doc's own Section 12 roadmap and Section 11 risk note ("resist the urge to build all nine datasets before shipping anything"), and confirmed with the user, **this plan covers V1 only**: the minimum viable screening loop — NSF award data + OpenSanctions + fuzzy resolution + confidence scoring + CSV export + core tests. V2 (GLEIF ownership graph, Section 117) and V3 (OpenAlex bibliometric layer) are out of scope for this plan; the `ownership/` and `bibliometric/` packages stay empty stubs.
 

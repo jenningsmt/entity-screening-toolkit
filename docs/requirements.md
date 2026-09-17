@@ -8,7 +8,7 @@
 
 ## 1. Background & Purpose
 
-A public, non-classified, AI-assisted-development portfolio project that reproduces — at hobby scale, against open data — the core capability behind enterprise organizational due-diligence platforms, Palantir- and Microsoft-style threat/risk screening, and bibliometric affiliation-matching, a skill set commonly sought in research-security and compliance-technology roles. Built the same way the four Elite Dangerous tools were: Python, AI-assisted ("vibe coding") development with Claude, tested, packaged, and documented for public release.
+A public, non-classified, AI-assisted-development portfolio project, built against open data, that creates an open-source experimental platform for studying the reliability, limitations and human-review requirements of cross-dataset entity resolution in research security analysis — the same problem space as enterprise organizational due-diligence platforms, Palantir- and Microsoft-style threat/risk screening, and bibliometric affiliation-matching, a skill set commonly sought in research-security and compliance-technology roles. Built the same way the four Elite Dangerous tools were: Python, AI-assisted ("vibe coding") development with Claude, tested, packaged, and documented for public release.
 
 This is explicitly a learning and portfolio exercise, not a production compliance product and not an investigative tool making real accusations. Every design decision below should be read with that framing: it needs to demonstrate the tradecraft and the engineering discipline, not stand in for a real screening system.
 
