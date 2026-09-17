@@ -13,6 +13,7 @@ join key to an existing HB 127 case -- never a shared worksheet row-type.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -25,6 +26,7 @@ from entity_screening.api.deps import require_action_secret
 from entity_screening.api.deps import runs_dir as _runs_dir
 from entity_screening.case.vocab import RPS_DISMISS_REASON_CODES, RPS_ESCALATION_REASON_CODES
 from entity_screening.common import storage
+from entity_screening.common.manifest import ScreeningEventManifest
 from entity_screening.common.schema import WorksheetActionKind
 from entity_screening.screening import rps_service, rps_store
 from entity_screening.screening.rps_schema import (
@@ -126,6 +128,7 @@ def _match_dto(match) -> dict[str, Any]:
         "match_id": match.match_id,
         "party_id": match.party_id,
         "matched_variant": match.matched_variant,
+        "matched_field": match.matched_field,
         "list_name": match.list_name,
         "confidence": match.confidence,
         "evidence": match.evidence,
@@ -145,17 +148,32 @@ def _disposition_dto(disposition) -> dict[str, Any] | None:
     }
 
 
-def _event_payload(conn: duckdb.DuckDBPyConnection, event_id: str) -> dict[str, Any]:
+def _load_screening_manifest(event_id: str, runs_dir: Path | str) -> ScreeningEventManifest | None:
+    """S10: the manifest `screen_event` writes (`common/manifest.py`'s
+    `ScreeningEventManifest.write`) is the only place "was this event
+    screened, against what, when" lives -- nothing in the DB records it.
+    Read directly (not via `ScreeningEventManifest.event_dir`, which has
+    a `mkdir` side effect unwanted on a plain GET). `None` means "never
+    screened" -- genuinely absent, not zero-and-clean."""
+    path = Path(runs_dir) / "screening-events" / event_id / "manifest.json"
+    return ScreeningEventManifest.load(path) if path.exists() else None
+
+
+def _event_payload(
+    conn: duckdb.DuckDBPyConnection, event_id: str, runs_dir: Path | str
+) -> dict[str, Any]:
     event = _event_or_404(conn, event_id)
     parties = rps_store.load_parties(conn, event_id)
     matches = rps_store.load_matches_for_event(conn, event_id)
     effective = rps_store.effective_dispositions(conn, event_id)
+    manifest = _load_screening_manifest(event_id, runs_dir)
     return {
         "event_id": event.event_id,
         "trigger": event.trigger.value,
         "case_id": event.case_id,
         "requested_by": event.requested_by,
         "requested_at": event.requested_at,
+        "screening_manifest": manifest.to_dict() if manifest else None,
         "parties": [
             {
                 "party_id": p.party_id,
@@ -317,7 +335,9 @@ def screen_event(
         manifest = rps_service.screen_event(
             conn, event_id, opensanctions_file=request.opensanctions_file, runs_dir=_runs_dir()
         )
-        return _event_payload(conn, event_id) | {"party_count": manifest.party_count, "match_count": manifest.match_count}
+        return _event_payload(conn, event_id, _runs_dir()) | {
+            "party_count": manifest.party_count, "match_count": manifest.match_count
+        }
     except rps_service.RPSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     finally:
@@ -328,7 +348,7 @@ def screen_event(
 def get_event(event_id: str) -> dict:
     conn = _connect()
     try:
-        return _event_payload(conn, event_id)
+        return _event_payload(conn, event_id, _runs_dir())
     finally:
         conn.close()
 
@@ -350,6 +370,6 @@ def post_disposition(
             )
         except rps_service.RPSError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        return _event_payload(conn, event_id)
+        return _event_payload(conn, event_id, _runs_dir())
     finally:
         conn.close()

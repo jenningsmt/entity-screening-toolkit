@@ -417,6 +417,7 @@ CREATE TABLE IF NOT EXISTS screening_matches (
     match_id VARCHAR PRIMARY KEY,
     party_id VARCHAR,
     matched_variant VARCHAR,
+    matched_field VARCHAR,
     list_name VARCHAR,
     confidence DOUBLE,
     evidence JSON,
@@ -479,6 +480,9 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     conn.execute(
         "ALTER TABLE concern_ties ADD COLUMN IF NOT EXISTS hq_country_on_adversary_list BOOLEAN"
     )
+    # Phase 5 M14: matched_field (the matched party's role_in_event) added
+    # to an existing table via the same idempotent ADD COLUMN pattern.
+    conn.execute("ALTER TABLE screening_matches ADD COLUMN IF NOT EXISTS matched_field VARCHAR")
     _migrate_drop_ownership_flags_primary_key(conn)
     # S5: finding_id/tie_id are now deterministic (uuid5 of the natural
     # key), so a genuine duplicate is a real bug, not an expected event --

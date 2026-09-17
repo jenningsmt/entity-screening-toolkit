@@ -31,7 +31,7 @@ import uuid
 from entity_screening.common.schema import MatchStatus
 from entity_screening.resolution.matcher import DEFAULT_THRESHOLD, is_candidate_match, score_pair
 from entity_screening.screening.lists import EntityOfConcernList
-from entity_screening.screening.rps_schema import ScreeningMatch, ScreeningParty
+from entity_screening.screening.rps_schema import PartyKind, ScreeningMatch, ScreeningParty
 
 
 def screen_party(
@@ -48,7 +48,12 @@ def screen_party(
         for entry in concern_list.candidates_for(party.name):
             best = None
             for variant in entry.name_variants:
-                candidate = score_pair(party.name, variant)
+                # S9: a person's name is never an organization's acronym or
+                # a corporate-suffix-bearing form -- skip both heuristics
+                # for PartyKind.PERSON (see score_pair's own docstring).
+                candidate = score_pair(
+                    party.name, variant, skip_org_heuristics=party.kind is PartyKind.PERSON
+                )
                 if best is None or candidate.confidence > best.confidence:
                     best = candidate
             if best is None or not is_candidate_match(best, threshold):
@@ -58,6 +63,7 @@ def screen_party(
                     match_id=str(uuid.uuid4()),
                     party_id=party.party_id,
                     matched_variant=best.right_name,
+                    matched_field=party.role_in_event,
                     list_name=concern_list.list_name,
                     confidence=best.confidence,
                     evidence={

@@ -10,11 +10,22 @@ from entity_screening.resolution.normalize import acronym, normalize_for_matchin
 DEFAULT_THRESHOLD = 0.80
 
 
-def score_pair(left_name: str, right_name: str) -> MatchCandidate:
+def score_pair(
+    left_name: str, right_name: str, *, skip_org_heuristics: bool = False
+) -> MatchCandidate:
     """Returns the best-scoring MatchCandidate across several match strategies,
-    tried in order of specificity: normalized-exact, acronym, fuzzy token-sort."""
-    left_norm = normalize_for_matching(left_name)
-    right_norm = normalize_for_matching(right_name)
+    tried in order of specificity: normalized-exact, acronym, fuzzy token-sort.
+
+    `skip_org_heuristics=True` (S9) is for screening a person's name: skips
+    the acronym branch entirely (a person's name is never an organization's
+    abbreviation) and disables corporate-suffix stripping in both the
+    normalized-exact and fuzzy-fallback comparisons (a person's surname can
+    collide with a suffix token -- "Robert Co", "Ana Sa" -- and stripping it
+    produces a false match unrelated to the acronym bug). Default `False`
+    leaves every other caller (HB127 institution matching, GLEIF, OpenAlex,
+    Section 117) byte-for-byte unchanged."""
+    left_norm = normalize_for_matching(left_name, strip_suffix=not skip_org_heuristics)
+    right_norm = normalize_for_matching(right_name, strip_suffix=not skip_org_heuristics)
 
     if left_norm and left_norm == right_norm:
         return MatchCandidate(
@@ -24,21 +35,22 @@ def score_pair(left_name: str, right_name: str) -> MatchCandidate:
             match_basis="normalized_exact",
         )
 
-    # Acronyms are built from the corporate-suffix-stripped name — otherwise
-    # "International Business Machines Corporation" acronyms to "IBMC", not
-    # "IBM", and never matches the real-world acronym.
-    left_acronym = acronym(strip_corporate_suffix(transliterate(left_name))).lower()
-    right_acronym = acronym(strip_corporate_suffix(transliterate(right_name))).lower()
-    right_norm_compact = right_norm.replace(" ", "")
-    left_norm_compact = left_norm.replace(" ", "")
-    if left_acronym and len(left_acronym) > 1 and left_acronym == right_norm_compact:
-        return MatchCandidate(
-            left_name=left_name, right_name=right_name, confidence=0.9, match_basis="acronym"
-        )
-    if right_acronym and len(right_acronym) > 1 and right_acronym == left_norm_compact:
-        return MatchCandidate(
-            left_name=left_name, right_name=right_name, confidence=0.9, match_basis="acronym"
-        )
+    if not skip_org_heuristics:
+        # Acronyms are built from the corporate-suffix-stripped name —
+        # otherwise "International Business Machines Corporation" acronyms
+        # to "IBMC", not "IBM", and never matches the real-world acronym.
+        left_acronym = acronym(strip_corporate_suffix(transliterate(left_name))).lower()
+        right_acronym = acronym(strip_corporate_suffix(transliterate(right_name))).lower()
+        right_norm_compact = right_norm.replace(" ", "")
+        left_norm_compact = left_norm.replace(" ", "")
+        if left_acronym and len(left_acronym) > 1 and left_acronym == right_norm_compact:
+            return MatchCandidate(
+                left_name=left_name, right_name=right_name, confidence=0.9, match_basis="acronym"
+            )
+        if right_acronym and len(right_acronym) > 1 and right_acronym == left_norm_compact:
+            return MatchCandidate(
+                left_name=left_name, right_name=right_name, confidence=0.9, match_basis="acronym"
+            )
 
     fuzzy_score = fuzz.token_sort_ratio(left_norm, right_norm) / 100.0
     return MatchCandidate(

@@ -162,6 +162,7 @@ def replace_matches(
             m.match_id,
             m.party_id,
             m.matched_variant,
+            m.matched_field,
             m.list_name,
             m.confidence,
             json.dumps(m.evidence, default=str),
@@ -171,7 +172,7 @@ def replace_matches(
     ]
     if rows:
         conn.executemany(
-            "INSERT INTO screening_matches VALUES (?, ?, ?, ?, ?, ?, ?)", rows
+            "INSERT INTO screening_matches VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows
         )
 
 
@@ -179,8 +180,8 @@ def load_matches_for_event(
     conn: duckdb.DuckDBPyConnection, event_id: str
 ) -> list[ScreeningMatch]:
     rows = conn.execute(
-        "SELECT m.match_id, m.party_id, m.matched_variant, m.list_name, m.confidence, "
-        "m.evidence, m.status FROM screening_matches m "
+        "SELECT m.match_id, m.party_id, m.matched_variant, m.matched_field, m.list_name, "
+        "m.confidence, m.evidence, m.status FROM screening_matches m "
         "JOIN screening_parties p ON p.party_id = m.party_id "
         "WHERE p.event_id = ? ORDER BY m.match_id",
         [event_id],
@@ -190,12 +191,14 @@ def load_matches_for_event(
             match_id=match_id,
             party_id=party_id,
             matched_variant=matched_variant,
+            matched_field=matched_field,
             list_name=list_name,
             confidence=confidence,
             evidence=json.loads(evidence),
             status=MatchStatus(status),
         )
-        for match_id, party_id, matched_variant, list_name, confidence, evidence, status in rows
+        for match_id, party_id, matched_variant, matched_field, list_name, confidence, evidence, status
+        in rows
     ]
 
 

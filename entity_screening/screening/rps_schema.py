@@ -117,11 +117,20 @@ class ScreeningMatch:
     never a bare boolean. `list_name` and `evidence["matched_entry_fields"]`
     carry the OpenSanctions `program_ids` value (e.g. `"US-BIS-EL"`) so a
     match states which specific government list produced it, not just
-    "OpenSanctions" -- see `entity_screening/screening/rps_screen.py`."""
+    "OpenSanctions" -- see `entity_screening/screening/rps_screen.py`.
+
+    `matched_field` (M14, Epic D's "matched name variant, matched field"
+    acceptance criterion) is the matched party's own `role_in_event`
+    ("subject" | "current_employer" | "prior_affiliation" | "reference" |
+    "counterparty") -- RPS's structural equivalent of
+    `common.schema.ScreeningHit.matched_field`, telling a reviewer which
+    real-world role produced the match without a separate join back to
+    the party record."""
 
     match_id: str
     party_id: str
     matched_variant: str
+    matched_field: str
     list_name: str
     confidence: float
     evidence: dict[str, Any]
@@ -140,7 +149,10 @@ class ScreeningMatch:
 # reason_note), the right side of the fact/judgment line.
 RPS_OBSERVATION_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
     "ScreeningMatch": frozenset(
-        {"match_id", "party_id", "matched_variant", "list_name", "confidence", "evidence", "status"}
+        {
+            "match_id", "party_id", "matched_variant", "matched_field",
+            "list_name", "confidence", "evidence", "status",
+        }
     ),
 }
 

@@ -28,10 +28,30 @@ def test_acronym_skips_stopwords():
     assert acronym("International Business Machines Corporation") == "IBMC"
 
 
+def test_acronym_does_not_fragment_on_a_non_ascii_letter():
+    """S9: acronym()'s word regex used to be ASCII-only ([A-Za-z0-9]+),
+    so a Turkish dotless i (u0131 -- a distinct base letter, not an
+    accented one, so transliterate() does not fold it away) split "Akin"
+    (with a dotless i) into two words, yielding a fragmented, wrong
+    acronym. \\w+ is Unicode-aware and treats it as one word."""
+    assert acronym("Akın Alptuna") == "AA"
+
+
 def test_normalize_for_matching_is_case_and_punctuation_insensitive():
     assert normalize_for_matching("Huawei Technologies Co., Ltd.") == normalize_for_matching(
         "Huawei Technologies Company Limited"
     )
+
+
+def test_normalize_for_matching_can_skip_suffix_stripping():
+    """S9: a person-aware caller needs the corporate-suffix step skipped
+    (a person's surname can collide with a suffix token, e.g. "Co", "Sa")
+    -- strip_suffix=False must leave it in place while every other step
+    (transliteration, lowercasing, alnum-only, whitespace-collapse)
+    still runs."""
+    assert normalize_for_matching("Robert Co", strip_suffix=False) == "robert co"
+    assert normalize_for_matching("Robert Co", strip_suffix=True) == "robert"
+    assert normalize_for_matching("Robert Co") == "robert"  # default unchanged
 
 
 # Real pairs pulled from NSF's live awardeeName data and Section 117's real

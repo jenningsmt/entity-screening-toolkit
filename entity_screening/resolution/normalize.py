@@ -61,17 +61,31 @@ def transliterate(name: str) -> str:
 
 
 def acronym(name: str) -> str:
-    """Builds the acronym of a name's significant words (skips short stopwords)."""
-    words = re.findall(r"[A-Za-z0-9]+", name)
+    """Builds the acronym of a name's significant words (skips short stopwords).
+
+    Word-splits on `\\w+`, not the old ASCII-only `[A-Za-z0-9]+` (S9) --
+    Python's `re` is Unicode-aware by default, so a letter outside the
+    Latin-1 combining range (Turkish dotless i, Cyrillic, CJK, ...) no
+    longer fragments a word into two, which used to build a wrong,
+    shorter acronym (confirmed: "Akın Alptuna" used to acronym to "ANA",
+    not "AA", because transliterate() does not fold "ı" away -- it's a
+    distinct base letter, not an accented one)."""
+    words = re.findall(r"\w+", name)
     letters = [w[0] for w in words if w.lower() not in STOPWORDS]
     return "".join(letters).upper()
 
 
-def normalize_for_matching(name: str) -> str:
-    """Canonical form used as matcher input: transliterated, suffix-stripped,
-    lowercased, alphanumeric-only, whitespace-collapsed."""
+def normalize_for_matching(name: str, *, strip_suffix: bool = True) -> str:
+    """Canonical form used as matcher input: transliterated, optionally
+    suffix-stripped, lowercased, alphanumeric-only, whitespace-collapsed.
+
+    `strip_suffix=False` (S9) is for a person-aware caller: a person's
+    surname can collide with a corporate-suffix token ("Co", "Sa", ...),
+    and stripping it corrupts the comparison -- see
+    `resolution/matcher.py:score_pair`'s `skip_org_heuristics`."""
     text = transliterate(name)
-    text = strip_corporate_suffix(text)
+    if strip_suffix:
+        text = strip_corporate_suffix(text)
     text = text.lower()
     text = _NON_ALNUM.sub(" ", text)
     return " ".join(text.split())

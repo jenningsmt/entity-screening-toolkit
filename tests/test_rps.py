@@ -18,12 +18,13 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from entity_screening.case.vocab import is_valid_rps_reason_code
 from entity_screening.common import storage
-from entity_screening.common.schema import WorksheetActionKind
+from entity_screening.common.schema import SourceRecord, WorksheetActionKind
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.opensanctions import OpenSanctionsTargetsIngester
 from entity_screening.screening import rps_service, rps_store
-from entity_screening.screening.lists import OpenSanctionsList
+from entity_screening.screening.lists import OpenSanctionsList, cached_concern_list
 from entity_screening.screening.rps_schema import PartyKind, ScreeningEvent, ScreeningParty, ScreeningTrigger
 from entity_screening.screening.rps_screen import screen_parties
 
@@ -60,6 +61,9 @@ def test_screen_party_matches_the_real_bis_entity_list_row(tmp_path):
     # carried through evidence["matched_entry_fields"]["program_ids"].
     assert match.evidence["matched_entry_fields"]["program_ids"] == "US-BIS-EL"
     assert match.list_name == "opensanctions_consolidated"
+    # M14: which real-world role produced the match, without a separate
+    # join back to the party record.
+    assert match.matched_field == "counterparty"
 
 
 def test_screen_party_no_match_returns_empty(tmp_path):
@@ -69,6 +73,57 @@ def test_screen_party_no_match_returns_empty(tmp_path):
         name="A Totally Unrelated Name Zzqx", country="us", role_in_event="subject",
     )
     assert screen_parties([party], [concern_list])["p2"] == []
+
+
+def test_screen_party_person_kind_does_not_false_positive_via_the_pre_fix_acronym_bug(tmp_path):
+    """S9, end to end through screen_party: a PartyKind.PERSON party with a
+    non-ASCII name must not falsely match an unrelated list entry the way
+    the pre-fix ASCII-only acronym regex + corporate-suffix-stripping
+    combination would have (confirmed directly in test_matcher.py)."""
+    error_log = IngestionErrorLog(tmp_path / "errors.jsonl")
+    error_log.close()
+    concern_list = OpenSanctionsList(
+        [
+            SourceRecord(
+                source_dataset="opensanctions_targets_simple",
+                retrieval_date=None,
+                source_record_id="entry-1",
+                fields={
+                    "id": "entry-1", "schema": "Person",
+                    "name": "Akın Alptuna", "aliases": "",
+                },
+            )
+        ]
+    )
+    party = ScreeningParty(
+        party_id="p-person", event_id="e1", kind=PartyKind.PERSON,
+        name="Ana Sa", country="us", role_in_event="subject",
+    )
+    assert screen_parties([party], [concern_list])["p-person"] == []
+
+
+def test_screen_party_organization_kind_acronym_matching_is_unaffected(tmp_path):
+    """The org path's real acronym matching (Epic B's own acceptance
+    criterion) must still fire after S9's person-kind bypass -- the
+    bypass is opt-in per party kind, not a global regression."""
+    concern_list = OpenSanctionsList(
+        [
+            SourceRecord(
+                source_dataset="opensanctions_targets_simple",
+                retrieval_date=None,
+                source_record_id="entry-ibm",
+                fields={"id": "entry-ibm", "schema": "Company", "name": "IBM", "aliases": ""},
+            )
+        ]
+    )
+    party = ScreeningParty(
+        party_id="p-org", event_id="e1", kind=PartyKind.ORGANIZATION,
+        name="International Business Machines Corporation", country="us",
+        role_in_event="counterparty",
+    )
+    matches = screen_parties([party], [concern_list])["p-org"]
+    assert len(matches) == 1
+    assert matches[0].evidence["match_basis"] == "acronym"
 
 
 def test_country_is_never_a_screening_gate(tmp_path):
@@ -222,6 +277,9 @@ def test_api_hire_event_end_to_end(tmp_path, monkeypatch):
     assert len(matches) == 1
     assert matches[0]["list_name"] == "opensanctions_consolidated"
     assert matches[0]["disposition"] is None
+    # M14: the employer (not the subject) is what matched, visible without
+    # a separate join back to the party record.
+    assert matches[0]["matched_field"] == "current_employer"
 
     disposition_response = client.post(
         f"/screening-events/{event_id}/matches/{matches[0]['match_id']}/disposition",
@@ -249,6 +307,130 @@ def test_api_purchasing_event_has_no_case_id(tmp_path, monkeypatch):
     assert get_response.status_code == 200
     assert get_response.json()["case_id"] is None
     assert len(get_response.json()["parties"]) == 1
+
+
+# --------------------------------------------------------------------------
+# S10: a zero-list screen must not render like "screened, clean."
+# --------------------------------------------------------------------------
+
+
+def test_get_event_shows_no_manifest_before_any_screen(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    event_id = client.post(
+        "/screening-events/purchasing",
+        json={"requested_by": "procurement.a", "counterparty_name": "Some Vendor LLC"},
+    ).json()["event_id"]
+
+    body = client.get(f"/screening-events/{event_id}").json()
+    assert body["screening_manifest"] is None
+
+
+def test_screening_with_no_file_is_distinguishable_from_a_real_clean_screen(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    event_id = client.post(
+        "/screening-events/purchasing",
+        json={"requested_by": "procurement.a", "counterparty_name": "Some Vendor LLC"},
+    ).json()["event_id"]
+
+    zero_list = client.post(
+        f"/screening-events/{event_id}/screen", json={"opensanctions_file": None}
+    ).json()
+    assert zero_list["match_count"] == 0
+    assert zero_list["screening_manifest"]["opensanctions_snapshot_date"] is None
+
+    real_clean = client.post(
+        f"/screening-events/{event_id}/screen",
+        json={"opensanctions_file": str(SAMPLE_CSL_FILE)},
+    ).json()
+    assert real_clean["match_count"] == 0  # "Some Vendor LLC" matches nothing real
+    assert real_clean["screening_manifest"]["opensanctions_snapshot_date"] is not None
+
+    # A later plain GET sees the same distinction, not just the POST response.
+    later = client.get(f"/screening-events/{event_id}").json()
+    assert later["screening_manifest"]["opensanctions_snapshot_date"] is not None
+    assert later["screening_manifest"]["match_count"] == 0
+
+
+# --------------------------------------------------------------------------
+# S11: don't re-ingest and re-index the whole concern list on every call.
+# --------------------------------------------------------------------------
+
+
+def test_cached_concern_list_returns_the_same_object_for_an_unchanged_file(tmp_path):
+    path = tmp_path / "targets.csv"
+    path.write_text("id,schema,name,aliases\n1,Company,Acme Corp,\n", encoding="utf-8")
+    build_calls = []
+
+    def build():
+        build_calls.append(1)
+        return OpenSanctionsList([])
+
+    first = cached_concern_list(path, "opensanctions", build)
+    second = cached_concern_list(path, "opensanctions", build)
+
+    assert first is second
+    assert len(build_calls) == 1  # the builder only ran once
+
+
+def test_cached_concern_list_rebuilds_after_the_file_is_replaced(tmp_path):
+    path = tmp_path / "targets.csv"
+    path.write_text("id,schema,name,aliases\n1,Company,Acme Corp,\n", encoding="utf-8")
+
+    first = cached_concern_list(path, "opensanctions", lambda: OpenSanctionsList([]))
+
+    import os
+    import time
+
+    time.sleep(0.01)
+    path.write_text("id,schema,name,aliases\n1,Company,Acme Corp,\n2,Company,Other Corp,\n", encoding="utf-8")
+    os.utime(path, None)  # force a distinct mtime even on filesystems with coarse resolution
+
+    second = cached_concern_list(path, "opensanctions", lambda: OpenSanctionsList([]))
+
+    assert first is not second
+
+
+def test_screen_event_does_not_re_ingest_the_same_file_on_a_second_call(tmp_path, monkeypatch):
+    """S11's actual regression guard: a second screen_event call against
+    the same file must not re-parse it. Confirmed by call-counting the
+    ingester's stream_records, not just by eyeballing timing -- on the
+    unmodified tree this fails (called twice). Uses a tmp_path-local copy
+    of the fixture rather than SAMPLE_CSL_FILE directly -- the cache is
+    per-process (module-level), so a path other tests in this same
+    session already warmed would make this test observe a false 0, not a
+    real 1."""
+    local_csl_file = tmp_path / "csl.csv"
+    local_csl_file.write_text(SAMPLE_CSL_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+
+    client = _client(tmp_path, monkeypatch)
+    event_id = client.post(
+        "/screening-events/purchasing",
+        json={"requested_by": "procurement.a", "counterparty_name": "Some Vendor LLC"},
+    ).json()["event_id"]
+
+    from entity_screening.ingestion import opensanctions as os_ingest
+
+    calls = []
+    real_stream_records = os_ingest.OpenSanctionsTargetsIngester.stream_records
+
+    def counted_stream_records(self):
+        calls.append(1)
+        return real_stream_records(self)
+
+    monkeypatch.setattr(
+        os_ingest.OpenSanctionsTargetsIngester, "stream_records", counted_stream_records
+    )
+
+    client.post(
+        f"/screening-events/{event_id}/screen",
+        json={"opensanctions_file": str(local_csl_file)},
+    )
+    client.post(
+        f"/screening-events/{event_id}/screen",
+        json={"opensanctions_file": str(local_csl_file)},
+    )
+
+    assert len(calls) == 1
 
 
 def test_api_visiting_scholar_event_screens_against_real_demo_data(tmp_path, monkeypatch):
@@ -384,3 +566,50 @@ def test_screen_endpoint_accepts_a_path_inside_the_allowlist(tmp_path, monkeypat
     )
     assert response.status_code == 200, response.text
     assert response.json()["match_count"] == 1
+
+
+# --------------------------------------------------------------------------
+# M15: RPS must not accept a Sec. 51B.153/HB127-specific disposition.
+# --------------------------------------------------------------------------
+
+
+def test_is_valid_rps_reason_code_rejects_certification_required():
+    """Confirmed live before the fix: this returned True, because
+    is_valid_rps_reason_code only special-cased "dismiss" and treated
+    every other action -- including certification_required, a Sec.
+    51B.153/HB127-only concept -- as if it were "escalate"."""
+    assert is_valid_rps_reason_code("certification_required", "needs_resec_determination") is False
+
+
+def test_is_valid_rps_reason_code_rejects_request_clarification():
+    assert is_valid_rps_reason_code("request_clarification", "needs_resec_determination") is False
+
+
+def test_is_valid_rps_reason_code_still_accepts_dismiss_and_escalate():
+    assert is_valid_rps_reason_code("dismiss", "coincidental_name_match") is True
+    assert is_valid_rps_reason_code("escalate", "needs_resec_determination") is True
+
+
+def test_api_disposition_rejects_certification_required(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    create = client.post("/screening-events/purchasing", json={
+        "requested_by": "procurement.a",
+        "counterparty_name": "Taiyuan Jinke Semiconductor Technology Co., Ltd.",
+    })
+    event_id = create.json()["event_id"]
+    screen = client.post(
+        f"/screening-events/{event_id}/screen",
+        json={"opensanctions_file": str(SAMPLE_CSL_FILE)},
+    )
+    match_id = screen.json()["matches"][0]["match_id"]
+
+    response = client.post(
+        f"/screening-events/{event_id}/matches/{match_id}/disposition",
+        json={
+            "action": "certification_required",
+            "reason_code": "needs_resec_determination",
+            "reason_note": "Should be rejected -- not an RPS-valid action.",
+            "actor": "hr.a",
+        },
+    )
+    assert response.status_code == 400

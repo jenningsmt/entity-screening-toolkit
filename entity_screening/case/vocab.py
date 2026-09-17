@@ -181,9 +181,17 @@ def is_valid_tie_reason_code(action: str, reason_code: str) -> bool:
 
 
 def is_valid_rps_reason_code(action: str, reason_code: str) -> bool:
+    """M15: an explicit dismiss/escalate allowlist, not "dismiss vs.
+    everything else" -- WorksheetActionKind has two other members
+    (request_clarification, certification_required) that are meaningless
+    for RPS (certification_required in particular is a Sec. 51B.153/
+    HB127-only concept), and the old "not dismiss" shape silently
+    accepted both as if they were "escalate."""
     if action == "dismiss":
         return reason_code in RPS_DISMISS_REASON_CODES
-    return reason_code in RPS_ESCALATION_REASON_CODES
+    if action == "escalate":
+        return reason_code in RPS_ESCALATION_REASON_CODES
+    return False
 
 
 def is_valid_coi_reason_code(action: str, reason_code: str) -> bool:

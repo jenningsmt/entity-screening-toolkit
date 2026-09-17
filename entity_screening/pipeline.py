@@ -92,7 +92,7 @@ from entity_screening.screening.adversary_list import (
     DEFAULT_DATA_FILE as DEFAULT_ADVERSARY_LIST_FILE,
 )
 from entity_screening.screening.adversary_list import load_adversary_list
-from entity_screening.screening.lists import DoD1260HList, OpenSanctionsList
+from entity_screening.screening.lists import DoD1260HList, OpenSanctionsList, cached_concern_list
 from entity_screening.screening.screen import screen_entity
 from entity_screening.screening.section_117 import (
     DEFAULT_INSTITUTION_THRESHOLD as DEFAULT_SECTION_117_INSTITUTION_THRESHOLD,
@@ -798,20 +798,31 @@ def _case_concern_lists(error_log, dod_1260h_file, opensanctions_file):
     """The concern lists an ownership-parent name is screened against. DoD
     1260H is bundled (no file needed); OpenSanctions is optional -- omitted
     for the demo, which needs no live download and no large file in the
-    image."""
+    image.
+
+    S11: both lists are cached per-process on (resolved path, mtime) --
+    see `screening/lists.py:cached_concern_list`'s own docstring. Every
+    case reconcile used to re-ingest and re-index the whole file from
+    scratch."""
     lists = [
-        DoD1260HList(
-            list(DoD1260HIngester(error_log, data_file=dod_1260h_file).stream_records())
+        cached_concern_list(
+            dod_1260h_file, "dod_1260h",
+            lambda: DoD1260HList(
+                list(DoD1260HIngester(error_log, data_file=dod_1260h_file).stream_records())
+            ),
         )
     ]
     if opensanctions_file:
         lists.append(
-            OpenSanctionsList(
-                list(
-                    OpenSanctionsTargetsIngester(
-                        error_log, csv_path=opensanctions_file
-                    ).stream_records()
-                )
+            cached_concern_list(
+                opensanctions_file, "opensanctions",
+                lambda: OpenSanctionsList(
+                    list(
+                        OpenSanctionsTargetsIngester(
+                            error_log, csv_path=opensanctions_file
+                        ).stream_records()
+                    )
+                ),
             )
         )
     return lists

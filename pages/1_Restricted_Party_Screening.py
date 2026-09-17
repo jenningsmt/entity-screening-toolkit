@@ -308,6 +308,21 @@ if open_event_id:
     )
     _party_name = {p["party_id"]: p["name"] for p in event["parties"]}
 
+    # S10: "nothing screened" and "screened, clean" must never render the
+    # same -- the three-way distinction the screening_manifest makes
+    # possible (None entirely / present with no snapshot / present with a
+    # real snapshot).
+    manifest = event.get("screening_manifest")
+    if manifest is None:
+        st.info("Not yet screened.")
+    elif manifest["opensanctions_snapshot_date"] is None:
+        st.warning("Screened against 0 lists — no snapshot was consulted.")
+    else:
+        st.caption(
+            f"Screened against OpenSanctions, snapshot {manifest['opensanctions_snapshot_date']} "
+            f"— {manifest['match_count']} match(es)."
+        )
+
     if st.button("Screen this event", disabled=not cfg.actions_enabled, key="screen_btn"):
         with st.spinner("Screening against restricted-party lists…"):
             try:
@@ -336,6 +351,7 @@ if open_event_id:
                 [
                     {
                         "party": _party_name.get(m["party_id"], m["party_id"]),
+                        "role": m["matched_field"],
                         "matched entry": m["matched_variant"],
                         "confidence": round(m["confidence"], 3),
                         "list": m["list_name"],

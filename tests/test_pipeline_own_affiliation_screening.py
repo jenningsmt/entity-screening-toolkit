@@ -38,6 +38,19 @@ def _real_dod_1260h_concern_lists(tmp_path):
     return lists
 
 
+def test_case_concern_lists_reuses_cached_list_objects_across_calls(tmp_path):
+    """S11: pipeline.py's own concern-list construction must not re-ingest
+    and re-index DoD 1260H (or OpenSanctions, when supplied) on every
+    case reconcile -- confirmed by object identity across two calls with
+    the same file paths, which fails on the unmodified tree (today's
+    _case_concern_lists builds a fresh DoD1260HList every call)."""
+    first = _real_dod_1260h_concern_lists(tmp_path)
+    second = _real_dod_1260h_concern_lists(tmp_path)
+
+    assert len(first) == len(second) == 1
+    assert first[0] is second[0]
+
+
 def test_ties_from_own_affiliations_matches_a_real_1260h_entry_with_no_gleif(tmp_path):
     concern_lists = _real_dod_1260h_concern_lists(tmp_path)
     discovered = [

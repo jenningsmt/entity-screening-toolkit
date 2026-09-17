@@ -26,7 +26,7 @@ from entity_screening.common.schema import WorksheetActionKind
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.opensanctions import OpenSanctionsTargetsIngester
 from entity_screening.screening import rps_store
-from entity_screening.screening.lists import OpenSanctionsList
+from entity_screening.screening.lists import OpenSanctionsList, cached_concern_list
 from entity_screening.screening.rps_schema import (
     ScreeningDisposition,
     ScreeningEvent,
@@ -74,13 +74,25 @@ def screen_event(
     concern_lists = []
     snapshot_date: str | None = None
     if opensanctions_file:
-        error_log = IngestionErrorLog(
-            Path(runs_dir) / "screening-events" / event_id / "ingestion_errors.jsonl"
-        )
-        ingester = OpenSanctionsTargetsIngester(error_log, csv_path=opensanctions_file)
-        concern_lists.append(OpenSanctionsList(list(ingester.stream_records())))
-        error_log.close()
-        snapshot_date = (ingester.retrieval_date or date.today()).isoformat()
+        # S11: cached per (resolved path, mtime) -- a re-screen of the same
+        # or a different event against the same file does not re-ingest
+        # and re-index it. `retrieval_date` is stashed on the list object
+        # itself (a plain attribute -- OpenSanctionsList is not a frozen
+        # dataclass) so a cache hit still has a real snapshot date to
+        # report, without re-building an ingester just to read one.
+        def _build() -> OpenSanctionsList:
+            error_log = IngestionErrorLog(
+                Path(runs_dir) / "screening-events" / event_id / "ingestion_errors.jsonl"
+            )
+            ingester = OpenSanctionsTargetsIngester(error_log, csv_path=opensanctions_file)
+            built = OpenSanctionsList(list(ingester.stream_records()))
+            error_log.close()
+            built.retrieval_date = ingester.retrieval_date
+            return built
+
+        concern_list = cached_concern_list(opensanctions_file, "opensanctions", _build)
+        concern_lists.append(concern_list)
+        snapshot_date = (concern_list.retrieval_date or date.today()).isoformat()
 
     matches_by_party = screen_parties(parties, concern_lists)
     all_matches = [m for matches in matches_by_party.values() for m in matches]

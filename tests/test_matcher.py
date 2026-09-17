@@ -71,3 +71,54 @@ def test_score_pair_never_returns_a_bare_bool():
 def test_score_pair_status_is_always_candidate_match():
     candidate = score_pair("Acme Inc.", "Acme Corporation")
     assert candidate.status is MatchStatus.CANDIDATE_MATCH
+
+
+# --------------------------------------------------------------------------
+# S9: person-name screening false positives from org-name heuristics.
+# --------------------------------------------------------------------------
+
+
+def test_person_name_acronym_false_positive_confirmed_and_fixed():
+    """The real bug this fixture reproduces: a Turkish dotless-i name
+    fragments under the old ASCII-only acronym regex, and a person's
+    surname ("Sa") gets stripped as a corporate suffix -- together they
+    produce a 0.9 confidence "acronym" match between two unrelated
+    people. The regex fix alone (default score_pair, no flag) already
+    drops this below any real threshold."""
+    candidate = score_pair("Ana Sa", "Akın Alptuna")
+    assert candidate.confidence < 0.5
+    assert candidate.match_basis != "acronym"
+
+
+def test_skip_org_heuristics_does_not_regress_the_person_false_positive():
+    candidate = score_pair("Ana Sa", "Akın Alptuna", skip_org_heuristics=True)
+    assert candidate.confidence < 0.5
+    assert candidate.match_basis != "acronym"
+
+
+def test_skip_org_heuristics_prevents_a_surname_from_being_stripped_as_a_suffix():
+    """Independent of the acronym bug: strip_corporate_suffix treats a
+    person's surname "Co" as a corporate form, which -- baked into
+    normalize_for_matching -- collapses "Robert Co" to "Robert" for
+    BOTH the normalized-exact check and the fuzzy fallback. The default,
+    org-path score_pair still does this (unchanged, deliberately);
+    skip_org_heuristics=True must not."""
+    unmodified = score_pair("Robert Co", "Robert")
+    assert unmodified.confidence == 1.0
+    assert unmodified.match_basis == "normalized_exact"
+
+    person_aware = score_pair("Robert Co", "Robert", skip_org_heuristics=True)
+    assert person_aware.match_basis != "normalized_exact"
+
+
+def test_skip_org_heuristics_leaves_the_acronym_branch_unreachable():
+    """With the bypass on, a real organization acronym (which would
+    otherwise match at 0.9) must not fire -- confirming the acronym
+    branch is skipped entirely, not just de-prioritized."""
+    org_path = score_pair("International Business Machines Corporation", "IBM")
+    assert org_path.match_basis == "acronym"
+
+    person_aware = score_pair(
+        "International Business Machines Corporation", "IBM", skip_org_heuristics=True
+    )
+    assert person_aware.match_basis != "acronym"

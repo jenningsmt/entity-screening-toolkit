@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from entity_screening.common.schema import SourceRecord
@@ -23,6 +24,48 @@ from entity_screening.resolution.normalize import (
 )
 
 BLOCK_SIZE = 3
+
+# S11: per-process cache, keyed on (list kind, resolved path, mtime) -- see
+# cached_concern_list's own docstring for what this is and isn't.
+_list_cache: dict[str, "EntityOfConcernList"] = {}
+
+
+def cached_concern_list(
+    path: Path | str, list_key: str, build: "Callable[[], EntityOfConcernList]"
+) -> "EntityOfConcernList":
+    """Per-process cache of an `EntityOfConcernList`, keyed on its resolved
+    snapshot path and mtime -- constructing one from scratch means
+    re-reading and re-parsing the whole file (434MB for the real
+    OpenSanctions `targets.simple.csv`) and rebuilding `candidates_for`'s
+    two-key block index, on every RPS screen and every case reconcile
+    (`screening/rps_service.py:screen_event`,
+    `pipeline.py:_case_concern_lists`). Keying on mtime (not just the
+    resolved path) means a file replaced at the same path without a
+    process restart is picked up rather than served stale.
+
+    Deliberately scoped to per-process memory only (the strategy doc's own
+    caution: "load once and cache" on the real file is a memory problem,
+    not a speed fix, on a 2GB deployment target if it becomes a second,
+    persistent copy) -- NOT the DuckDB-indexed follow-on, which stays a
+    documented future item, and NOT a cross-process/shared cache. No
+    eviction: realistic deployments configure at most 1-2 distinct file
+    paths via `MONOPS_DATA_FILE_ALLOWLIST`, so unbounded growth across many
+    distinct paths is a theoretical, deferred concern. No locking around a
+    concurrent cache miss either -- worst case, two concurrent first calls
+    both build and the second write wins, a wasted build, not a
+    correctness bug (this codebase's already-accepted concurrency posture
+    elsewhere, e.g. M18).
+
+    Takes a builder callable rather than an ingester class so this module
+    stays free of any `ingestion/`-module import (its own established
+    layering)."""
+    resolved = Path(path).resolve()
+    cache_key = f"{list_key}:{resolved}:{resolved.stat().st_mtime_ns}"
+    cached = _list_cache.get(cache_key)
+    if cached is None:
+        cached = build()
+        _list_cache[cache_key] = cached
+    return cached
 
 
 def _acronym_key(name: str, block_size: int) -> str:
