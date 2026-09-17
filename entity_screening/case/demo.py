@@ -57,7 +57,11 @@ DEMO_COI_CASE_ID = "demo-coi"
 # context-blind hash, so it would silently orphan (never match, always
 # 404 on the anonymous GET path) without this bump forcing a rebuild.
 # _demo_no_synthesis_call still means this needs no live API key.
-DEMO_FIXTURE_VERSION = 6
+# v7: Phase 3 (S5) switched finding_id/tie_id from uuid4 to a
+# deterministic uuid5 of the natural key -- every v6-era row's id changes
+# value, so this bump forces the same self-heal rebuild (findings, ties,
+# and their pre-generated explanations) under the new ids.
+DEMO_FIXTURE_VERSION = 7
 
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "demo_case"
 
@@ -134,6 +138,7 @@ _DEMO_CASE_TABLES = (
     "adjudications",
     "certifications",
     "case_outcomes",
+    "explanations",
 )
 
 

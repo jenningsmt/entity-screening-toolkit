@@ -425,7 +425,26 @@ def replace_findings(
     Columns are named explicitly so a DuckDB file created before the
     concern_list_evidence / ownership_evidence columns were dropped still
     works -- those vestigial columns just default to NULL and are never
-    read."""
+    read.
+
+    S5: finding_id is now deterministic, so the *same* logical finding
+    keeps the same id across a re-reconcile (analyst actions and cached
+    explanations carry forward). A finding that genuinely disappears
+    (no longer discovered) does get a new absence -- its old id's
+    `explanations` row(s) are deleted here so they don't sit orphaned
+    forever; a *kept* id's stale-hash explanation rows are left alone
+    (evidence_hash_for's own cache-miss handles those -- see
+    explanation/schema.py's MatchExplanation docstring)."""
+    findings = list(findings)
+    new_ids = {f.finding_id for f in findings}
+    old_ids = {
+        row[0]
+        for row in conn.execute(
+            "SELECT finding_id FROM findings WHERE case_id = ?", [case_id]
+        ).fetchall()
+    }
+    removed_ids = old_ids - new_ids
+
     conn.execute("DELETE FROM findings WHERE case_id = ?", [case_id])
     rows = [
         (
@@ -443,11 +462,21 @@ def replace_findings(
         conn.executemany(
             f"INSERT INTO findings ({_FINDING_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)", rows
         )
+    if removed_ids:
+        conn.executemany(
+            "DELETE FROM explanations WHERE observation_id = ?",
+            [(oid,) for oid in removed_ids],
+        )
 
 
 def load_findings(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[Finding]:
+    # M10: order by the natural key's own components, not finding_id --
+    # reproducible across reconciles (uuid5 sorts randomly with respect to
+    # content; these columns don't), and what makes Phase 4's before/after
+    # evidence diffs meaningful.
     rows = conn.execute(
-        f"SELECT {_FINDING_COLUMNS} FROM findings WHERE case_id = ? ORDER BY finding_id",
+        f"SELECT {_FINDING_COLUMNS} FROM findings WHERE case_id = ? "
+        "ORDER BY discovered->>'source', discovered->>'institution_name'",
         [case_id],
     ).fetchall()
     findings = []
@@ -492,7 +521,19 @@ _TIE_COLUMNS = (
 def replace_ties(
     conn: duckdb.DuckDBPyConnection, case_id: str, ties: Iterable[ConcernTie]
 ) -> None:
-    """Current-state per case, same as replace_findings."""
+    """Current-state per case, same as replace_findings -- including the
+    S5 explanation-orphan cleanup for tie ids that are removed (no longer
+    produced by the latest reconcile), not kept ones."""
+    ties = list(ties)
+    new_ids = {t.tie_id for t in ties}
+    old_ids = {
+        row[0]
+        for row in conn.execute(
+            "SELECT tie_id FROM concern_ties WHERE case_id = ?", [case_id]
+        ).fetchall()
+    }
+    removed_ids = old_ids - new_ids
+
     conn.execute("DELETE FROM concern_ties WHERE case_id = ?", [case_id])
     rows = [
         (
@@ -520,11 +561,18 @@ def replace_ties(
             "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
+    if removed_ids:
+        conn.executemany(
+            "DELETE FROM explanations WHERE observation_id = ?",
+            [(oid,) for oid in removed_ids],
+        )
 
 
 def load_ties(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[ConcernTie]:
+    # M10: see load_findings's comment above -- same reproducibility reason.
     rows = conn.execute(
-        f"SELECT {_TIE_COLUMNS} FROM concern_ties WHERE case_id = ? ORDER BY tie_id",
+        f"SELECT {_TIE_COLUMNS} FROM concern_ties WHERE case_id = ? "
+        "ORDER BY tie_kind, concern_entity_name",
         [case_id],
     ).fetchall()
     ties = []

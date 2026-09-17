@@ -187,6 +187,21 @@ def test_investigative_file_export_contract(tmp_path):
     service.transition(conn, "demo", CaseState.ADJUDICATION)
     service.record_adjudication(conn, "demo", "One item routed for certification; a tie escalated.", "Proceed with certification on file.", "analyst.a")
 
+    # S5: re-reconcile directly at the pipeline layer (bypassing the
+    # route's state guard on purpose, same as the money test in
+    # test_api_case.py -- this proves the *export* has no dangling ids
+    # after a re-run, which the route-level guard doesn't by itself).
+    conn.close()
+    reconcile_case(
+        "demo",
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+    conn = storage.connect(db_path)
+
     out_path, manifest = export.export_investigative_file(
         conn, "demo", fmt="json", runs_dir=tmp_path / "runs"
     )
@@ -273,6 +288,22 @@ def test_investigative_file_export_contract(tmp_path):
     assert manifest.redaction_profile == "default"
     assert manifest.finding_count == len(payload["findings"])
     assert xlsx_path.exists()
+
+    # --- S5: no dangling ids in the export after a re-reconcile ---------
+    current_finding_ids = {f["finding_id"] for f in payload["findings"]}
+    current_tie_ids = {t["tie_id"] for t in payload["concern_ties"]}
+    for fid in payload["worksheet"]["effective_actions"]:
+        assert fid in current_finding_ids, f"dangling finding_id in effective_actions: {fid}"
+    for entry in payload["worksheet"]["action_history"]:
+        assert entry["finding_id"] in current_finding_ids, (
+            f"dangling finding_id in action_history: {entry['finding_id']}"
+        )
+    for tid in payload["tie_actions"]["effective_actions"]:
+        assert tid in current_tie_ids, f"dangling tie_id in tie_actions.effective_actions: {tid}"
+    for entry in payload["tie_actions"]["action_history"]:
+        assert entry["tie_id"] in current_tie_ids, (
+            f"dangling tie_id in tie_actions.action_history: {entry['tie_id']}"
+        )
 
 
 def _assert_hits_carry_the_full_contract(hits: list[dict]) -> None:

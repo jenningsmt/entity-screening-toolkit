@@ -34,21 +34,22 @@ def evidence_hash_for(
     other observations in the same case, so two cases sharing an
     identical finding but different surrounding ties must not share a
     cached sentence), plus the model/prompt version currently in use.
-    `case_context`'s recitations are sorted before joining: it's built
-    from store.load_findings/load_ties, whose row order isn't guaranteed
-    stable across calls (M10), so sorting makes the hash depend on the
-    context's *content*, not the order it happened to arrive in -- without
-    it, the same logical context could hash differently between the call
-    that cached a row and a later call that reads it. Since
-    `finding_id`/`tie_id` are already regenerated (uuid4) on every
-    reconciliation run, this hash mainly guards against a
-    model/prompt_version change invalidating a previously-cached
-    explanation for an otherwise-unchanged observation, not against
-    evidence drift under a fixed id (which can't happen -- ids don't
-    persist across runs). Public (not `_`-prefixed): the API layer's
-    ungated `GET .../explanation` route (case_routes.py) needs to compute
-    the same cache key `explain()` uses below, so the two paths agree on
-    what "the cached explanation" means."""
+    `case_context`'s recitations are sorted before joining -- store.
+    load_findings/load_ties now order deterministically (M10), but
+    sorting here is kept anyway as a cheap, harmless safety net so this
+    hash never depends on row order regardless of how the caller built
+    the list.
+
+    Since S5, `finding_id`/`tie_id` are deterministic and DO persist
+    across a re-reconcile of the same case -- this hash is now the
+    *entire* staleness defence, not a secondary one: a model/prompt_version
+    change, or genuine evidence drift under a now-stable id (an
+    otherwise-identical observation whose surrounding case_context
+    changed), both correctly produce a different hash and a cache miss.
+    Public (not `_`-prefixed): the API layer's ungated `GET .../explanation`
+    route (case_routes.py) needs to compute the same cache key `explain()`
+    uses below, so the two paths agree on what "the cached explanation"
+    means."""
     context_payload = "|".join(sorted(recite(o) for o in case_context))
     payload = f"{recite(observation)}|{context_payload}|{MODEL}|{PROMPT_VERSION}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()

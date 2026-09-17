@@ -54,7 +54,10 @@ _TRANSITIONS: dict[CaseState, set[CaseState]] = {
     CaseState.CLOSED: {CaseState.DISCOVERY},
 }
 
-_VALID_OUTCOMES = {
+# M6: public (not `_`-prefixed) -- the worksheet UI needs this vocabulary
+# for its outcome-recording dropdown, same "a second layer needs it"
+# rationale as Phase 2's evidence_hash_for promotion.
+VALID_OUTCOMES = {
     "cleared",
     "cleared_with_certification",
     "not_cleared",
@@ -136,6 +139,12 @@ def record_action(
     case = store.load_case(conn, case_id)
     if case is None:
         raise ValueError(f"Unknown case_id: {case_id!r}")
+    # M5: a closed case's record is meant to be final -- append-only
+    # history stays intact, but nothing new appends once closed. Every
+    # earlier state (including ADJUDICATION/OUTCOME) still allows a
+    # legitimate correction.
+    if case.state == CaseState.CLOSED:
+        raise CaseStateError(f"Case {case_id!r} is closed; no new actions may be recorded.")
     # dismiss vocab is shared across case kinds (case/vocab.py); only the
     # escalation vocab differs, since a COI case has no Sec. 51B.153
     # department-head certification path.
@@ -200,6 +209,12 @@ def record_tie_action(
 ) -> TieAction:
     """One analyst disposition of one ConcernTie -- own reason vocabulary
     (case/vocab.py:TIE_DISMISS_REASON_CODES)."""
+    case = store.load_case(conn, case_id)
+    if case is None:
+        raise ValueError(f"Unknown case_id: {case_id!r}")
+    # M5: see record_action's identical guard.
+    if case.state == CaseState.CLOSED:
+        raise CaseStateError(f"Case {case_id!r} is closed; no new actions may be recorded.")
     if not is_valid_tie_reason_code(action.value, reason_code):
         raise ValueError(
             f"reason_code {reason_code!r} is not in the concern-tie vocabulary for "
@@ -263,6 +278,19 @@ def transition(
                 "row(s) unactioned. Every discrepancy AND every concern tie must have "
                 "an analyst action before the case leaves the worksheet (use-case-01 "
                 "Section 8's closure rule)."
+            )
+    # M5: OUTCOME and CLOSED each name a record the state machine itself
+    # didn't previously require to actually exist.
+    if case.state == CaseState.ADJUDICATION and target == CaseState.OUTCOME:
+        if store.next_adjudication_seq(conn, case_id) == 0:  # returns 0, never 1, when none recorded
+            raise CaseStateError(
+                f"Case {case_id!r} has no recorded adjudication; record one "
+                "before moving to outcome."
+            )
+    if case.state == CaseState.OUTCOME and target == CaseState.CLOSED:
+        if latest_outcome(conn, case_id) is None:
+            raise CaseStateError(
+                f"Case {case_id!r} has no recorded outcome; record one before closing."
             )
     from dataclasses import replace
 
@@ -332,9 +360,9 @@ def record_outcome(
     actor: str,
     note: str = "",
 ) -> None:
-    if outcome not in _VALID_OUTCOMES:
+    if outcome not in VALID_OUTCOMES:
         raise ValueError(
-            f"outcome {outcome!r} not one of {sorted(_VALID_OUTCOMES)}"
+            f"outcome {outcome!r} not one of {sorted(VALID_OUTCOMES)}"
         )
     case = store.load_case(conn, case_id)
     if case is None or case.state != CaseState.OUTCOME:
@@ -357,10 +385,3 @@ def latest_outcome(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict | None
         return None
     outcome, note, actor, recorded_at = row
     return {"outcome": outcome, "note": note, "actor": actor, "recorded_at": recorded_at}
-
-
-def reopen_case(conn: duckdb.DuckDBPyConnection, case_id: str) -> Case:
-    """A closed case re-opens on new information. Returns it to DISCOVERY so
-    reconciliation runs again against current reference data; the prior
-    adjudication and any exported investigative file are untouched."""
-    return transition(conn, case_id, CaseState.DISCOVERY)

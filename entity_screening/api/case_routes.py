@@ -295,6 +295,8 @@ def reason_codes() -> dict:
         # COI (step 6) shares "dismiss" with HB-127; only escalation differs
         # (case/vocab.py: no Sec. 51B.153 certification path for a COI case).
         "coi_escalation": COI_ESCALATION_REASON_CODES,
+        # M6: the worksheet UI's outcome-recording dropdown.
+        "outcomes": sorted(service.VALID_OUTCOMES),
     }
 
 
@@ -304,16 +306,32 @@ def dismissal_basis_summary() -> dict:
     does your institution define substantial?', aggregated from real
     adjudications rather than a policy guessed at up front. Split by
     observation kind -- discrepancy dismissals and concern-tie dismissals
-    turn on different things and are drawn from different vocabularies."""
+    turn on different things and are drawn from different vocabularies.
+
+    M7: scoped to CLOSED, non-demo cases only -- "the office's accumulated
+    case law," not a live scratch pad of whatever's mid-worksheet, and the
+    public demo's own dismissals (anyone with the action secret can make
+    one) must never count as real precedent. The join back to
+    findings/concern_ties also means a dangling action -- one whose
+    finding_id/tie_id a later reconcile removed (S5) -- is silently
+    excluded rather than counted against an id that no longer exists."""
     conn = _connect()
     try:
         finding_rows = conn.execute(
-            "SELECT reason_code, count(*) FROM worksheet_actions "
-            "WHERE action = 'dismiss' GROUP BY reason_code ORDER BY count(*) DESC"
+            "SELECT wa.reason_code, count(*) FROM worksheet_actions wa "
+            "JOIN findings f ON f.finding_id = wa.finding_id AND f.case_id = wa.case_id "
+            "JOIN cases c ON c.case_id = wa.case_id "
+            "WHERE wa.action = 'dismiss' AND c.state = 'closed' AND c.case_id NOT IN (?, ?) "
+            "GROUP BY wa.reason_code ORDER BY count(*) DESC",
+            [demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID],
         ).fetchall()
         tie_rows = conn.execute(
-            "SELECT reason_code, count(*) FROM tie_actions "
-            "WHERE action = 'dismiss' GROUP BY reason_code ORDER BY count(*) DESC"
+            "SELECT ta.reason_code, count(*) FROM tie_actions ta "
+            "JOIN concern_ties t ON t.tie_id = ta.tie_id AND t.case_id = ta.case_id "
+            "JOIN cases c ON c.case_id = ta.case_id "
+            "WHERE ta.action = 'dismiss' AND c.state = 'closed' AND c.case_id NOT IN (?, ?) "
+            "GROUP BY ta.reason_code ORDER BY count(*) DESC",
+            [demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID],
         ).fetchall()
     finally:
         conn.close()
@@ -334,6 +352,24 @@ def create_case(
     request: CreateCaseRequest, _s: None = Depends(require_action_secret)
 ) -> dict:
     from datetime import date
+
+    # M19: store.save_case (like save_subject/save_declaration) is a plain
+    # DELETE-then-INSERT -- without this check, POSTing an existing
+    # case_id silently overwrites it (and orphans its findings/actions/etc
+    # against the replaced case) instead of failing loudly.
+    if request.case_id in (demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID):
+        raise HTTPException(
+            status_code=409, detail=f"Case id {request.case_id!r} is reserved."
+        )
+    conn = _connect()
+    try:
+        existing = store.load_case(conn, request.case_id)
+    finally:
+        conn.close()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409, detail=f"Case {request.case_id!r} already exists."
+        )
 
     try:
         subject = Subject(
@@ -409,6 +445,13 @@ def create_case(
     return {"case_id": case.case_id, "state": case.state.value}
 
 
+_RECONCILE_ALLOWED_STATES = (
+    CaseState.INTAKE,
+    CaseState.DECLARATION_ASSEMBLY,
+    CaseState.DISCOVERY,
+)
+
+
 @router.post("/{case_id}/reconcile")
 def reconcile(
     case_id: str,
@@ -417,7 +460,20 @@ def reconcile(
 ) -> dict:
     conn = _connect()
     try:
-        _load_case_or_404(conn, case_id)
+        case = _load_case_or_404(conn, case_id)
+        if case.state not in _RECONCILE_ALLOWED_STATES:
+            # S5: re-running reconciliation regenerates a case's evidence,
+            # which a worksheet in progress (or beyond) must not have wiped
+            # out from under an analyst -- refused unless re-opened
+            # (transition back to DISCOVERY) first.
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Case {case_id!r} is in {case.state.value!r} and cannot be "
+                    "reconciled again without first re-opening it (POST "
+                    ".../transition {\"target_state\": \"discovery\"})."
+                ),
+            )
     finally:
         conn.close()
     is_demo = case_id in (demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID)

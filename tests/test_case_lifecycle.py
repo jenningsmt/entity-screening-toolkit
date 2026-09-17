@@ -263,6 +263,61 @@ def test_escalation_vocabulary_is_selected_by_case_kind(tmp_path):
     coi_conn.close()
 
 
+def test_transition_to_outcome_requires_a_recorded_adjudication(tmp_path):
+    conn = _demo_conn(tmp_path)
+    _action_all_findings(conn)
+    _action_all_ties(conn)
+    service.transition(conn, "demo", CaseState.ADJUDICATION)
+
+    with pytest.raises(CaseStateError):
+        service.transition(conn, "demo", CaseState.OUTCOME)
+
+    service.record_adjudication(conn, "demo", "No substantial omission.", "Clear to proceed.", "analyst.a")
+    service.transition(conn, "demo", CaseState.OUTCOME)  # now succeeds
+    conn.close()
+
+
+def test_transition_to_closed_requires_a_recorded_outcome(tmp_path):
+    conn = _demo_conn(tmp_path)
+    _action_all_findings(conn)
+    _action_all_ties(conn)
+    service.transition(conn, "demo", CaseState.ADJUDICATION)
+    service.record_adjudication(conn, "demo", "No substantial omission.", "Clear to proceed.", "analyst.a")
+    service.transition(conn, "demo", CaseState.OUTCOME)
+
+    with pytest.raises(CaseStateError):
+        service.transition(conn, "demo", CaseState.CLOSED)
+
+    service.record_outcome(conn, "demo", "cleared", "analyst.a")
+    service.transition(conn, "demo", CaseState.CLOSED)  # now succeeds
+    conn.close()
+
+
+def test_record_action_is_refused_once_the_case_is_closed(tmp_path):
+    conn = _demo_conn(tmp_path)
+    _action_all_findings(conn)
+    _action_all_ties(conn)
+    fid = store.load_findings(conn, "demo")[0].finding_id
+    tid = store.load_ties(conn, "demo")[0].tie_id
+    service.transition(conn, "demo", CaseState.ADJUDICATION)
+    service.record_adjudication(conn, "demo", "No substantial omission.", "Clear to proceed.", "analyst.a")
+    service.transition(conn, "demo", CaseState.OUTCOME)
+    service.record_outcome(conn, "demo", "cleared", "analyst.a")
+    service.transition(conn, "demo", CaseState.CLOSED)
+
+    with pytest.raises(CaseStateError):
+        service.record_action(
+            conn, "demo", fid, WorksheetActionKind.DISMISS,
+            "analyst_judgment_not_material", "n/a", "analyst.a",
+        )
+    with pytest.raises(CaseStateError):
+        service.record_tie_action(
+            conn, "demo", tid, WorksheetActionKind.ESCALATE,
+            "needs_counterintelligence_referral", "n/a", "analyst.a",
+        )
+    conn.close()
+
+
 def test_adjudication_is_append_only_and_reopening_keeps_the_prior_one(tmp_path):
     conn = _demo_conn(tmp_path)
     _action_all_findings(conn)
@@ -273,8 +328,9 @@ def test_adjudication_is_append_only_and_reopening_keeps_the_prior_one(tmp_path)
     service.record_outcome(conn, "demo", "cleared", "analyst.a")
     service.transition(conn, "demo", CaseState.CLOSED)
 
-    # New information -> re-open.
-    service.reopen_case(conn, "demo")
+    # New information -> re-open (reopen_case was removed, S5 -- unreachable
+    # dead code superseded by this same generic transition, per M22).
+    service.transition(conn, "demo", CaseState.DISCOVERY)
     assert store.load_case(conn, "demo").state == CaseState.DISCOVERY
     conn.close()
 

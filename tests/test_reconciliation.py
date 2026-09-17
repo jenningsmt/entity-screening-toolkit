@@ -333,9 +333,17 @@ def test_both_at_once_produces_one_finding_and_one_tie_joined_by_id(tmp_path):
 
     nio_findings = [f for f in findings if "NIO" in f.discovered.institution_name]
     own_ties = [t for t in ties if t.tie_kind.value == "own_affiliation_history"]
+    ownership_ties = [t for t in ties if t.tie_kind.value == "declared_employer_ultimate_parent"]
     assert len(nio_findings) == 1
     assert len(own_ties) == 1
     assert own_ties[0].related_finding_id == nio_findings[0].finding_id
+
+    # S5: this is the real, not hypothetical, natural-key collision the
+    # deterministic tie_id scheme has to survive -- two ties on the exact
+    # same concern_entity_name ("NIO INC."), different tie_kind, in the
+    # same run. tie_kind must be part of the id, or these would collide.
+    assert own_ties[0].concern_entity_name == ownership_ties[0].concern_entity_name == "NIO INC."
+    assert own_ties[0].tie_id != ownership_ties[0].tie_id
 
 
 def test_reconcile_case_is_current_state_not_append(tmp_path):
@@ -357,4 +365,9 @@ def test_reconcile_case_is_current_state_not_append(tmp_path):
     conn = storage.connect(db_path)
     assert len(store.load_findings(conn, "demo")) == len(first_f) == len(second_f) == 2
     assert len(store.load_ties(conn, "demo")) == len(first_t) == len(second_t) == 1
+
+    # S5: not just the same counts -- the identical finding_id/tie_id set,
+    # both times. This is what lets an analyst action survive a re-run.
+    assert {f.finding_id for f in first_f} == {f.finding_id for f in second_f}
+    assert {t.tie_id for t in first_t} == {t.tie_id for t in second_t}
     conn.close()

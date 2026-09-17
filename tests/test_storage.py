@@ -1,5 +1,8 @@
 import datetime
 
+import duckdb
+import pytest
+
 from entity_screening.common import storage
 from entity_screening.common.schema import (
     MatchStatus,
@@ -22,6 +25,37 @@ def test_connect_creates_schema(tmp_path):
         "screening_hits",
         "scored_entities",
     } <= tables
+
+
+def test_findings_and_ties_and_explanations_have_unique_indexes(tmp_path):
+    """S5/M18: finding_id/tie_id are deterministic now, so a genuine
+    duplicate is a real bug -- enforced at the DB level via CREATE UNIQUE
+    INDEX (ALTER TABLE ... ADD CONSTRAINT UNIQUE is not supported by this
+    DuckDB version). Re-connecting must be idempotent (the index already
+    exists), and a real duplicate insert must raise."""
+    db_path = tmp_path / "test.duckdb"
+    conn = storage.connect(db_path)
+    conn.close()
+    conn = storage.connect(db_path)  # idempotent re-run of the migration
+
+    conn.execute("INSERT INTO findings (finding_id, case_id) VALUES ('f1', 'case-1')")
+    with pytest.raises(duckdb.ConstraintException):
+        conn.execute("INSERT INTO findings (finding_id, case_id) VALUES ('f1', 'case-1')")
+
+    conn.execute("INSERT INTO concern_ties (tie_id, case_id) VALUES ('t1', 'case-1')")
+    with pytest.raises(duckdb.ConstraintException):
+        conn.execute("INSERT INTO concern_ties (tie_id, case_id) VALUES ('t1', 'case-1')")
+
+    conn.execute(
+        "INSERT INTO explanations (explanation_id, observation_id, evidence_hash, case_id) "
+        "VALUES ('e1', 'obs-1', 'hash-1', 'case-1')"
+    )
+    with pytest.raises(duckdb.ConstraintException):
+        conn.execute(
+            "INSERT INTO explanations (explanation_id, observation_id, evidence_hash, case_id) "
+            "VALUES ('e2', 'obs-1', 'hash-1', 'case-1')"
+        )
+    conn.close()
 
 
 def test_cases_table_migrates_declaration_id_and_case_kind_on_an_old_file(tmp_path):

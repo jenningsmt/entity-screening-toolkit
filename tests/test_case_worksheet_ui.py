@@ -73,3 +73,53 @@ def test_explanation_expander_shows_the_cached_row_with_no_generate_click(api_ba
     # cached row was found, so the expander renders text, not a button.
     generate_buttons = [b for b in at.button if b.label == "Generate explanation"]
     assert not generate_buttons
+
+
+def _click_by_key(at, key):
+    next(b for b in at.button if b.key == key).click().run()
+    assert not at.exception
+
+
+def _click_by_label(at, label):
+    next(b for b in at.button if b.label == label).click().run()
+    assert not at.exception
+
+
+def test_full_lifecycle_intake_to_closed_and_reopen_is_drivable_from_the_ui(api_base_url):
+    """M6's exit criterion: WORKSHEET -> ... -> CLOSED -> re-opened,
+    entirely through rendered widgets, with no exception at any step.
+    Case state is checked via the API directly rather than Streamlit's
+    session_state, since the page doesn't stash the worksheet payload
+    under a fixed, stable key across reruns."""
+    import requests
+
+    at = AppTest.from_file(PAGE_PATH, default_timeout=60)
+    at.run()
+    at.sidebar.text_input[0].set_value(api_base_url).run()
+    assert not at.exception
+    assert requests.get(f"{api_base_url}/cases/demo/worksheet").json()["state"] == "worksheet"
+
+    # Bulk-dismiss every finding, then every tie (default selectbox action
+    # is already "dismiss"; no field needs setting for this path).
+    _click_by_key(at, "fb_btn")
+    _click_by_key(at, "tb_btn")
+    assert requests.get(f"{api_base_url}/cases/demo/worksheet").json()["can_close"] is True
+
+    _click_by_label(at, "Close the worksheet → adjudication")
+    assert requests.get(f"{api_base_url}/cases/demo/worksheet").json()["state"] == "adjudication"
+
+    at.text_area(key="adj_assessment").set_value("No substantial omission.")
+    at.text_area(key="adj_recommendation").set_value("Proceed.")
+    _click_by_key(at, "adj_btn")
+
+    _click_by_key(at, "to_outcome_btn")
+    assert requests.get(f"{api_base_url}/cases/demo/worksheet").json()["state"] == "outcome"
+
+    at.selectbox(key="outcome_select").set_value("cleared")
+    _click_by_key(at, "outcome_btn")
+
+    _click_by_key(at, "to_closed_btn")
+    assert requests.get(f"{api_base_url}/cases/demo/worksheet").json()["state"] == "closed"
+
+    _click_by_key(at, "reopen_btn")
+    assert requests.get(f"{api_base_url}/cases/demo/worksheet").json()["state"] == "discovery"

@@ -207,7 +207,17 @@ def test_findings_are_current_state_per_case(tmp_path):
     assert store.load_findings(conn, "case-1")[0] == _finding()
 
     # Re-running reconciliation replaces the set rather than accumulating.
-    store.replace_findings(conn, "case-1", [_finding(), _finding()])
+    # Two distinct findings (S5: finding_id is a unique index now, keyed
+    # on the natural key -- two rows for the same institution can't
+    # coexist, matching what a real reconcile can ever produce).
+    from dataclasses import replace as _dc_replace
+
+    second = _dc_replace(
+        _finding(),
+        finding_id="find-2",
+        discovered=_dc_replace(_finding().discovered, institution_name="Zhejiang University"),
+    )
+    store.replace_findings(conn, "case-1", [_finding(), second])
     assert len(store.load_findings(conn, "case-1")) == 2
     conn.close()
 

@@ -66,11 +66,15 @@ class MatchExplanation:
     `observation_id` (a `finding_id` or `tie_id`), a fully templated
     `recitation`, and at most one LLM-generated `synthesis_sentence` with
     its resolved `citations`. `evidence_hash` is this explanation's cache
-    key (`explanation/service.py`) -- a re-run of reconciliation
-    regenerates `finding_id`/`tie_id` (uuid4) on every run, so a stale
-    explanation is never looked up again by construction, the same
-    current-state-per-case discipline `case/store.py:replace_findings`
-    already relies on.
+    key (`explanation/service.py`) -- `finding_id`/`tie_id` are
+    deterministic (S5) and persist across a re-reconcile of the same
+    case, so staleness protection lives entirely in `evidence_hash_for`'s
+    content hash: a genuinely changed observation or case_context under a
+    stable id still produces a different hash and misses the cache.
+    `case/store.py:replace_findings`/`replace_ties` delete the
+    `explanations` rows for any id they *remove* (no longer produced by
+    the latest reconcile), so a kept id's stale-hash rows are the only
+    ones that can accumulate, and they're simply never looked up again.
 
     `synthetic` is propagated from the case/subject, exactly like
     `case/export.py`'s `PROVENANCE_NOTICE` -- a free-text paragraph about a

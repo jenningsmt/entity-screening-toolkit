@@ -188,18 +188,25 @@ col_c.metric("Statutory deadline", worksheet["statutory_deadline"] or "—")
 with st.expander("What am I looking at?", expanded=True):
     st.markdown(_EXPLAINER)
 
-if st.button("Re-run reconciliation", disabled=not _actions_enabled):
-    with st.spinner("Reconciling declaration against public records…"):
-        try:
-            result = _post(f"/cases/{case_id}/reconcile", {}, timeout=600).json()
-            st.success(
-                f"{result['finding_count']} discrepancy row(s), "
-                f"{result.get('tie_count', 0)} concern tie(s), across "
-                f"{', '.join(result['discovery_sources'])}."
-            )
-            st.rerun()
-        except requests.RequestException as exc:
-            st.error(f"Reconciliation failed: {exc}")
+# S5: reconciliation is refused server-side once a case has left
+# DISCOVERY (re-running it would wipe an in-progress worksheet) -- hide
+# the button entirely rather than show it disabled, since the only way
+# back to a reconcile-eligible state is the full lifecycle to CLOSED and
+# a re-open, not a quick undo.
+_RECONCILE_ALLOWED_STATES = {"intake", "declaration_assembly", "discovery"}
+if worksheet["state"] in _RECONCILE_ALLOWED_STATES:
+    if st.button("Re-run reconciliation", disabled=not _actions_enabled):
+        with st.spinner("Reconciling declaration against public records…"):
+            try:
+                result = _post(f"/cases/{case_id}/reconcile", {}, timeout=600).json()
+                st.success(
+                    f"{result['finding_count']} discrepancy row(s), "
+                    f"{result.get('tie_count', 0)} concern tie(s), across "
+                    f"{', '.join(result['discovery_sources'])}."
+                )
+                st.rerun()
+            except requests.RequestException as exc:
+                st.error(f"Reconciliation failed: {exc}")
 
 if not rows and not tie_rows:
     st.info("No observations yet. Run reconciliation from the button above.")
@@ -542,6 +549,42 @@ if worksheet["state"] == "adjudication":
                 f"/cases/{case_id}/adjudication",
                 {"assessment": assessment, "recommendation": recommendation, "actor": actor},
             )
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+    # M6: the API 409s if no adjudication has been recorded yet (M5) --
+    # surfaced the same way every other button here surfaces a failure,
+    # not pre-checked client-side.
+    if st.button("→ Outcome", disabled=not _actions_enabled, key="to_outcome_btn"):
+        try:
+            _post(f"/cases/{case_id}/transition", {"target_state": "outcome"})
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+
+if worksheet["state"] == "outcome":
+    outcome = st.selectbox("Outcome", reason_codes["outcomes"], key="outcome_select")
+    outcome_note = st.text_area("Note", key="outcome_note")
+    if st.button("Record outcome", disabled=not _actions_enabled, key="outcome_btn"):
+        try:
+            _post(
+                f"/cases/{case_id}/outcome",
+                {"outcome": outcome, "actor": actor, "note": outcome_note},
+            )
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+    if st.button("→ Closed", disabled=not _actions_enabled, key="to_closed_btn"):
+        try:
+            _post(f"/cases/{case_id}/transition", {"target_state": "closed"})
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Failed: {exc}")
+
+if worksheet["state"] == "closed":
+    if st.button("Re-open case", disabled=not _actions_enabled, key="reopen_btn"):
+        try:
+            _post(f"/cases/{case_id}/transition", {"target_state": "discovery"})
             st.rerun()
         except requests.RequestException as exc:
             st.error(f"Failed: {exc}")

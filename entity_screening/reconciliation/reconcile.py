@@ -150,7 +150,17 @@ def build_finding(
         for m in ranked_declared_matches(item.institution_name, declared, threshold=threshold)
     )
     return Finding(
-        finding_id=str(uuid.uuid4()),
+        # S5: deterministic, not uuid4 -- a re-run of reconciliation must
+        # produce the same finding_id for the same (case_id, source,
+        # institution_name) so analyst actions and cached explanations
+        # carry forward instead of orphaning. `(source, institution_name)`
+        # is unique per run (discovered_finding_map's own docstring,
+        # below), so no other component is needed. Same pattern as this
+        # codebase's other deterministic ids (pipeline.py's
+        # resolve_entities_from_nsf: uuid5(NAMESPACE_DNS, key)).
+        finding_id=str(uuid.uuid5(
+            uuid.NAMESPACE_DNS, f"finding|{case_id}|{item.source}|{item.institution_name}"
+        )),
         case_id=case_id,
         run_id=run_id,
         discovered=item,

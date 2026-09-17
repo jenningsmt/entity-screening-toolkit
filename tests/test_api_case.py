@@ -5,6 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from entity_screening.api.main import app
+from entity_screening.case import demo, store as case_store
+from entity_screening.common import storage
+from entity_screening.pipeline import reconcile_case
 
 
 @pytest.fixture
@@ -122,7 +125,18 @@ def test_reason_codes_route_includes_the_tie_vocabularies(client):
     assert "historical_or_divested_relationship" in codes["tie_dismiss"]
 
 
-def test_dismissal_basis_summary_splits_by_observation_kind(client):
+def test_reason_codes_route_includes_the_outcome_vocabulary(client):
+    codes = client.get("/cases/reason-codes").json()
+    assert set(codes["outcomes"]) == {
+        "cleared", "cleared_with_certification", "not_cleared", "withdrawn",
+    }
+
+
+def test_dismissal_basis_summary_excludes_demo_cases_and_open_cases(client):
+    """M7: dismissing a row on the (open, demo) case must never appear --
+    the summary is "the office's accumulated case law" (closed, real
+    cases only), not a live scratch pad, and the demo case is excluded
+    regardless of state."""
     body = client.get("/cases/demo/worksheet").json()
     fid = body["rows"][0]["finding"]["finding_id"]
     tid = body["tie_rows"][0]["tie"]["tie_id"]
@@ -135,8 +149,120 @@ def test_dismissal_basis_summary_splits_by_observation_kind(client):
         json={"action": "dismiss", "reason_code": "historical_or_divested_relationship", "reason_note": "", "actor": "a"},
     )
     summary = client.get("/cases/dismissal-basis-summary").json()
+    assert summary["discrepancy"]["by_reason_code"] == []
+    assert summary["concern_tie"]["by_reason_code"] == []
+
+
+def _real_closed_case_with_a_dismissed_finding(client, tmp_path, case_id="c1"):
+    """A non-demo case, reconciled directly at the pipeline layer (the
+    route only injects a works_fixture for demo cases), driven through the
+    full lifecycle to CLOSED with one finding dismissed along the way."""
+    resp = client.post(
+        "/cases",
+        json={
+            "case_id": case_id,
+            "subject_id": f"{case_id}-subj",
+            "subject_display_name": "Test Subject",
+            "coverage_basis": "151a1",
+            "synthetic": True,
+            "trigger": "hire",
+            "access_scope": "data",
+            "declaration_sources": [],
+            "declared_affiliations": [],
+        },
+    )
+    assert resp.status_code == 200
+
+    db_path = tmp_path / "test.duckdb"
+    works_fixture = [
+        {
+            "id": "https://openalex.org/W1",
+            "publication_date": "2022-01-01",
+            "authorships": [
+                {
+                    "is_subject": True,
+                    "author_position": "first",
+                    "author": {"id": "https://openalex.org/A1", "display_name": "Test Subject"},
+                    "institutions": [
+                        {"display_name": "Ordinary University", "country_code": "US"}
+                    ],
+                }
+            ],
+        }
+    ]
+    reconcile_case(case_id, db_path=db_path, runs_dir=tmp_path / "runs", works_fixture=works_fixture)
+
+    worksheet = client.get(f"/cases/{case_id}/worksheet").json()
+    fid = worksheet["rows"][0]["finding"]["finding_id"]
+    client.post(
+        f"/cases/{case_id}/findings/{fid}/action",
+        json={"action": "dismiss", "reason_code": "analyst_judgment_not_material", "reason_note": "", "actor": "a"},
+    )
+    assert client.post(
+        f"/cases/{case_id}/transition", json={"target_state": "adjudication"}
+    ).status_code == 200
+    client.post(
+        f"/cases/{case_id}/adjudication",
+        json={"assessment": "Not material.", "recommendation": "Proceed.", "actor": "a"},
+    )
+    assert client.post(
+        f"/cases/{case_id}/transition", json={"target_state": "outcome"}
+    ).status_code == 200
+    client.post(f"/cases/{case_id}/outcome", json={"outcome": "cleared", "actor": "a", "note": ""})
+    assert client.post(
+        f"/cases/{case_id}/transition", json={"target_state": "closed"}
+    ).status_code == 200
+    return case_id
+
+
+def test_dismissal_basis_summary_includes_a_real_closed_case(client, tmp_path):
+    _real_closed_case_with_a_dismissed_finding(client, tmp_path)
+    summary = client.get("/cases/dismissal-basis-summary").json()
     assert summary["discrepancy"]["by_reason_code"][0]["reason_code"] == "analyst_judgment_not_material"
-    assert summary["concern_tie"]["by_reason_code"][0]["reason_code"] == "historical_or_divested_relationship"
+
+
+def test_dismissal_basis_summary_excludes_a_still_open_real_case(client, tmp_path):
+    db_path = tmp_path / "test.duckdb"
+    client.post(
+        "/cases",
+        json={
+            "case_id": "c2",
+            "subject_id": "c2-subj",
+            "subject_display_name": "Test Subject Two",
+            "coverage_basis": "151a1",
+            "synthetic": True,
+            "trigger": "hire",
+            "access_scope": "data",
+            "declaration_sources": [],
+            "declared_affiliations": [],
+        },
+    )
+    works_fixture = [
+        {
+            "id": "https://openalex.org/W2",
+            "publication_date": "2022-01-01",
+            "authorships": [
+                {
+                    "is_subject": True,
+                    "author_position": "first",
+                    "author": {"id": "https://openalex.org/A2", "display_name": "Test Subject Two"},
+                    "institutions": [
+                        {"display_name": "Another University", "country_code": "US"}
+                    ],
+                }
+            ],
+        }
+    ]
+    reconcile_case("c2", db_path=db_path, runs_dir=tmp_path / "runs", works_fixture=works_fixture)
+    worksheet = client.get("/cases/c2/worksheet").json()
+    fid = worksheet["rows"][0]["finding"]["finding_id"]
+    client.post(
+        f"/cases/c2/findings/{fid}/action",
+        json={"action": "dismiss", "reason_code": "analyst_judgment_not_material", "reason_note": "", "actor": "a"},
+    )
+    # Case c2 is left open (WORKSHEET) -- must not appear.
+    summary = client.get("/cases/dismissal-basis-summary").json()
+    assert summary["discrepancy"]["by_reason_code"] == []
 
 
 def test_tie_action_rejects_a_discrepancy_vocabulary_code(client):
@@ -173,6 +299,37 @@ def test_create_case_rejects_non_synthetic_subject(client):
         },
     )
     assert resp.status_code == 400
+
+
+def _create_case_request(case_id: str, subject_id: str = "s1") -> dict:
+    return {
+        "case_id": case_id,
+        "subject_id": subject_id,
+        "subject_display_name": "Test Subject",
+        "coverage_basis": "151a1",
+        "synthetic": True,
+        "trigger": "hire",
+        "access_scope": "data",
+        "declaration_sources": [],
+        "declared_affiliations": [],
+    }
+
+
+def test_create_case_rejects_the_reserved_demo_case_ids(client):
+    assert client.post("/cases", json=_create_case_request("demo")).status_code == 409
+    assert client.post("/cases", json=_create_case_request("demo-coi")).status_code == 409
+
+
+def test_create_case_rejects_an_existing_case_id_instead_of_overwriting(client):
+    first = client.post("/cases", json=_create_case_request("c1"))
+    assert first.status_code == 200
+
+    second = client.post("/cases", json=_create_case_request("c1", subject_id="s2"))
+    assert second.status_code == 409
+
+    # The first case's data is untouched by the rejected second attempt.
+    worksheet = client.get("/cases/c1/worksheet").json()
+    assert worksheet["subject_id"] == "s1"
 
 
 def test_action_gate_blocks_mutations_when_a_secret_is_configured(client, monkeypatch):
@@ -271,3 +428,138 @@ def test_redact_default_stays_open_and_redacted(client, monkeypatch):
         "_redacted": True,
         "_reason": "field-level sensitive (use-case-01 Section 9)",
     }
+
+
+# --- S5: the money test -- re-reconciling doesn't orphan actions or the ---
+# --- explanation cache, because finding_id/tie_id are now deterministic ---
+
+
+def test_reconcile_action_reconcile_again_survives_with_no_orphans(client, tmp_path):
+    """Reconcile (self-heal), dismiss a finding, fetch its cached
+    explanation, then re-reconcile the case directly at the pipeline layer
+    (bypassing the route's new state guard on purpose -- that guard has
+    its own tests; this test is about id/cache stability once a
+    re-reconcile legitimately happens, e.g. after a re-open). The action
+    must still be attached to the same finding_id, the cached explanation
+    must still be servable, and no `explanations` row may reference an id
+    that no longer exists."""
+    worksheet = client.get("/cases/demo/worksheet").json()  # triggers self-heal
+    finding_id = worksheet["rows"][0]["finding"]["finding_id"]
+
+    dismiss = client.post(
+        f"/cases/demo/findings/{finding_id}/action",
+        json={
+            "action": "dismiss",
+            "reason_code": "record_error_or_misattribution",
+            "reason_note": "",
+            "actor": "analyst.a",
+        },
+    )
+    assert dismiss.status_code == 200
+
+    cached_before = client.get(f"/cases/demo/findings/{finding_id}/explanation")
+    assert cached_before.status_code == 200
+
+    db_path = tmp_path / "test.duckdb"
+    reconcile_case(
+        demo.DEMO_CASE_ID,
+        db_path=db_path,
+        runs_dir=tmp_path / "runs",
+        works_fixture=demo.load_demo_works_fixture(),
+        gleif_lei_file=demo.DEMO_GLEIF_LEI_FILE,
+        gleif_relationships_file=demo.DEMO_GLEIF_RELATIONSHIPS_FILE,
+    )
+
+    worksheet_after = client.get("/cases/demo/worksheet").json()
+    row_after = next(r for r in worksheet_after["rows"] if r["finding"]["finding_id"] == finding_id)
+    assert row_after["action"] is not None
+    assert row_after["action"]["action"] == "dismiss"
+
+    cached_after = client.get(f"/cases/demo/findings/{finding_id}/explanation")
+    assert cached_after.status_code == 200
+    assert cached_after.json() == cached_before.json()
+
+    conn = storage.connect(db_path)
+    try:
+        current_ids = {f.finding_id for f in case_store.load_findings(conn, demo.DEMO_CASE_ID)}
+        current_ids |= {t.tie_id for t in case_store.load_ties(conn, demo.DEMO_CASE_ID)}
+        explanation_ids = {
+            row[0]
+            for row in conn.execute(
+                "SELECT observation_id FROM explanations WHERE case_id = ?",
+                [demo.DEMO_CASE_ID],
+            ).fetchall()
+        }
+        assert explanation_ids <= current_ids, (
+            f"orphan explanation rows referencing removed ids: {explanation_ids - current_ids}"
+        )
+    finally:
+        conn.close()
+
+
+# --- S5 (state guard): reconcile refused once a case has left DISCOVERY ---
+
+
+def _drive_demo_case_to_closed(client):
+    """Actions every row, then ADJUDICATION -> record adjudication ->
+    OUTCOME -> record outcome -> CLOSED -- the only path back to a state
+    reconcile is allowed in again (CLOSED -> DISCOVERY), per S5's state
+    guard's own structural note: there is no direct edge from
+    WORKSHEET/ADJUDICATION/OUTCOME back to DISCOVERY."""
+    body = client.get("/cases/demo/worksheet").json()
+    ids = [r["finding"]["finding_id"] for r in body["rows"]]
+    tie_ids = [r["tie"]["tie_id"] for r in body["tie_rows"]]
+    for fid in ids:
+        client.post(
+            f"/cases/demo/findings/{fid}/action",
+            json={
+                "action": "dismiss",
+                "reason_code": "record_error_or_misattribution",
+                "reason_note": "",
+                "actor": "analyst.a",
+            },
+        )
+    for tid in tie_ids:
+        client.post(
+            f"/cases/demo/ties/{tid}/action",
+            json={
+                "action": "dismiss",
+                "reason_code": "historical_or_divested_relationship",
+                "reason_note": "",
+                "actor": "analyst.a",
+            },
+        )
+    assert client.post(
+        "/cases/demo/transition", json={"target_state": "adjudication"}
+    ).status_code == 200
+    assert client.post(
+        "/cases/demo/adjudication",
+        json={"assessment": "Nothing material.", "recommendation": "Proceed.", "actor": "analyst.a"},
+    ).status_code == 200
+    assert client.post(
+        "/cases/demo/transition", json={"target_state": "outcome"}
+    ).status_code == 200
+    assert client.post(
+        "/cases/demo/outcome",
+        json={"outcome": "cleared", "actor": "analyst.a", "note": ""},
+    ).status_code == 200
+    assert client.post(
+        "/cases/demo/transition", json={"target_state": "closed"}
+    ).status_code == 200
+
+
+def test_reconcile_is_refused_once_the_case_is_in_worksheet(client):
+    client.get("/cases/demo/worksheet")  # trigger self-heal -> state is worksheet
+
+    blocked = client.post("/cases/demo/reconcile", json={})
+    assert blocked.status_code == 409
+
+    _drive_demo_case_to_closed(client)
+    still_blocked = client.post("/cases/demo/reconcile", json={})
+    assert still_blocked.status_code == 409
+
+    reopened = client.post("/cases/demo/transition", json={"target_state": "discovery"})
+    assert reopened.status_code == 200
+
+    allowed = client.post("/cases/demo/reconcile", json={})
+    assert allowed.status_code == 200

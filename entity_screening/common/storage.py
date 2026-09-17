@@ -362,10 +362,17 @@ CREATE TABLE IF NOT EXISTS case_outcomes (
 );
 
 -- Epic J -- evidence-grounded explanation generation. Cached by
--- (observation_id, evidence_hash): a re-run of reconciliation regenerates
--- finding_id/tie_id (uuid4) on every run, so a stale explanation is never
--- looked up again by construction -- no separate invalidation needed.
--- Row marshalling lives in entity_screening/explanation/store.py.
+-- (observation_id, evidence_hash). Since S5 (case/store.py's
+-- replace_findings/replace_ties), finding_id/tie_id are deterministic
+-- and DO persist across a re-reconcile of the same case -- staleness
+-- protection now lives entirely in evidence_hash_for's content hash
+-- (explanation/service.py), which folds in the observation's full
+-- recitation, case_context, and MODEL/PROMPT_VERSION: a genuine content
+-- change under a stable id still misses the cache and regenerates. id
+-- stability is what makes this cache *more* useful than before (a no-op
+-- reconcile now correctly reuses a cached explanation instead of always
+-- regenerating), not a safety risk. Row marshalling lives in
+-- entity_screening/explanation/store.py.
 CREATE TABLE IF NOT EXISTS explanations (
     explanation_id VARCHAR PRIMARY KEY,
     observation_kind VARCHAR,
@@ -461,6 +468,18 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
         "UPDATE cases SET case_kind = 'hb127_researcher_screening' WHERE case_kind IS NULL"
     )
     _migrate_drop_ownership_flags_primary_key(conn)
+    # S5: finding_id/tie_id are now deterministic (uuid5 of the natural
+    # key), so a genuine duplicate is a real bug, not an expected event --
+    # enforce it at the DB level. `ALTER TABLE ... ADD CONSTRAINT UNIQUE`
+    # is not supported by this DuckDB version ("Not implemented Error");
+    # CREATE UNIQUE INDEX IF NOT EXISTS is, is idempotent to re-run on
+    # every connect(), and raises ConstraintException on a duplicate.
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_findings_finding_id ON findings(finding_id)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_concern_ties_tie_id ON concern_ties(tie_id)")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_explanations_obs_hash "
+        "ON explanations(observation_id, evidence_hash)"
+    )
     return conn
 
 

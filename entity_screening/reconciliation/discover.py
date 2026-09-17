@@ -325,7 +325,16 @@ def tie_from_ownership(
 
             ties.append(
                 ConcernTie(
-                    tie_id=str(uuid.uuid4()),
+                    # S5: deterministic, not uuid4 -- see the tie_id
+                    # comment in ties_from_own_affiliations below for the
+                    # full natural-key rationale (both constructors share
+                    # it: case_id, tie_kind, anchor_affiliation_id,
+                    # concern_entity_name).
+                    tie_id=str(uuid.uuid5(
+                        uuid.NAMESPACE_DNS,
+                        f"tie|{case_id}|{TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT.value}|"
+                        f"{employer.affiliation_id}|{parent_name}",
+                    )),
                     case_id=case_id,
                     run_id=run_id,
                     tie_kind=TieKind.DECLARED_EMPLOYER_ULTIMATE_PARENT,
@@ -380,7 +389,27 @@ def ties_from_own_affiliations(
             continue
         ties.append(
             ConcernTie(
-                tie_id=str(uuid.uuid4()),
+                # S5: deterministic, not uuid4 -- a re-run of
+                # reconciliation must produce the same tie_id for the same
+                # (case_id, tie_kind, anchor_affiliation_id,
+                # concern_entity_name), or analyst actions and cached
+                # explanations orphan on every reconcile. All four
+                # components are load-bearing: two ties of different
+                # kinds can share a concern_entity_name in the same run
+                # (a declared employer's ultimate parent and a
+                # separately-discovered own-affiliation both landing on
+                # the same concern-listed entity --
+                # tests/test_reconciliation.py's
+                # test_both_at_once_produces_one_finding_and_one_tie_joined_by_id
+                # is a real, not hypothetical, case of this), and
+                # anchor_affiliation_id disambiguates two
+                # DECLARED_EMPLOYER_ULTIMATE_PARENT ties on different
+                # declared affiliations that happen to share a parent.
+                tie_id=str(uuid.uuid5(
+                    uuid.NAMESPACE_DNS,
+                    f"tie|{case_id}|{TieKind.OWN_AFFILIATION_HISTORY.value}|"
+                    f"None|{da.institution_name}",
+                )),
                 case_id=case_id,
                 run_id=run_id,
                 tie_kind=TieKind.OWN_AFFILIATION_HISTORY,

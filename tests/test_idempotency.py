@@ -248,7 +248,9 @@ def test_reconcile_case_is_current_state_and_reopen_preserves_the_prior_adjudica
     service.record_outcome(conn, "demo", "cleared", "analyst.a")
     service.transition(conn, "demo", CaseState.CLOSED)
     actions_before = len(store.load_worksheet_actions(conn, "demo"))
-    service.reopen_case(conn, "demo")
+    # reopen_case was removed, S5 -- unreachable dead code superseded by
+    # this same generic transition, per M22.
+    service.transition(conn, "demo", CaseState.DISCOVERY)
     conn.close()
 
     # Re-reconcile after re-open.
