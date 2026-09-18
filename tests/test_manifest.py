@@ -1,6 +1,11 @@
 import json
+from pathlib import Path
+
+import pytest
 
 from entity_screening.common.manifest import DatasetSnapshot, ExportManifest, RunManifest, _git_commit
+
+_REPO_GIT_DIR = Path(__file__).resolve().parent.parent / ".git"
 
 
 def test_manifest_round_trips_through_disk(tmp_path):
@@ -70,6 +75,10 @@ def test_git_commit_prefers_the_env_var(monkeypatch):
     assert _git_commit() == "baked-in-abc123"
 
 
+@pytest.mark.skipif(
+    not _REPO_GIT_DIR.exists(),
+    reason="requires a real git checkout (.git present) -- fails on an exported tree",
+)
 def test_git_commit_falls_back_to_git_rev_parse_when_env_unset(monkeypatch):
     monkeypatch.delenv("GIT_COMMIT", raising=False)
     commit = _git_commit()

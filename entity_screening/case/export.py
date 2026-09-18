@@ -25,7 +25,7 @@ from pathlib import Path
 
 import duckdb
 
-from entity_screening.case import service, store
+from entity_screening.case import demo, service, store
 from entity_screening.case.store import (
     _discovered_to_dict,
     _flag_to_dict,
@@ -47,7 +47,19 @@ REDACTION_MARKER = {"_redacted": True, "_reason": "field-level sensitive (use-ca
 # an invented edge to a fabricated subsidiary, with no provenance marker, is
 # the one output here that could be mistaken for a real finding about a real
 # company. The Streamlit banner protects the screen; this protects the file.
-PROVENANCE_NOTICE = (
+#
+# M8: this text is specific to the demo's own bundled GLEIF fixture (the
+# SYNTH-prefixed LEI, gleif.NOTICE.md) and was previously stamped on every
+# case's export unconditionally -- including a non-demo case created via
+# POST /cases, which has nothing to do with the demo fixture. Selected by
+# case id now (see _provenance_notice below); GENERIC_PROVENANCE_NOTICE
+# covers every other case. There is no third, "real (non-synthetic) case"
+# variant: Subject/Declaration's own __post_init__ guards make
+# synthetic=False unrepresentable anywhere in this build (use-case-01
+# Section 9's "no real PII by construction" discipline) -- every reachable
+# non-demo case is synthetic too, so one generic notice covers all of them
+# honestly.
+DEMO_PROVENANCE_NOTICE = (
     "SYNTHETIC DEMONSTRATION DATA -- NOT A REAL FINDING ABOUT ANY REAL PERSON "
     "OR COMPANY. This build handles no real declaration data (use-case-01 "
     "Section 9); the subject and their declaration are fabricated in full, "
@@ -60,6 +72,20 @@ PROVENANCE_NOTICE = (
     "invented. Do not treat this file, in whole or in part, as a screening "
     "determination."
 )
+
+GENERIC_PROVENANCE_NOTICE = (
+    "SYNTHETIC DEMONSTRATION DATA -- NOT A REAL FINDING ABOUT ANY REAL PERSON "
+    "OR COMPANY. This build handles no real declaration data (use-case-01 "
+    "Section 9); this case's subject and declaration are synthetic by "
+    "construction. Do not treat this file, in whole or in part, as a "
+    "screening determination."
+)
+
+
+def _provenance_notice(case_id: str) -> str:
+    if case_id in (demo.DEMO_CASE_ID, demo.DEMO_COI_CASE_ID):
+        return DEMO_PROVENANCE_NOTICE
+    return GENERIC_PROVENANCE_NOTICE
 
 
 def _finding_to_dict(finding) -> dict:
@@ -117,7 +143,7 @@ def build_investigative_file(
     return {
         "provenance": {
             "synthetic": bool(case.synthetic and (subject.synthetic if subject else True)),
-            "notice": PROVENANCE_NOTICE,
+            "notice": _provenance_notice(case_id),
         },
         "case": {
             "case_id": case.case_id,
@@ -168,8 +194,9 @@ def build_investigative_file(
                 for a in (declaration.affiliations if declaration else ())
             ],
         },
-        # concern_ties sorts before findings; the Sec. 51B.151(b) observations
-        # are the higher-stakes ones and a reader should hit them first.
+        # concern_ties sorts before findings: the Sec. 51B.151(b) tie test
+        # and the Sec. 51B.153 omission test are two distinct statutory
+        # questions, and a reader hits the tie question first.
         "concern_ties": [_tie_to_dict(t) for t in ties],
         "findings": [_finding_to_dict(f) for f in findings],
         "worksheet": {
@@ -265,6 +292,10 @@ def export_investigative_file(
     return out_path, manifest
 
 
+_DECLARED_AFFILIATION_SHEET_COLUMNS = [
+    "affiliation_id", "source_id", "institution_name", "country", "role",
+    "start_date", "end_date", "activity_kind",
+]
 _FINDING_SHEET_COLUMNS = [
     "finding_id", "discovered_source", "institution_name", "country",
     "first_observed", "last_observed", "record_count", "factual_basis",
@@ -309,11 +340,13 @@ def _write_xlsx(payload: dict, out_path: Path) -> None:
             ]
         ).to_excel(writer, sheet_name="READ ME -- provenance", index=False)
         pd.DataFrame([payload["case"]]).to_excel(writer, sheet_name="Case", index=False)
-        pd.DataFrame(payload["declaration"]["affiliations"]).to_excel(
-            writer, sheet_name="Declared affiliations", index=False
+        sheet(
+            writer, "Declared affiliations", payload["declaration"]["affiliations"],
+            _DECLARED_AFFILIATION_SHEET_COLUMNS,
         )
-        # Concern ties before Findings -- the Sec. 51B.151(b) observations are
-        # the higher-stakes ones and must not be buried under omission rows.
+        # Concern ties before Findings -- the Sec. 51B.151(b) tie test and
+        # the Sec. 51B.153 omission test are two distinct statutory
+        # questions; a reader hits the tie question's sheet first.
         sheet(
             writer,
             "Concern ties",

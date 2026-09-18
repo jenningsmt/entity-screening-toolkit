@@ -1,5 +1,5 @@
 """Foreign-adversary-country list: loader, wiring into the three discovery
-call sites, and AdversaryListManifest -- Use Case 01 Section 12 step 4.
+call sites -- Use Case 01 Section 12 step 4.
 
 Binding real-data verification (docs/plans/2026-09-14-foreign-adversary-list-
 ingester.md): the curated snapshot's citations were checked against the
@@ -14,7 +14,6 @@ import datetime
 from pathlib import Path
 
 from entity_screening.common import storage
-from entity_screening.common.manifest import AdversaryListManifest
 from entity_screening.common.schema import DeclaredAffiliation
 from entity_screening.ingestion.base import IngestionErrorLog
 from entity_screening.ingestion.dod_1260h import DoD1260HIngester
@@ -34,7 +33,7 @@ def test_load_adversary_list_loads_the_bundled_four_dni_ata_countries():
     assert adversary_list.list_version
     assert set(adversary_list.countries) == {"CN", "RU", "IR", "KP"}
     for code in adversary_list.countries:
-        assert adversary_list.citations_for(code)  # every entry cited
+        assert adversary_list.countries[code]  # every entry cited
 
 
 def test_contains_true_false_and_none():
@@ -52,15 +51,6 @@ def test_contains_normalizes_iso_3166_2_subdivision_codes():
     adversary_list = load_adversary_list()
     assert adversary_list.contains("US-DE") is False
     assert adversary_list.contains("cn") is True  # case-insensitive too
-
-
-def test_adversary_list_manifest_from_adversary_list():
-    adversary_list = load_adversary_list()
-    manifest = AdversaryListManifest.from_adversary_list(adversary_list)
-    assert manifest.list_version == adversary_list.list_version
-    assert manifest.dni_ata_years == (2024, 2025, 2026)
-    assert len(manifest.dni_ata_sources) == 3
-    assert manifest.gubernatorial_designations == ()  # Path B ships empty
 
 
 def test_discover_from_publications_wires_a_real_adversary_country():

@@ -16,7 +16,7 @@ evaluative drift by construction, the same as everything else in this
 codebase. `synthesis_sentence` is the one field that did not come from a
 template -- a short, LLM-generated sentence connecting several evidence
 items. Its risk is content-level, not field-name-level, so
-`EXPLANATION_ALLOWED_FIELDS` below (checked by `cli.py validate`, mirroring
+`_EXPLANATION_ALLOWED_FIELDS` below (checked by `cli.py validate`, mirroring
 `_OBSERVATION_GRAPH_ALLOWED_FIELDS`/`RPS_OBSERVATION_ALLOWED_FIELDS`) guards
 against a new *field* like `severity`/`disposition` being added later, but it
 cannot see inside a string. The content guarantee is enforced here instead,
@@ -127,7 +127,7 @@ class MatchExplanation:
 # against a future field-name regression (a `severity`/`disposition` field
 # added later); the content-level guarantee for `synthesis_sentence` itself
 # lives in __post_init__ above, not here.
-EXPLANATION_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
+_EXPLANATION_ALLOWED_FIELDS: dict[str, frozenset[str]] = {
     "MatchExplanation": frozenset(
         {
             "explanation_id",

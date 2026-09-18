@@ -9,9 +9,8 @@ file about them. Manifests and logs do not.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from entity_screening.case import demo, export, service, store
+from entity_screening.case import demo, export, service
 from entity_screening.common import storage
 from entity_screening.common.schema import CaseState, WorksheetActionKind
 from entity_screening.pipeline import reconcile_case

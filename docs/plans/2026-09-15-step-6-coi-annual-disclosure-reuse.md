@@ -256,3 +256,15 @@ a different declared set.
 3. Load both cases in the Streamlit worksheet (`pages/0_HB127_Case_Worksheet.py`) and
    confirm the COI case's "Coverage basis" metric shows the `None`-safe label rather
    than erroring.
+
+## Correction (2026-09-17, Phase 6 remediation, S16)
+
+§3's list of "every existing HB-127 call site" for case creation names
+`cli.py` alongside `case/demo.py`/`api/case_routes.py`, and later refers
+to "`cli.py`'s case-creation path." Neither exists:
+`entity_screening/cli.py` has exactly two subcommands, `run` and
+`validate` — no case-creation path of any kind. Per the 2026-09-15
+pre-ship review's S16 and the remediation strategy's own framing: a
+feature dressed as a finding, not something to build as remediation.
+See `docs/plans/2026-09-17-phase-6-ops-performance-hygiene.md`'s S16
+section for the full decision record.

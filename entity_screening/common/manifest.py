@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -21,19 +22,35 @@ from typing import Any
 
 DEFAULT_RUNS_DIR = Path("data/processed/runs")
 
-# S6 (interim): both ExportManifest.export_dir and
-# InvestigativeFileManifest.export_dir create a brand-new, never-pruned
-# directory per call, and both routes that call them are ungated GETs --
-# an anonymous visitor polling either endpoint can otherwise grow
-# data/processed/runs/ without bound. Full in-memory streaming (S6-full) is
-# deferred to a later phase; this caps disk growth in the meantime.
+# S6: both ExportManifest.export_dir and InvestigativeFileManifest.export_dir
+# create a brand-new directory per call, and both routes that call them are
+# ungated GETs -- an anonymous visitor polling either endpoint can otherwise
+# grow data/processed/runs/ without bound. MAX_EXPORTS_PER_TARGET (Phase 1,
+# interim) bounds growth from repeated requests against the same target;
+# MAX_EXPORT_AGE_DAYS (Phase 6, full) additionally expires a directory by
+# age regardless of request volume, so a low-traffic, long-lived deployment
+# doesn't carry stale exports indefinitely just because no target ever hit
+# the count cap. Full in-memory streaming (never writing to disk on a plain
+# GET at all) was considered and deliberately not built: both `case_id` and
+# `run_id` can only come from a prior action-secret-gated create (`POST
+# /cases`, `POST /runs`), so an anonymous visitor cannot mint new targets to
+# multiply against -- the unauthenticated exposure is already bounded to a
+# small, fixed set of targets, and streaming's added engineering isn't
+# justified by the residual risk (see docs/plans/2026-09-17-phase-6-ops-
+# performance-hygiene.md's S6 section for the full analysis).
 MAX_EXPORTS_PER_TARGET = 20
+MAX_EXPORT_AGE_DAYS = 30
 
 
-def prune_sibling_export_dirs(export_dir: Path, keep: int = MAX_EXPORTS_PER_TARGET) -> None:
+def prune_sibling_export_dirs(
+    export_dir: Path,
+    keep: int = MAX_EXPORTS_PER_TARGET,
+    max_age_days: int = MAX_EXPORT_AGE_DAYS,
+) -> None:
     """Call right after an export_dir() method creates a fresh export
     directory: deletes the oldest sibling directories (by mtime) so at
-    most `keep` remain, the new one included. Both ExportManifest and
+    most `keep` remain, the new one included, then separately expires any
+    remaining sibling older than `max_age_days`. Both ExportManifest and
     InvestigativeFileManifest lay out their export directories the same
     way (a per-target parent holding one subdirectory per export_id), so
     one helper covers both."""
@@ -49,6 +66,13 @@ def prune_sibling_export_dirs(export_dir: Path, keep: int = MAX_EXPORTS_PER_TARG
     for old in siblings[: max(len(siblings) - keep, 0)]:
         if old != export_dir:
             shutil.rmtree(old, ignore_errors=True)
+    # Age-based expiry is a one-directional cutoff comparison, not an
+    # ordering -- no tie-breaking is at stake here, so the plain float
+    # st_mtime (unlike the sort above) is fine.
+    cutoff = time.time() - max_age_days * 86400
+    for d in parent.iterdir():
+        if d != export_dir and d.is_dir() and d.stat().st_mtime < cutoff:
+            shutil.rmtree(d, ignore_errors=True)
 
 
 def _git_commit() -> str | None:
@@ -410,70 +434,6 @@ class ReconciliationManifest:
         return cls(**data)
 
 
-@dataclass(frozen=True)
-class AdversaryListManifest:
-    """Describes the foreign-adversary-country list (Texas Education Code
-    Sec. 51B.001(4), use-case-01 Section 12 step 4): list version, ATA-year
-    derivation, gubernatorial designations, source URLs -- the shape reserved
-    for this in `docs/plans/2026-09-06-use-case-01-implementation.md` Section
-    4.6.
-
-    Unlike GleifSnapshotManifest, this is not written per-run: the adversary
-    list is a static, hand-curated bundled artifact (see
-    `screening/adversary_list.py`'s module docstring), not a live per-run
-    download, the same reason `dod_1260h.json` has no per-run manifest of its
-    own either. Instead this is loaded *from* the curated JSON's own
-    provenance block via `from_adversary_list`, giving the rest of the
-    codebase (export, worksheet UI, docs) one typed place to read the
-    derivation from.
-    """
-
-    list_version: str
-    derived_at: str
-    dni_ata_years: tuple[int, ...]
-    dni_ata_sources: tuple[dict[str, Any], ...]
-    gubernatorial_designations: tuple[dict[str, Any], ...] = ()
-
-    @classmethod
-    def from_adversary_list(cls, adversary_list: Any) -> "AdversaryListManifest":
-        """`adversary_list` is a `screening.adversary_list.AdversaryCountryList`
-        (not imported here -- `common/` stays a leaf package with no
-        dependency on `screening/`, matching every other module in this
-        file); only its `list_version`/`derived_at`/`countries` attributes
-        are read, structurally."""
-        dni_sources: dict[tuple[str, int], dict[str, Any]] = {}
-        gubernatorial: list[dict[str, Any]] = []
-        for citations in adversary_list.countries.values():
-            for citation in citations:
-                if citation.get("kind") == "dni_ata":
-                    key = (citation.get("title", ""), citation.get("year", 0))
-                    dni_sources.setdefault(
-                        key,
-                        {
-                            "year": citation.get("year"),
-                            "title": citation.get("title"),
-                            "url": citation.get("url"),
-                        },
-                    )
-                elif citation.get("kind") == "gubernatorial":
-                    if citation not in gubernatorial:
-                        gubernatorial.append(citation)
-        years = tuple(sorted({src["year"] for src in dni_sources.values() if src["year"]}))
-        sources = tuple(
-            dni_sources[key] for key in sorted(dni_sources, key=lambda k: k[1])
-        )
-        return cls(
-            list_version=adversary_list.list_version,
-            derived_at=adversary_list.derived_at,
-            dni_ata_years=years,
-            dni_ata_sources=sources,
-            gubernatorial_designations=tuple(gubernatorial),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
 @dataclass
 class ScreeningEventManifest:
     """Provenance for one restricted-party-screening event (Use Case 02,
@@ -483,13 +443,15 @@ class ScreeningEventManifest:
     party's real name, matching ReconciliationManifest's own case_id-only
     discipline (use-case-01 Section 9).
 
-    No new curated-snapshot manifest is needed here the way
-    AdversaryListManifest was for step 4 -- RPS reuses the existing
-    OpenSanctions consolidated data unmodified (confirmed during this
-    feature's planning against the real `us_trade_csl` source, see
+    No new curated-snapshot manifest is needed here -- RPS reuses the
+    existing OpenSanctions consolidated data unmodified (confirmed during
+    this feature's planning against the real `us_trade_csl` source, see
     docs/plans/2026-09-14-restricted-party-screening.md). This manifest is
     provenance for *when* that existing data was consulted, not a new
-    list's derivation.
+    list's derivation. (Step 4's own curated-snapshot manifest,
+    `AdversaryListManifest`, was removed in Phase 6 as dead code -- it was
+    never actually read by any production consumer; see
+    docs/plans/2026-09-17-phase-6-ops-performance-hygiene.md's M22.)
     """
 
     event_id: str

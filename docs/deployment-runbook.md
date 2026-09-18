@@ -247,6 +247,9 @@ bounds that is `entity_screening/common/manifest.py`'s
 `pipeline.export_scored_entities`): each caps its own export directory at
 `MAX_EXPORTS_PER_TARGET` (20), deleting the oldest on overflow, so disk usage
 from repeated ungated `GET` exports is bounded regardless of request volume.
+As of Phase 6 (S6-full), the same helper also expires any export directory
+older than `MAX_EXPORT_AGE_DAYS` (30) independently of the count cap, so a
+low-traffic, long-lived deployment doesn't carry stale exports indefinitely.
 Every *mutating* operation is still behind the action secret, unchanged.
 
 ## 9. Housekeeping (Section 9's remaining asks)

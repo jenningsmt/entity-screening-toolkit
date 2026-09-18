@@ -56,9 +56,6 @@ class AdversaryCountryList:
             return None
         return country_code.strip().upper().split("-")[0] in self.countries
 
-    def citations_for(self, country_code: str) -> tuple[dict, ...]:
-        return self.countries.get(country_code.strip().upper().split("-")[0], ())
-
 
 def load_adversary_list(path: Path | str = DEFAULT_DATA_FILE) -> AdversaryCountryList:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))

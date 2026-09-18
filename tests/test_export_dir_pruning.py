@@ -6,13 +6,17 @@ common.manifest.prune_sibling_export_dirs actually caps both.
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
 from entity_screening import pipeline
 from entity_screening.case import demo, export as case_export
 from entity_screening.common import storage
-from entity_screening.common.manifest import MAX_EXPORTS_PER_TARGET
+from entity_screening.common.manifest import (
+    MAX_EXPORTS_PER_TARGET,
+    prune_sibling_export_dirs,
+)
 from entity_screening.pipeline import reconcile_case
 from entity_screening.scoring.rubric import STOCK_RUBRIC
 
@@ -93,3 +97,43 @@ def test_batch_export_directory_count_is_capped(tmp_path):
     surviving = {d.name for d in export_parent.iterdir() if d.is_dir()}
     assert len(surviving) == MAX_EXPORTS_PER_TARGET
     assert surviving == set(export_ids[-MAX_EXPORTS_PER_TARGET:])
+
+
+def test_prune_expires_a_stale_directory_by_age_even_under_the_count_cap(tmp_path):
+    """S6 (full): a low-traffic, long-lived deployment can carry a stale
+    export directory indefinitely as long as its target stays under the
+    count cap -- age-based expiry closes that gap independently of
+    request volume."""
+    parent = tmp_path / "cases" / "some-case" / "investigative_file"
+    parent.mkdir(parents=True)
+    stale_dir = parent / "stale-export"
+    stale_dir.mkdir()
+    fresh_dir = parent / "fresh-export"
+    fresh_dir.mkdir()
+
+    old_time = time.time() - 40 * 86400  # older than the 30-day default
+    os.utime(stale_dir, (old_time, old_time))
+
+    prune_sibling_export_dirs(fresh_dir)
+
+    assert fresh_dir.exists()
+    assert not stale_dir.exists()
+
+
+def test_prune_still_caps_by_count_with_the_new_age_parameter_present(tmp_path):
+    """The count-based prune (and its st_mtime_ns tie-avoiding sort) must
+    survive the age-based addition unchanged."""
+    parent = tmp_path / "cases" / "some-case" / "investigative_file"
+    parent.mkdir(parents=True)
+    dirs = []
+    for i in range(MAX_EXPORTS_PER_TARGET + 5):
+        d = parent / f"export-{i}"
+        d.mkdir()
+        dirs.append(d)
+        time.sleep(0.02)  # see the mtime-granularity comment above
+
+    prune_sibling_export_dirs(dirs[-1])
+
+    surviving = {d.name for d in parent.iterdir() if d.is_dir()}
+    assert len(surviving) == MAX_EXPORTS_PER_TARGET
+    assert surviving == {d.name for d in dirs[-MAX_EXPORTS_PER_TARGET:]}

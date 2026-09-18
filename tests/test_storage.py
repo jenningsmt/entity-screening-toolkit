@@ -112,6 +112,38 @@ def test_cases_table_migrates_declaration_id_and_case_kind_on_an_old_file(tmp_pa
     conn.close()
 
 
+def test_connect_runs_migrations_at_most_once_per_resolved_db_path(tmp_path, monkeypatch):
+    """M11: storage.connect() used to re-run the full SCHEMA_DDL, every
+    ALTER/UPDATE, and the ownership_flags migration check on every call --
+    real overhead paid on every single API request, since every route
+    calls connect() fresh. A second connect() against the SAME path
+    should do dramatically less work than the first; a connect() against
+    a DIFFERENT path must still run the full migration (fails on the
+    unmodified tree first: today both calls do identical, full work)."""
+    real_execute = duckdb.DuckDBPyConnection.execute
+    calls = []
+
+    def counted_execute(self, *args, **kwargs):
+        calls.append(args[0] if args else None)
+        return real_execute(self, *args, **kwargs)
+
+    monkeypatch.setattr(duckdb.DuckDBPyConnection, "execute", counted_execute)
+
+    path_a = tmp_path / "a.duckdb"
+    storage.connect(path_a).close()
+    first_call_count = len(calls)
+
+    calls.clear()
+    storage.connect(path_a).close()
+    second_call_count = len(calls)
+    assert second_call_count < first_call_count
+
+    calls.clear()
+    path_b = tmp_path / "b.duckdb"
+    storage.connect(path_b).close()
+    assert len(calls) == first_call_count  # a genuinely new path still migrates fully
+
+
 def test_same_entity_id_can_recur_across_different_runs(tmp_path):
     """entity_id is a deterministic hash of the normalized name, so the same
     real-world entity legitimately produces the same entity_id in two

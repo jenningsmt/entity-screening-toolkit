@@ -132,7 +132,7 @@ def test_investigative_file_export_contract(tmp_path):
     anywhere in the Finding graph as serialized (Section 4), and the
     language discipline. Plus: classified subject fields redacted by
     default (Section 9)."""
-    from entity_screening.case import demo, export, service, store
+    from entity_screening.case import demo, export, service
 
     db_path = tmp_path / "case.duckdb"
     conn = storage.connect(db_path)
@@ -224,7 +224,7 @@ def test_investigative_file_export_contract(tmp_path):
     # The "Concern ties" sheet sits before "Findings" -- higher-stakes rows first.
     assert wb.sheetnames.index("Concern ties") < wb.sheetnames.index("Findings")
     # Header rows render even when a sheet has zero data rows.
-    for name in ("Adjudications", "Certifications", "Concern ties", "Tie actions"):
+    for name in ("Adjudications", "Certifications", "Concern ties", "Tie actions", "Declared affiliations"):
         assert wb[name].max_row >= 1
 
     # --- every finding row carries the discrepancy contract (no evidence now) ---

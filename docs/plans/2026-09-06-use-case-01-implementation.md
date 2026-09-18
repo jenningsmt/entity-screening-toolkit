@@ -582,3 +582,25 @@ production, not alongside it.
 
 Update `memory/project_monops_deployment_status.md` once the remediation-pass deploy is
 confirmed.
+
+## Correction (2026-09-17, Phase 6 remediation, S16)
+
+Three claims in this plan were never built and are not planned as
+remediation:
+
+- §4.5 ("called by both the API and a new CLI subcommand")
+- §9 ("New `cli` case subcommand runs reconcile → worksheet → export
+  against fixtures, headless")
+- AC 13 ("A `GET /cases/dismissal-basis-summary` route (+ CLI report)
+  aggregates...")
+
+`entity_screening/cli.py` has exactly two subcommands, `run` and
+`validate` — no `case` subcommand, and no CLI dismissal-basis-summary
+report, exist anywhere in this codebase. Per the 2026-09-15 pre-ship
+review's S16 and the remediation strategy's own framing: this is a
+feature dressed as a finding, not a regression to fix. It will be built
+later, as a real feature with its own review, only if headless
+demo-scenario generation actually needs it — not smuggled in under
+hygiene remediation. See
+`docs/plans/2026-09-17-phase-6-ops-performance-hygiene.md`'s S16
+section for the full decision record.

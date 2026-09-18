@@ -62,6 +62,7 @@ from entity_screening.common.schema import (
     ScoredEntity,
     ScreeningHit,
     SourceRecord,
+    TieKind,
     TopicSimilarityFlag,
 )
 from entity_screening.reconciliation.discover import (
@@ -683,9 +684,11 @@ def reconcile_case(
       case).
 
     Current-state per case: re-running replaces both sets (adjudications and
-    exported files hold the history). Advances the case from DISCOVERY to
-    WORKSHEET. `works_fixture` short-circuits the live OpenAlex path -- the
-    demo subject is synthetic (use-case-01 Section 10).
+    exported files hold the history). Advances the case to WORKSHEET from
+    any of INTAKE, DECLARATION_ASSEMBLY, or DISCOVERY -- `create_case`'s own
+    flow relies on the first two, not just DISCOVERY. `works_fixture`
+    short-circuits the live OpenAlex path -- the demo subject is synthetic
+    (use-case-01 Section 10).
     """
     run_id = str(uuid.uuid4())
 
@@ -767,7 +770,7 @@ def reconcile_case(
                 t,
                 related_finding_id=finding_by_da.get(("openalex", t.concern_entity_name)),
             )
-            if t.tie_kind.value == "own_affiliation_history"
+            if t.tie_kind == TieKind.OWN_AFFILIATION_HISTORY
             else t
             for t in ties
         ]

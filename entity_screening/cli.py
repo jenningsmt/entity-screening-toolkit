@@ -33,7 +33,7 @@ from entity_screening.common.schema import (
 )
 from entity_screening.common.attribution import attribution_for
 from entity_screening.explanation.schema import (
-    EXPLANATION_ALLOWED_FIELDS,
+    _EXPLANATION_ALLOWED_FIELDS,
     Citation,
     MatchExplanation,
     ObservationKind,
@@ -280,11 +280,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         "Citation": Citation,
     }.items():
         actual = {f.name for f in _dc_fields(dc)}
-        allowed = EXPLANATION_ALLOWED_FIELDS.get(type_name)
+        allowed = _EXPLANATION_ALLOWED_FIELDS.get(type_name)
         if allowed is None:
             problems.append(
                 f"{type_name} is in the Epic J explanation graph but has no entry "
-                "in EXPLANATION_ALLOWED_FIELDS — add one deliberately."
+                "in _EXPLANATION_ALLOWED_FIELDS — add one deliberately."
             )
             continue
         if actual != allowed:
@@ -292,7 +292,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 f"{type_name}'s fields {sorted(actual)} do not match the frozen "
                 f"allowlist {sorted(allowed)} — the fact/judgment boundary is "
                 "enforced here, so widening what an explanation may assert must "
-                "be a deliberate edit to EXPLANATION_ALLOWED_FIELDS in the same "
+                "be a deliberate edit to _EXPLANATION_ALLOWED_FIELDS in the same "
                 "commit."
             )
         forbidden = {

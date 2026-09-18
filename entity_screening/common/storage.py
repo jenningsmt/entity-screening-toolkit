@@ -440,11 +440,29 @@ CREATE TABLE IF NOT EXISTS screening_dispositions (
 """
 
 
+# M11: storage.connect() is called fresh by every API route's own
+# _connect() helper, so the full DDL/ALTER/UPDATE/index sequence below
+# used to run on every single HTTP request. Schema state lives in the DB
+# file itself, not the connection object, so re-running it against a
+# path already migrated in this process is pure waste -- gate it on a
+# module-level set of resolved paths already migrated this process.
+# Accepted limitation: if a caller deletes and recreates a fresh,
+# unmigrated file at the exact same path without restarting the process,
+# this would incorrectly skip migration for it -- not something the
+# application itself ever does (a real deploy's DB file is durable and
+# mutated in place), the same category of accepted edge case as Phase 5's
+# S11 concern-list cache.
+_migrated_paths: set[str] = set()
+
+
 def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     """Opens (creating if needed) the project's DuckDB file and ensures the schema exists."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = duckdb.connect(str(path))
+    resolved = str(path.resolve())
+    if resolved in _migrated_paths:
+        return conn
     conn.execute(SCHEMA_DDL)
     # CREATE TABLE IF NOT EXISTS in SCHEMA_DDL above is a no-op against a
     # DuckDB file created before this column existed -- it does not add a
@@ -496,6 +514,7 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_explanations_obs_hash "
         "ON explanations(observation_id, evidence_hash)"
     )
+    _migrated_paths.add(resolved)
     return conn
 
 
@@ -897,24 +916,6 @@ def insert_paper_embeddings(
         conn.executemany("INSERT INTO paper_embeddings VALUES (?, ?, ?, ?, ?, ?)", rows)
 
 
-def load_paper_embeddings(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[dict]:
-    rows = conn.execute(
-        "SELECT openalex_work_id, entity_id, pi_name, work_title, embedding "
-        "FROM paper_embeddings WHERE run_id = ?",
-        [run_id],
-    ).fetchall()
-    return [
-        {
-            "openalex_work_id": openalex_work_id,
-            "entity_id": entity_id,
-            "pi_name": pi_name,
-            "work_title": work_title,
-            "embedding": list(embedding),
-        }
-        for openalex_work_id, entity_id, pi_name, work_title, embedding in rows
-    ]
-
-
 def insert_topic_similarity_flags(
     conn: duckdb.DuckDBPyConnection, flags: Iterable[TopicSimilarityFlag], run_id: str
 ) -> None:
@@ -940,41 +941,6 @@ def insert_topic_similarity_flags(
         conn.executemany(
             "INSERT INTO topic_similarity_flags VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
         )
-
-
-def load_topic_similarity_flags(
-    conn: duckdb.DuckDBPyConnection, run_id: str
-) -> list[TopicSimilarityFlag]:
-    rows = conn.execute(
-        "SELECT entity_id, pi_name, openalex_work_id, work_title, technology_area, "
-        "corpus_tier, similarity_score, evidence, recommendation "
-        "FROM topic_similarity_flags WHERE run_id = ?",
-        [run_id],
-    ).fetchall()
-    return [
-        TopicSimilarityFlag(
-            entity_id=entity_id,
-            pi_name=pi_name,
-            openalex_work_id=openalex_work_id,
-            work_title=work_title,
-            technology_area=technology_area,
-            corpus_tier=corpus_tier,
-            similarity_score=similarity_score,
-            evidence=json.loads(evidence),
-            recommendation=recommendation,
-        )
-        for (
-            entity_id,
-            pi_name,
-            openalex_work_id,
-            work_title,
-            technology_area,
-            corpus_tier,
-            similarity_score,
-            evidence,
-            recommendation,
-        ) in rows
-    ]
 
 
 def load_screening_hits(conn: duckdb.DuckDBPyConnection, run_id: str) -> list[ScreeningHit]:

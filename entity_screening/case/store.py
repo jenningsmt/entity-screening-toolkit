@@ -65,10 +65,13 @@ from entity_screening.common.schema import (
 # --------------------------------------------------------------------------
 
 
+_SUBJECT_COLUMNS = "subject_id, display_name, coverage_basis, synthetic, classified_fields"
+
+
 def save_subject(conn: duckdb.DuckDBPyConnection, subject: Subject) -> None:
     conn.execute("DELETE FROM subjects WHERE subject_id = ?", [subject.subject_id])
     conn.execute(
-        "INSERT INTO subjects VALUES (?, ?, ?, ?, ?)",
+        f"INSERT INTO subjects ({_SUBJECT_COLUMNS}) VALUES (?, ?, ?, ?, ?)",
         [
             subject.subject_id,
             subject.display_name,
@@ -81,8 +84,7 @@ def save_subject(conn: duckdb.DuckDBPyConnection, subject: Subject) -> None:
 
 def load_subject(conn: duckdb.DuckDBPyConnection, subject_id: str) -> Subject | None:
     row = conn.execute(
-        "SELECT subject_id, display_name, coverage_basis, synthetic, classified_fields "
-        "FROM subjects WHERE subject_id = ?",
+        f"SELECT {_SUBJECT_COLUMNS} FROM subjects WHERE subject_id = ?",
         [subject_id],
     ).fetchone()
     if row is None:
@@ -148,12 +150,15 @@ def _affiliation_from_dict(data: dict) -> DeclaredAffiliation:
     )
 
 
+_DECLARATION_COLUMNS = "declaration_id, subject_id, synthetic, sources, affiliations"
+
+
 def save_declaration(conn: duckdb.DuckDBPyConnection, declaration: Declaration) -> None:
     conn.execute(
         "DELETE FROM declarations WHERE declaration_id = ?", [declaration.declaration_id]
     )
     conn.execute(
-        "INSERT INTO declarations VALUES (?, ?, ?, ?, ?)",
+        f"INSERT INTO declarations ({_DECLARATION_COLUMNS}) VALUES (?, ?, ?, ?, ?)",
         [
             declaration.declaration_id,
             declaration.subject_id,
@@ -179,8 +184,7 @@ def load_declaration(
     conn: duckdb.DuckDBPyConnection, declaration_id: str
 ) -> Declaration | None:
     row = conn.execute(
-        "SELECT declaration_id, subject_id, synthetic, sources, affiliations "
-        "FROM declarations WHERE declaration_id = ?",
+        f"SELECT {_DECLARATION_COLUMNS} FROM declarations WHERE declaration_id = ?",
         [declaration_id],
     ).fetchone()
     return _row_to_declaration(row) if row is not None else None
@@ -635,11 +639,16 @@ def load_ties(conn: duckdb.DuckDBPyConnection, case_id: str) -> list[ConcernTie]
 # --------------------------------------------------------------------------
 
 
+_WORKSHEET_ACTION_COLUMNS = (
+    "finding_id, case_id, action, reason_code, reason_note, actor, recorded_at, batch_id"
+)
+
+
 def append_worksheet_action(
     conn: duckdb.DuckDBPyConnection, case_id: str, action: WorksheetAction
 ) -> None:
     conn.execute(
-        "INSERT INTO worksheet_actions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO worksheet_actions ({_WORKSHEET_ACTION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
             action.finding_id,
             case_id,
@@ -650,6 +659,32 @@ def append_worksheet_action(
             action.recorded_at,
             action.batch_id,
         ],
+    )
+
+
+def append_worksheet_actions(
+    conn: duckdb.DuckDBPyConnection, case_id: str, actions: list[WorksheetAction]
+) -> None:
+    """M12: the batched counterpart to append_worksheet_action -- one
+    executemany instead of N single-row inserts, for record_bulk_action."""
+    if not actions:
+        return
+    rows = [
+        (
+            action.finding_id,
+            case_id,
+            action.action.value,
+            action.reason_code,
+            action.reason_note,
+            action.actor,
+            action.recorded_at,
+            action.batch_id,
+        )
+        for action in actions
+    ]
+    conn.executemany(
+        f"INSERT INTO worksheet_actions ({_WORKSHEET_ACTION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
     )
 
 
@@ -692,11 +727,16 @@ def effective_actions(
 # --------------------------------------------------------------------------
 
 
+_TIE_ACTION_COLUMNS = (
+    "tie_id, case_id, action, reason_code, reason_note, actor, recorded_at, batch_id"
+)
+
+
 def append_tie_action(
     conn: duckdb.DuckDBPyConnection, case_id: str, action: TieAction
 ) -> None:
     conn.execute(
-        "INSERT INTO tie_actions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO tie_actions ({_TIE_ACTION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
             action.tie_id,
             case_id,
@@ -766,11 +806,14 @@ def next_adjudication_seq(conn: duckdb.DuckDBPyConnection, case_id: str) -> int:
     return 0 if row is None or row[0] is None else int(row[0]) + 1
 
 
+_ADJUDICATION_COLUMNS = "case_id, seq, assessment, recommendation, actor, recorded_at"
+
+
 def append_adjudication(
     conn: duckdb.DuckDBPyConnection, adjudication: Adjudication
 ) -> None:
     conn.execute(
-        "INSERT INTO adjudications VALUES (?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO adjudications ({_ADJUDICATION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)",
         [
             adjudication.case_id,
             adjudication.seq,
@@ -808,11 +851,17 @@ def load_adjudications(
 # --------------------------------------------------------------------------
 
 
+_CERTIFICATION_COLUMNS = (
+    "case_id, finding_id, substance_of_failure, reasons_for_disregarding, "
+    "department_head, recorded_at"
+)
+
+
 def append_certification(
     conn: duckdb.DuckDBPyConnection, certification: Certification
 ) -> None:
     conn.execute(
-        "INSERT INTO certifications VALUES (?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO certifications ({_CERTIFICATION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)",
         [
             certification.case_id,
             certification.finding_id,

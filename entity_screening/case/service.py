@@ -126,6 +126,23 @@ def worksheet(conn: duckdb.DuckDBPyConnection, case_id: str) -> WorksheetView:
     )
 
 
+def _validate_action_for_case(case, action: WorksheetActionKind, reason_code: str) -> None:
+    # dismiss vocab is shared across case kinds (case/vocab.py); only the
+    # escalation vocab differs, since a COI case has no Sec. 51B.153
+    # department-head certification path.
+    validate = (
+        is_valid_coi_reason_code
+        if case.case_kind == CaseKind.COI_ANNUAL_DISCLOSURE
+        else is_valid_reason_code
+    )
+    if not validate(action.value, reason_code):
+        raise ValueError(
+            f"reason_code {reason_code!r} is not in the controlled vocabulary for "
+            f"action {action.value!r} on a {case.case_kind.value!r} case "
+            f"(see entity_screening/case/vocab.py)."
+        )
+
+
 def record_action(
     conn: duckdb.DuckDBPyConnection,
     case_id: str,
@@ -145,20 +162,7 @@ def record_action(
     # legitimate correction.
     if case.state == CaseState.CLOSED:
         raise CaseStateError(f"Case {case_id!r} is closed; no new actions may be recorded.")
-    # dismiss vocab is shared across case kinds (case/vocab.py); only the
-    # escalation vocab differs, since a COI case has no Sec. 51B.153
-    # department-head certification path.
-    validate = (
-        is_valid_coi_reason_code
-        if case.case_kind == CaseKind.COI_ANNUAL_DISCLOSURE
-        else is_valid_reason_code
-    )
-    if not validate(action.value, reason_code):
-        raise ValueError(
-            f"reason_code {reason_code!r} is not in the controlled vocabulary for "
-            f"action {action.value!r} on a {case.case_kind.value!r} case "
-            f"(see entity_screening/case/vocab.py)."
-        )
+    _validate_action_for_case(case, action, reason_code)
     known = {f.finding_id for f in store.load_findings(conn, case_id)}
     if finding_id not in known:
         raise ValueError(f"finding_id {finding_id!r} is not in case {case_id!r}")
@@ -186,14 +190,40 @@ def record_bulk_action(
 ) -> tuple[str, list[WorksheetAction]]:
     """One disposition across a selected class of findings. Every action
     shares a `batch_id` so a bulk dismissal is auditable as one act by one
-    person on one stated basis (use-case-01 Section 8)."""
+    person on one stated basis (use-case-01 Section 8).
+
+    M12: loads the case and the findings list exactly once regardless of
+    how many finding_ids are in the batch (a 40-row bulk dismissal used
+    to be 80+ queries -- record_action, called once per id, reloaded both
+    every time), and validates every id before writing anything -- an
+    unknown id names itself (and every other unknown id) in the error,
+    with nothing from the batch committed, rather than raising on the
+    first bad id after already having written the earlier ones."""
+    case = store.load_case(conn, case_id)
+    if case is None:
+        raise ValueError(f"Unknown case_id: {case_id!r}")
+    if case.state == CaseState.CLOSED:
+        raise CaseStateError(f"Case {case_id!r} is closed; no new actions may be recorded.")
+    _validate_action_for_case(case, action, reason_code)
+    known = {f.finding_id for f in store.load_findings(conn, case_id)}
+    unknown = [fid for fid in finding_ids if fid not in known]
+    if unknown:
+        raise ValueError(f"finding_id(s) {unknown!r} not in case {case_id!r}")
     batch_id = str(uuid.uuid4())
+    recorded_at = _now()  # one shared timestamp for the whole batch -- it is one act
     actions = [
-        record_action(
-            conn, case_id, fid, action, reason_code, reason_note, actor, batch_id=batch_id
+        WorksheetAction(
+            finding_id=fid,
+            action=action,
+            reason_code=reason_code,
+            reason_note=reason_note,
+            actor=actor,
+            recorded_at=recorded_at,
+            batch_id=batch_id,
         )
         for fid in finding_ids
     ]
+    store.append_worksheet_actions(conn, case_id, actions)
     return batch_id, actions
 
 

@@ -94,14 +94,3 @@ def load_explanation(
         [observation_id, evidence_hash],
     ).fetchone()
     return _row_to_explanation(row) if row is not None else None
-
-
-def load_explanations_for_case(
-    conn: duckdb.DuckDBPyConnection, case_id: str
-) -> list[MatchExplanation]:
-    rows = conn.execute(
-        f"SELECT {_EXPLANATION_COLUMNS} FROM explanations WHERE case_id = ? "
-        "ORDER BY generated_at",
-        [case_id],
-    ).fetchall()
-    return [_row_to_explanation(r) for r in rows]

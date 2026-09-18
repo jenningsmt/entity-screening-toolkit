@@ -1,6 +1,3 @@
-import datetime
-import uuid
-
 from entity_screening.bibliometric.topic_similarity import (
     CET_CORPUS_FILE,
     DOD_CORPUS_FILE,

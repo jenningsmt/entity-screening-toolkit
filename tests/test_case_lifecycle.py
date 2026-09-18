@@ -198,6 +198,61 @@ def test_bulk_action_dispositions_a_class_with_one_reason_and_one_batch_id(tmp_p
     conn.close()
 
 
+def test_bulk_action_loads_the_case_and_findings_exactly_once(tmp_path, monkeypatch):
+    """M12: record_bulk_action used to call record_action once per
+    finding_id, each of which reloaded the case and the full findings
+    list -- a 40-row bulk dismissal was 80+ queries. One load of each,
+    regardless of how many finding_ids are in the batch (fails on the
+    unmodified tree first: today call counts scale with len(ids))."""
+    conn = _demo_conn(tmp_path)
+    view = service.worksheet(conn, "demo")
+    ids = [r.finding.finding_id for r in view.rows]
+    assert len(ids) >= 1
+
+    load_case_calls = []
+    load_findings_calls = []
+    real_load_case = store.load_case
+    real_load_findings = store.load_findings
+
+    def counted_load_case(*args, **kwargs):
+        load_case_calls.append(1)
+        return real_load_case(*args, **kwargs)
+
+    def counted_load_findings(*args, **kwargs):
+        load_findings_calls.append(1)
+        return real_load_findings(*args, **kwargs)
+
+    monkeypatch.setattr(store, "load_case", counted_load_case)
+    monkeypatch.setattr(store, "load_findings", counted_load_findings)
+
+    service.record_bulk_action(
+        conn, "demo", ids, WorksheetActionKind.DISMISS,
+        "analyst_judgment_not_material", "reviewed as a set", "analyst.a",
+    )
+
+    assert len(load_case_calls) == 1
+    assert len(load_findings_calls) == 1
+    conn.close()
+
+
+def test_bulk_action_names_every_unknown_finding_id_not_just_the_first(tmp_path):
+    conn = _demo_conn(tmp_path)
+    view = service.worksheet(conn, "demo")
+    ids = [r.finding.finding_id for r in view.rows]
+    bad_ids = ids + ["not-a-real-finding-1", "not-a-real-finding-2"]
+
+    with pytest.raises(ValueError) as exc_info:
+        service.record_bulk_action(
+            conn, "demo", bad_ids, WorksheetActionKind.DISMISS,
+            "analyst_judgment_not_material", "reviewed as a set", "analyst.a",
+        )
+    assert "not-a-real-finding-1" in str(exc_info.value)
+    assert "not-a-real-finding-2" in str(exc_info.value)
+    # Nothing from the batch was committed -- validate-first, all-or-nothing.
+    assert store.effective_actions(conn, "demo") == {}
+    conn.close()
+
+
 def test_bulk_tie_action_shares_one_batch_id(tmp_path):
     conn = _demo_conn(tmp_path)
     tie_ids = [r.tie.tie_id for r in service.worksheet(conn, "demo").tie_rows]

@@ -139,3 +139,16 @@ as a checked dead end, not a silent gap.
   investigative file and confirmed the raw JSON payload carries the real values
   end-to-end.
 - `docker` CI job's corpus-path parity assertion untouched (batch path not touched).
+
+## Correction (2026-09-17, Phase 6 remediation, M22)
+
+Item 3 above claims `AdversaryListManifest` is "loaded from the curated
+JSON's own provenance via `.from_adversary_list()`, giving the rest of
+the codebase (export, worksheet UI, docs) one typed place to read the
+derivation from." That was never true in production: the class and its
+classmethod were constructed only by their own unit test
+(`tests/test_adversary_list.py`), never by `case/export.py`, the
+worksheet UI, or `cli.py validate`. Confirmed dead by direct grep before
+removal, not assumed. Removed in Phase 6 as dead code — see
+`docs/plans/2026-09-17-phase-6-ops-performance-hygiene.md`'s M22
+section for the verification and removal record.

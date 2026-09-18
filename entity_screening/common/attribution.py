@@ -95,7 +95,3 @@ def attribution_for(source: str) -> dict[str, str]:
     turns that gap into a build failure, not this function at hit-construction
     time."""
     return dict(_ATTRIBUTIONS.get(source, {}))
-
-
-def registered_sources() -> tuple[str, ...]:
-    return tuple(_ATTRIBUTIONS)
