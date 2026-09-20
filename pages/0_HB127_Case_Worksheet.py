@@ -93,6 +93,8 @@ Restricted-party screening, a related but different check, has its own page
 reachable from the sidebar. Annual conflict-of-interest review runs on this
 same engine as well. Case intake and queue routing still belong to the
 office's existing workflow.
+
+*Full specification: docs/use-case-01-hb127-researcher-screening.md.*
 """
 
 st.title("HB 127 Researcher Screening — case worksheet")
