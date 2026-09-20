@@ -42,27 +42,43 @@ st.warning(
 with st.expander("What am I looking at?", expanded=True):
     st.markdown(
         """
-**What this checks.** A name — a person or an organization — against the U.S.
-government's restricted/denied/debarred-party lists (via OpenSanctions' consolidated
-data, including the U.S. Trade Consolidated Screening List: BIS's Denied Persons,
-Entity, and Unverified Lists; State's AECA Debarred Parties and Nonproliferation
-Sanctions; and OFAC's Specially Designated Nationals List). A candidate match is
-always confidence-scored and evidence-carrying, never a bare yes/no.
+This page checks a name, a person or an organization, against the U.S.
+government's restricted, denied, and debarred party lists: BIS's Denied
+Persons, Entity, and Unverified Lists, State's AECA Debarred Parties and
+Nonproliferation Sanctions, and OFAC's Specially Designated Nationals List,
+all pulled through OpenSanctions' consolidated data. A match always comes
+with a confidence score and the evidence behind it. It's never just a yes or
+no.
 
-**What this does not check.** Whether an item or piece of technology is
-export-controlled, whether a license is required, or whether the Fundamental
-Research Exclusion applies — those are an export control officer's determination,
-not a fact this system states. It also never checks a party's *country* against
-OFAC's embargoed-country list (Cuba, Iran, North Korea, Syria, Venezuela) — country
-is shown for evidence only, and is never a screening gate here.
+**What this doesn't check.** Whether something is export-controlled, needs a
+license, or falls under the Fundamental Research Exclusion is a call for an
+export control officer, not this system. It also doesn't weigh a party's
+country against the embargoed-country list (Cuba, Iran, North Korea, Syria,
+Venezuela). Country shows up as evidence and nothing more, never a reason on
+its own to flag someone.
 
-**Three trigger events**, each with its own creation form below: a Foreign Person
-hire, a visiting-scholar invitation, and a purchasing/financial transaction. A hire
-or visiting-scholar event may optionally reference an existing HB127 case
-(display-only — it never becomes a shared worksheet row). A purchasing event never
-does; it has no case-shaped counterpart at all.
+**Where the data comes from.** This runs inside the institution's own
+network, but nothing here arrives automatically. The research security
+export control analyst is the one who pulls the search parameters together
+and types them in, for each of three trigger events.
 
-*Full specification: docs/use-case-02-restricted-party-screening.md. Implementation
+A hire triggers a screening once a department decides to bring on a foreign
+researcher. The analyst enters the candidate's name, their affiliated
+institution going back five years, and any references the candidate
+provided.
+
+A visiting-scholar invitation triggers a screening at Form 5VS review. The
+analyst enters the visitor's name and their home institution.
+
+A purchase or financial transaction triggers a screening on its own,
+whenever the counterparty is foreign. The analyst enters that counterparty's
+name and affiliation straight off the purchase order or contract.
+
+A hire or a visiting-scholar invite can point back to an HB127 case for
+reference, but it stays its own record and never becomes part of that
+worksheet. A purchasing event doesn't have an HB127 counterpart at all.
+
+*Full write-up: docs/use-case-02-restricted-party-screening.md. Implementation
 plan: docs/plans/2026-09-14-restricted-party-screening.md.*
 """
     )

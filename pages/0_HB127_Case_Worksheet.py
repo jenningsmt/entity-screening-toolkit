@@ -49,64 +49,50 @@ DEMO_CASE_ID = "demo"
 # panel pushed the "this runs" signal off the first screen. Below the metrics it
 # is still open and unmissable, and the metric row clears the fold everywhere.
 _EXPLAINER = """\
-**What you're looking at**
-
 Texas HB 127 requires public universities to screen prospective foreign
-researchers before hiring, using the passport and visa application (DS-160) the
-applicant submits. The statutory bar is narrow: employment is barred where the
-applicant **failed to disclose** a substantial educational, employment, or
-research activity — not where someone judges them risky. The disqualifying
-condition is an omission. This page works that reconciliation as a case: it
-compares what a researcher declared against public records — publication and
-affiliation history, corporate ownership chains, government concern lists — and
-surfaces every place the declaration doesn't account for what the record shows.
+researchers before they're hired, using the passport and visa paperwork the
+applicant already submitted, mainly the DS-160. The law's bar is narrow. You
+can't turn someone down for looking risky. You can only turn them down for
+leaving something out, a research activity, a job, an affiliation that public
+records show and the declaration doesn't. This page runs that comparison. It
+checks what a researcher declared against publication history, corporate
+ownership chains, and government concern lists, and shows every place the two
+don't line up.
 
-**What it will not do.** It never scores a person, never rules an omission
-"substantial," never says a tie should prevent someone from working as a
-researcher. Those are the analyst's judgments and the law's. The system puts
-facts on the table with their provenance attached — and that boundary is
-enforced in the data model, not just the interface: there is no field capable of
-holding a risk score.
+**What it won't do.** It doesn't score anyone, and it doesn't decide when a
+gap is serious enough to matter. Whether a match should keep someone off the
+payroll is a call for the analyst and the law, not the software, and that
+holds down at the level of the data model. There's no field here that could
+even hold a risk score.
 
-**Reading the worksheet.** Two sections, one per statutory test. *Discrepancies*
-(§51B.153) are items in the record and absent from the declaration, each labeled
-with why it surfaced and which source's scope window it falls in — a DS-160
-covers five years of employment, so an older item is a scope gap, not a
-concealment. *Concern ties* (§51B.151(b)) are links to listed entities,
-including ones no name check would reach: a declared employer whose ultimate
-parent sits on the DoD 1260H list. Every row needs an analyst action and a
-stated reason before the case can close.
+**How to read it.** Two sections, one for each part of the statute.
+Discrepancies are things the public record shows that the declaration
+doesn't, each tagged with why it came up and which document's time window it
+falls in. A DS-160 only covers five years of employment, so something older
+isn't a concealment, it's outside the form's scope, and the page says so.
+Concern ties are links to listed entities, including ones a plain name check
+would miss, like a declared employer whose parent company sits on a
+government list. Every row needs an analyst to close it out with an action
+and a reason before the case is done.
 
-**Explanations.** Each row has an "Explain this match" expander — a short,
-evidence-grounded write-up of that discrepancy or tie. Most of it is templated
-text built directly from the same fields shown in the Evidence panel; at most
-one sentence is genuinely LLM-generated, and only when it can be verified two
-ways before it's ever shown: every claim in it must resolve back to a citation
-in the underlying evidence, and it must contain none of a forbidden-vocabulary
-list (no "concerning," "suspicious," "clearly indicates" — evaluative language,
-not fact). A sentence that fails either check is dropped, not shown with a
-caveat — the row still gets its full templated explanation either way. The
-bundled demo's explanations are recitation-only by design, so the public demo
-never depends on a live, paid model call.
+Each row has an explanation you can expand, built mostly from the same
+evidence already sitting in the panel next to it. At most one sentence is
+generated rather than templated, and only once every claim in it checks out
+against a citation.
 
-**Live versus demo.** The screening queries live sources — publication and
-affiliation history comes from OpenAlex at run time. This public demo
-deliberately doesn't: the case shown is built from bundled fixtures so it
-renders identically for everyone and nobody's clicking fires queries on their
-behalf, and the action controls are locked behind a secret. The live path is the
-same code with the fixtures left out. All demo data is synthetic.
+**Where the data comes from.** This runs inside the institution's own
+network. In production, the application data the law requires would arrive
+through a pipeline, not part of this build, connected to the university's own
+HR and IT systems, the same systems that already protect it. What you're
+clicking through here is different: it's built from fictional fixtures so the
+demo behaves the same for every visitor, not from that pipeline or a real
+applicant file.
 
-**Scope.** HB 127 researcher screening is one due-diligence workflow.
-Restricted-party screening — a related but structurally different check (a
-name-against-list match, not a declaration-vs-record diff) — is now its own page,
-reachable from the sidebar switcher. Annual conflict-of-interest disclosure review
-runs on this same page and this same engine: type a COI case's ID (the bundled demo
-is `demo-coi`) into the Case ID box above to see one — the "Coverage basis" metric
-reads N/A for it, since HB 127's §51B.151(a) has no limb for an annual disclosure
-cycle. Case intake and queue routing would come from the office's existing workflow
-rather than being rebuilt here.
-
-*Full specification: docs/use-case-01-hb127-researcher-screening.md.*
+**Scope.** HB 127 researcher screening is one piece of due diligence.
+Restricted-party screening, a related but different check, has its own page
+reachable from the sidebar. Annual conflict-of-interest review runs on this
+same engine as well. Case intake and queue routing still belong to the
+office's existing workflow.
 """
 
 st.title("HB 127 Researcher Screening — case worksheet")
